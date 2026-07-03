@@ -1,24 +1,56 @@
-# Compiled class file
-*.class
+HELP.md
+BACKEND_CONVENTION.md
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
 
-# Log file
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Logs ###
+logs/
 *.log
 
-# BlueJ files
-*.ctxt
+### Environment / Local config ###
+.env
+.env.*
+!.env.example
+application-local.properties
+application-local.yaml
+application-secret.properties
+application-secret.yml
+application-secret.yaml
 
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
 
-# Package Files #
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
