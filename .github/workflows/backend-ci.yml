@@ -3,20 +3,27 @@ name: Backend CI
 on:
   pull_request:
     branches:
+      - develop
       - main
   push:
     branches:
+      - develop
       - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Build backend
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
@@ -29,5 +36,5 @@ jobs:
       - name: Grant execute permission for Gradle
         run: chmod +x gradlew
 
-      - name: Build with Gradle
+      - name: Build backend
         run: ./gradlew clean build
