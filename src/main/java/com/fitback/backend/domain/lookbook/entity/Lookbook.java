@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.lookbook.entity;
 
+import com.fitback.backend.global.entity.BaseTimeEntity;
 import com.fitback.backend.domain.member.entity.Member;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,7 +11,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "lookbook")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Lookbook {
+public class Lookbook extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -39,11 +39,6 @@ public class Lookbook {
     @Column(name = "purchase_url", length = 2048)
     private String purchaseUrl;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 
     private Lookbook(Member member, String originalImageUrl, String matchedImageUrl, String purchaseUrl) {
         this.member = member;
@@ -58,6 +53,5 @@ public class Lookbook {
 
     public void changePurchaseUrl(String purchaseUrl) {
         this.purchaseUrl = purchaseUrl;
-        this.updatedAt = LocalDateTime.now();
     }
 }

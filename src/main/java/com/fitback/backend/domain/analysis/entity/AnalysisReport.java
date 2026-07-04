@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.analysis.entity;
 
+import com.fitback.backend.global.entity.BaseTimeEntity;
 import com.fitback.backend.domain.member.entity.Member;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,7 +11,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "analysis_report")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class AnalysisReport {
+public class AnalysisReport extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,11 +36,6 @@ public class AnalysisReport {
     @Column(name = "match_percentage", nullable = false)
     private Integer matchPercentage = 70;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 
     private AnalysisReport(Member member, String imageUrl, Integer matchPercentage) {
         this.member = member;
@@ -54,6 +49,5 @@ public class AnalysisReport {
 
     public void changeMatchPercentage(Integer matchPercentage) {
         this.matchPercentage = matchPercentage;
-        this.updatedAt = LocalDateTime.now();
     }
 }

@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.member.entity;
 
+import com.fitback.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -9,7 +10,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -24,7 +24,7 @@ import lombok.NoArgsConstructor;
         }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Member {
+public class Member extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -51,11 +51,6 @@ public class Member {
     @Column(name = "role", nullable = false, length = 20)
     private MemberRole role = MemberRole.USER;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 
     private Member(String email, String nickname, String password, LoginProvider loginProvider) {
         this.email = email;
@@ -70,16 +65,13 @@ public class Member {
 
     public void changeNickname(String nickname) {
         this.nickname = nickname;
-        this.updatedAt = LocalDateTime.now();
     }
 
     public void changeProfileImageUrl(String profileImageUrl) {
         this.profileImageUrl = profileImageUrl;
-        this.updatedAt = LocalDateTime.now();
     }
 
     public void changeRole(MemberRole role) {
         this.role = role;
-        this.updatedAt = LocalDateTime.now();
     }
 }

@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.analysis.entity;
 
+import com.fitback.backend.global.entity.BaseCreateTimeEntity;
 import com.fitback.backend.domain.tag.entity.Tag;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -12,7 +13,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -21,7 +21,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "report_tag")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class ReportTag {
+public class ReportTag extends BaseCreateTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -43,8 +43,6 @@ public class ReportTag {
     @Column(name = "is_confirmed", nullable = false)
     private Boolean confirmed = false;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
 
     private ReportTag(AnalysisReport report, Tag tag, ReportTagSource source) {
         this.report = report;

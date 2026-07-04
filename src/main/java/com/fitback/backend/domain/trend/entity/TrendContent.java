@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.trend.entity;
 
+import com.fitback.backend.global.entity.BaseTimeEntity;
 import com.fitback.backend.domain.member.entity.Member;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -11,7 +12,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,7 +20,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "trend_content")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class TrendContent {
+public class TrendContent extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -41,11 +41,6 @@ public class TrendContent {
     @JoinColumn(name = "created_by", nullable = false)
     private Member createdBy;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 
     private TrendContent(String title, String imageUrl, String description, Member createdBy) {
         this.title = title;
@@ -62,6 +57,5 @@ public class TrendContent {
         this.title = title;
         this.imageUrl = imageUrl;
         this.description = description;
-        this.updatedAt = LocalDateTime.now();
     }
 }

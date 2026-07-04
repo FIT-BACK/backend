@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.recommendation.entity;
 
+import com.fitback.backend.global.entity.BaseCreateTimeEntity;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.product.entity.Product;
 import jakarta.persistence.Column;
@@ -11,7 +12,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,7 +20,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "recommended_item")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class RecommendedItem {
+public class RecommendedItem extends BaseCreateTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -47,8 +47,6 @@ public class RecommendedItem {
     @Column(name = "is_value_match", nullable = false)
     private Boolean valueMatch = false;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
 
     private RecommendedItem(
             AnalysisReport report,

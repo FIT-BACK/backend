@@ -1,13 +1,14 @@
 package com.fitback.backend.domain.product.entity;
 
+import com.fitback.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -15,7 +16,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "product")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Product {
+public class Product extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -58,12 +59,8 @@ public class Product {
     @Column(name = "source_api", nullable = false, length = 50)
     private String sourceApi;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
 
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
+    @Builder(access = AccessLevel.PRIVATE)
     private Product(
             String externalProductId,
             String name,
@@ -106,25 +103,24 @@ public class Product {
             String imageUrl,
             String sourceApi
     ) {
-        return new Product(
-                externalProductId,
-                name,
-                brandName,
-                sellerName,
-                price,
-                averagePrice,
-                category,
-                season,
-                gender,
-                purchaseUrl,
-                imageUrl,
-                sourceApi
-        );
+        return Product.builder()
+                .externalProductId(externalProductId)
+                .name(name)
+                .brandName(brandName)
+                .sellerName(sellerName)
+                .price(price)
+                .averagePrice(averagePrice)
+                .category(category)
+                .season(season)
+                .gender(gender)
+                .purchaseUrl(purchaseUrl)
+                .imageUrl(imageUrl)
+                .sourceApi(sourceApi)
+                .build();
     }
 
     public void changePrice(Integer price, Integer averagePrice) {
         this.price = price;
         this.averagePrice = averagePrice;
-        this.updatedAt = LocalDateTime.now();
     }
 }
