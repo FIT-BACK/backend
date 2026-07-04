@@ -34,13 +34,12 @@ public class AnalysisReport extends BaseTimeEntity {
     private String imageUrl;
 
     @Column(name = "match_percentage", nullable = false)
-    private Integer matchPercentage = 70;
-
+    private Integer matchPercentage;
 
     private AnalysisReport(Member member, String imageUrl, Integer matchPercentage) {
         this.member = member;
         this.imageUrl = imageUrl;
-        this.matchPercentage = matchPercentage;
+        this.matchPercentage = matchPercentage == null ? 70 : matchPercentage;
     }
 
     public static AnalysisReport create(Member member, String imageUrl, Integer matchPercentage) {

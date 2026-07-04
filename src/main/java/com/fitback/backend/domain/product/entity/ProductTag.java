@@ -11,13 +11,20 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "product_tag")
+@Table(
+        name = "product_tag",
+        uniqueConstraints = @UniqueConstraint(
+                name = "UK_PRODUCT_TAG_PRODUCT_ID_TAG_ID",
+                columnNames = {"product_id", "tag_id"}
+        )
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ProductTag extends BaseCreateTimeEntity {
 

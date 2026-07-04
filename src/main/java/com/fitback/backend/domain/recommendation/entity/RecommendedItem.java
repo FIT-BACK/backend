@@ -35,7 +35,7 @@ public class RecommendedItem extends BaseCreateTimeEntity {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    @Column(name = "rank", nullable = false)
+    @Column(name = "`rank`", nullable = false)
     private Integer rank;
 
     @Column(name = "category", nullable = false, length = 50)
@@ -45,8 +45,7 @@ public class RecommendedItem extends BaseCreateTimeEntity {
     private Integer similarityScore;
 
     @Column(name = "is_value_match", nullable = false)
-    private Boolean valueMatch = false;
-
+    private Boolean valueMatch;
 
     private RecommendedItem(
             AnalysisReport report,
@@ -61,7 +60,7 @@ public class RecommendedItem extends BaseCreateTimeEntity {
         this.rank = rank;
         this.category = category;
         this.similarityScore = similarityScore;
-        this.valueMatch = valueMatch;
+        this.valueMatch = valueMatch != null && valueMatch;
     }
 
     public static RecommendedItem create(

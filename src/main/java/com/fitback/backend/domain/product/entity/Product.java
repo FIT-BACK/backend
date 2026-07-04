@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -76,17 +77,17 @@ public class Product extends BaseTimeEntity {
             String sourceApi
     ) {
         this.externalProductId = externalProductId;
-        this.name = name;
+        this.name = Objects.requireNonNull(name, "name must not be null");
         this.brandName = brandName;
-        this.sellerName = sellerName;
-        this.price = price;
+        this.sellerName = Objects.requireNonNull(sellerName, "sellerName must not be null");
+        this.price = Objects.requireNonNull(price, "price must not be null");
         this.averagePrice = averagePrice;
-        this.category = category;
+        this.category = Objects.requireNonNull(category, "category must not be null");
         this.season = season;
         this.gender = gender;
-        this.purchaseUrl = purchaseUrl;
-        this.imageUrl = imageUrl;
-        this.sourceApi = sourceApi;
+        this.purchaseUrl = Objects.requireNonNull(purchaseUrl, "purchaseUrl must not be null");
+        this.imageUrl = Objects.requireNonNull(imageUrl, "imageUrl must not be null");
+        this.sourceApi = Objects.requireNonNull(sourceApi, "sourceApi must not be null");
     }
 
     public static Product create(
@@ -120,7 +121,7 @@ public class Product extends BaseTimeEntity {
     }
 
     public void changePrice(Integer price, Integer averagePrice) {
-        this.price = price;
+        this.price = Objects.requireNonNull(price, "price must not be null");
         this.averagePrice = averagePrice;
     }
 }
