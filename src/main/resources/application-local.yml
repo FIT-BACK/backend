@@ -2,6 +2,13 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
+  mvc:
+    throw-exception-if-no-handler-found: true
+
+  web:
+    resources:
+      add-mappings: false
+
   datasource:
     url: ${DB_URL:${LOCAL_DB_URL:jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}}
     username: ${DB_USER:${LOCAL_DB_USERNAME:root}}
