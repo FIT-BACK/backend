@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fitback.backend.global.response.ApiResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 class GlobalExceptionHandlerTest {
 
@@ -21,6 +22,21 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().isSuccess()).isFalse();
         assertThat(response.getBody().code()).isEqualTo("COMMON_404");
         assertThat(response.getBody().message()).isEqualTo("요청한 리소스를 찾을 수 없습니다.");
+        assertThat(response.getBody().result()).isNull();
+    }
+
+    @Test
+    void handleHttpRequestMethodNotSupportedExceptionReturnsMethodNotAllowedResponse() {
+        HttpRequestMethodNotSupportedException exception = new HttpRequestMethodNotSupportedException("PATCH");
+
+        ResponseEntity<ApiResponse<Void>> response =
+                globalExceptionHandler.handleHttpRequestMethodNotSupportedException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(ErrorCode.METHOD_NOT_ALLOWED.getHttpStatus());
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().isSuccess()).isFalse();
+        assertThat(response.getBody().code()).isEqualTo("COMMON_405");
+        assertThat(response.getBody().message()).isEqualTo("허용되지 않은 HTTP 메서드입니다.");
         assertThat(response.getBody().result()).isNull();
     }
 }
