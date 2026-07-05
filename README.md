@@ -66,7 +66,13 @@ spring.profiles.default=local
 
 ```text
 http://localhost:8080/swagger-ui.html
+http://localhost:8080/v3/api-docs
 ```
+
+## Security
+
+현재는 JWT 인증 구현 전 단계이므로 `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/**` 경로를 임시로 허용합니다.
+REST API 기준으로 CSRF, Form Login, HTTP Basic, Session은 비활성화되어 있습니다.
 
 ## 브랜치 컨벤션
 
