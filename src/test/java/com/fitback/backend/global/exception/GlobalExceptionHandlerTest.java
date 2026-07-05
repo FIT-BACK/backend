@@ -19,10 +19,10 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(ErrorCode.NOT_FOUND.getHttpStatus());
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().isSuccess()).isFalse();
-        assertThat(response.getBody().code()).isEqualTo("COMMON_404");
+        assertThat(response.getBody().success()).isFalse();
+        assertThat(response.getBody().code()).isEqualTo("COMMON404_1");
         assertThat(response.getBody().message()).isEqualTo("요청한 리소스를 찾을 수 없습니다.");
-        assertThat(response.getBody().result()).isNull();
+        assertThat(response.getBody().data()).isNull();
     }
 
     @Test
@@ -34,9 +34,9 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(ErrorCode.METHOD_NOT_ALLOWED.getHttpStatus());
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().isSuccess()).isFalse();
-        assertThat(response.getBody().code()).isEqualTo("COMMON_405");
+        assertThat(response.getBody().success()).isFalse();
+        assertThat(response.getBody().code()).isEqualTo("COMMON405_1");
         assertThat(response.getBody().message()).isEqualTo("허용되지 않은 HTTP 메서드입니다.");
-        assertThat(response.getBody().result()).isNull();
+        assertThat(response.getBody().data()).isNull();
     }
 }
