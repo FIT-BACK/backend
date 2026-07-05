@@ -28,7 +28,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(SWAGGER_URLS).permitAll()
                         .requestMatchers("/api/v1/**").permitAll()
-                        .anyRequest().permitAll())
+                        .anyRequest().denyAll())
                 .build();
     }
 }
