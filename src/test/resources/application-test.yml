@@ -13,7 +13,10 @@ spring:
         format_sql: true
     open-in-view: false
 
+
 jwt:
-  secret: test-jwt-secret-key-for-test-codes
-  access-token-expiration: 1800000       # 30분 (ms)
-  refresh-token-expiration: 1209600000   # 14일 (ms)
+  token:
+    secretKey: test-jwt-secret-key-for-test-codes
+    expiration:
+      access: 1800000       # 30분 (ms)
+      refresh: 1209600000   # 14일 (ms)
