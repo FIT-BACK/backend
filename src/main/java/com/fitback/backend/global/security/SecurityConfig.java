@@ -19,6 +19,12 @@ public class SecurityConfig {
             "/v3/api-docs/**"
     };
 
+    private static final String[] HEALTH_URLS = {
+            "/actuator/health",
+            "/actuator/health/liveness",
+            "/actuator/health/readiness"
+    };
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -29,6 +35,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(SWAGGER_URLS).permitAll()
+                        .requestMatchers(HEALTH_URLS).permitAll()
                         .requestMatchers("/api/v1/**").permitAll()
                         .anyRequest().denyAll())
                 .build();
