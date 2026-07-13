@@ -34,5 +34,13 @@ public class AuthController {
     {
         return ApiResponse.onSuccess(authService.login(loginDto));
     }
+
+    @Operation(summary = "토큰 재발급", description = "refresh token을 request body 로 받아 access token 재발급")
+    @PostMapping("/v1/auth/token/refresh")
+    public ApiResponse<MemberResponse.RefreshResponse> refresh(
+            @Valid @RequestBody MemberRequest.RefreshRequest refreshDto
+    ){
+        return ApiResponse.onSuccess(authService.refresh(refreshDto));
+    }
 }
 

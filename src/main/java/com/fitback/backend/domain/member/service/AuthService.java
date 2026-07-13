@@ -49,15 +49,16 @@ public class AuthService {
         //AccessToken 발급
         String accessToken = jwtUtil.createAccessToken(authMember);
 
-        //RefreshToken 발급
+        //RefreshToken 발급 / 저장
         String refreshToken = jwtUtil.createRefreshToken(authMember);
+        savedMember.updateRefreshToken(refreshToken);
 
         return MemberResponse.toSignUpResponse(accessToken, refreshToken, savedMember);
     }
 
 
     //이메일 로그인 서비스 메서드
-    @Transactional(readOnly = true)
+    @Transactional
     public MemberResponse.LoginResponse login(MemberRequest.LoginRequest dto) {
 
         //이메일로 member 찾기
@@ -78,8 +79,38 @@ public class AuthService {
         //RefreshToken 발급
         String refreshToken = jwtUtil.createRefreshToken(authMember);
 
+        //발급한 RefreshToken 저장
+        member.updateRefreshToken(refreshToken);
+
         return MemberResponse.toLoginResponse(accessToken, refreshToken, member);
     }
 
+    @Transactional
+    public MemberResponse.RefreshResponse refresh(MemberRequest.RefreshRequest dto) {
 
+        String refreshToken = dto.refreshToken();
+
+        //token 검증 (유효성 + refresh 타입)
+        if (!jwtUtil.isValid(refreshToken) || !jwtUtil.isRefreshToken(refreshToken)) {
+            throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
+        }
+
+        //이메일로 Member 찾기
+        String email = jwtUtil.getEmailFromToken(refreshToken);
+        Member member = memberRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
+
+        //저장된 refresh token과 요청 토큰 일치 확인 (요청 토큰을 앞에 두어 null 안전)
+        if (!refreshToken.equals(member.getRefreshToken())) {
+            throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
+        }
+
+        //새 token 발급 (회전) 및 저장
+        AuthMember authMember = new AuthMember(member);
+        String newAccessToken = jwtUtil.createAccessToken(authMember);
+        String newRefreshToken = jwtUtil.createRefreshToken(authMember);
+        member.updateRefreshToken(newRefreshToken);
+
+        return MemberResponse.toRefreshResponse(newAccessToken, newRefreshToken);
+    }
 }
