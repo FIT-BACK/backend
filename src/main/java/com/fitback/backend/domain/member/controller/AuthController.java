@@ -4,9 +4,11 @@ import com.fitback.backend.domain.member.dto.MemberRequest;
 import com.fitback.backend.domain.member.dto.MemberResponse;
 import com.fitback.backend.domain.member.service.AuthService;
 import com.fitback.backend.global.response.ApiResponse;
+import com.fitback.backend.global.security.entity.AuthMember;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,6 +43,15 @@ public class AuthController {
             @Valid @RequestBody MemberRequest.RefreshRequest refreshDto
     ){
         return ApiResponse.onSuccess(authService.refresh(refreshDto));
+    }
+
+    @Operation(summary = "로그아웃", description = "refresh token을 무효화 하는 로그아웃")
+    @PostMapping("/v1/auth/logout")
+    public ApiResponse<Void> logout(
+            @AuthenticationPrincipal AuthMember authMember
+    )
+    {
+        return ApiResponse.onSuccess(authService.logout(authMember));
     }
 }
 

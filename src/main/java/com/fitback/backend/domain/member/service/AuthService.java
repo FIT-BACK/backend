@@ -113,4 +113,19 @@ public class AuthService {
 
         return MemberResponse.toRefreshResponse(newAccessToken, newRefreshToken);
     }
+
+    //로그아웃
+    @Transactional
+    public Void logout(AuthMember authMember) {
+
+        Long memberId = authMember.getMember().getId();
+
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+
+        //refresh token 초기화
+        member.clearRefreshToken();
+
+        return null;
+    }
 }
