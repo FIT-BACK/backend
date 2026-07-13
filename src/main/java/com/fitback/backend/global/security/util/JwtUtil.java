@@ -1,8 +1,7 @@
 package com.fitback.backend.global.security.util;
 
 import com.fitback.backend.global.security.entity.AuthMember;
-import io.jsonwebtoken.JwtBuilder;
-import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.GrantedAuthority;
@@ -15,6 +14,8 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.stream.Collectors;
 
+
+//JWT 토큰 발급
 @Component
 public class JwtUtil {
 
@@ -24,7 +25,9 @@ public class JwtUtil {
     private static final String TOKEN_TYPE_REFRESH = "refresh";
 
     private final SecretKey secretKey;
+    //accesstoken 만료 시간
     private final Duration accessExpiration;
+    //refreshtoken 만료 시간
     private final Duration refreshExpiration;
 
     public JwtUtil(
@@ -71,5 +74,57 @@ public class JwtUtil {
                 .subject(subject) // User 이메일을 Subject로(getUsername -> 이메일 반환)
                 .issuedAt(Date.from(now)) // 언제 발급한지
                 .expiration(Date.from(now.plus(expiration))); // 언제까지 유효한지
+    }
+
+    // 토큰 정보 가져오기
+    private Jws<Claims> getClaims(String token) throws JwtException {
+        return Jwts.parser()
+                .verifyWith(secretKey)
+                .clockSkewSeconds(60)
+                .build()
+                .parseSignedClaims(token);
+    }
+
+    //토큰에서 이메일 가져오기
+    public String getEmailFromToken(String token){
+        try {
+            return getClaims(token).getPayload().getSubject(); // Parsing해서 Subject 가져오기
+        } catch (JwtException e) {
+            return null;
+        }
+    }
+
+    //토큰 유효성 확인(매개변수 token의 유효성 확인 true/false)
+    public boolean isValid(String token){
+        try{
+            getClaims(token);
+            return true;
+        } catch (JwtException e) {
+            return false;
+        }
+    }
+
+    //access 토큰 여부 확인
+    public boolean isAccessToken(String token) {
+        try {
+            Claims claims = getClaims(token).getPayload();
+            //type이 AccessToken과 일치하는지 확인
+            return TOKEN_TYPE_ACCESS.equals(claims.get(CLAIM_TYPE, String.class));
+        }
+        catch (JwtException e){
+            return false;
+        }
+    }
+
+    //Refresh 토큰 여부 확인
+    public boolean isRefreshToken(String token) {
+        try {
+            Claims claims = getClaims(token).getPayload();
+            //type이 RefreshToken과 일치하는지 확인
+            return TOKEN_TYPE_REFRESH.equals(claims.get(CLAIM_TYPE, String.class));
+        }
+        catch (JwtException e){
+            return false;
+        }
     }
 }
