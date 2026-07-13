@@ -19,7 +19,8 @@ ARG VCS_REF=unknown
 LABEL org.opencontainers.image.source="https://github.com/FIT-BACK/backend" \
       org.opencontainers.image.revision="${VCS_REF}"
 
-RUN groupadd --gid 10001 fitback \
+RUN command -v curl > /dev/null \
+    && groupadd --gid 10001 fitback \
     && useradd --uid 10001 --gid fitback --no-create-home --shell /usr/sbin/nologin fitback
 
 WORKDIR /app
