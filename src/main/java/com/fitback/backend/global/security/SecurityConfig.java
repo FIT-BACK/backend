@@ -32,6 +32,12 @@ public class SecurityConfig {
             "/v3/api-docs/**"
     };
 
+    private static final String[] NO_AUTH_URLS = {
+            "/api/v1/auth/sign",
+            "/api/v1/auth/login",
+            "/api/v1/auth/token/refresh"
+    };
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -42,7 +48,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(SWAGGER_URLS).permitAll()
-                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers(NO_AUTH_URLS).permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(new JwtAuthFilter(jwtUtil, customUserDetailsService), UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exception -> exception
@@ -56,7 +62,7 @@ public class SecurityConfig {
     public PasswordEncoder passwordEncoder(){
         return new BCryptPasswordEncoder();
     }
-    
+
     @Bean
     public CustomAccessDenied customAccessDenied() {
         return new CustomAccessDenied();

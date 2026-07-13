@@ -44,7 +44,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             token = token.replace("Bearer ", "");
             //Token 검증
             if(jwtUtil.isValid(token)){
-                //AccessToeken 여부 확인
+                //AccessToken 여부 확인
                 if(jwtUtil.isAccessToken(token)){
                     //토큰에서 이메일 추출
                     String email = jwtUtil.getEmailFromToken(token);
