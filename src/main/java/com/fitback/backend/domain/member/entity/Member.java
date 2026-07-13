@@ -51,6 +51,9 @@ public class Member extends BaseTimeEntity {
     @Column(name = "role", nullable = false, length = 20)
     private MemberRole role = MemberRole.USER;
 
+    @Column(name = "refresh_token", length = 512)
+    private String refreshToken;
+
 
     private Member(String email, String nickname, String password, LoginProvider loginProvider) {
         this.email = email;
@@ -73,5 +76,13 @@ public class Member extends BaseTimeEntity {
 
     public void changeRole(MemberRole role) {
         this.role = role;
+    }
+
+    public void updateRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
+    }
+
+    public void clearRefreshToken() {
+        this.refreshToken = null;
     }
 }
