@@ -6,8 +6,18 @@ import jakarta.validation.constraints.NotBlank;
 // 회원 요청 DTO
 public class MemberRequest {
 
-    // 회원가입 요청
+    // 이메일 회원가입 요청
     public record SignUpRequest(
+            @NotBlank(message = "이메일은 필수 입력값입니다.")
+            @Email(message = "올바른 이메일 형식이 아닙니다.")
+            String email,
+
+            @NotBlank(message = "비밀번호는 필수 입력값입니다.")
+            String password
+    ) {}
+
+    //이메일 로그인 요청
+    public record LoginRequest(
             @NotBlank(message = "이메일은 필수 입력값입니다.")
             @Email(message = "올바른 이메일 형식이 아닙니다.")
             String email,
