@@ -1,6 +1,12 @@
 package com.fitback.backend.global.security;
 
+import com.fitback.backend.global.security.exception.CustomAccessDenied;
+import com.fitback.backend.global.security.exception.CustomEntryPoint;
+import com.fitback.backend.global.security.filter.JwtAuthFilter;
+import com.fitback.backend.global.security.service.CustomUserDetailsService;
+import com.fitback.backend.global.security.util.JwtUtil;
 import jakarta.servlet.DispatcherType;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -10,10 +16,15 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtUtil jwtUtil;
+    private final CustomUserDetailsService customUserDetailsService;
 
     private static final String[] SWAGGER_URLS = {
             "/swagger-ui.html",
@@ -31,8 +42,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(SWAGGER_URLS).permitAll()
-                        .requestMatchers("/api/v1/**").permitAll()
-                        .anyRequest().denyAll())
+                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        .anyRequest().authenticated())
+                .addFilterBefore(new JwtAuthFilter(jwtUtil, customUserDetailsService), UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling(exception -> exception
+                        .accessDeniedHandler(customAccessDenied())
+                        .authenticationEntryPoint(customEntryPoint())
+                )
                 .build();
     }
 
@@ -40,4 +56,15 @@ public class SecurityConfig {
     public PasswordEncoder passwordEncoder(){
         return new BCryptPasswordEncoder();
     }
+    
+    @Bean
+    public CustomAccessDenied customAccessDenied() {
+        return new CustomAccessDenied();
+    }
+
+    @Bean
+    public CustomEntryPoint customEntryPoint() {
+        return new CustomEntryPoint();
+    }
+
 }
