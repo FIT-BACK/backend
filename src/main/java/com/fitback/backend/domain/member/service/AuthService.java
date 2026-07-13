@@ -24,7 +24,7 @@ public class AuthService {
     private final MemberRepository memberRepository;
     private final JwtUtil jwtUtil;
 
-    //회원가입
+    //이메일 회원가입
     @Transactional
     public MemberResponse.SignUpResponse signUp(MemberRequest.SignUpRequest dto) {
 
@@ -54,4 +54,32 @@ public class AuthService {
 
         return MemberResponse.toSignUpResponse(accessToken, refreshToken, savedMember);
     }
+
+
+    //이메일 로그인 서비스 메서드
+    @Transactional(readOnly = true)
+    public MemberResponse.LoginResponse login(MemberRequest.LoginRequest dto) {
+
+        //이메일로 member 찾기
+        Member member = memberRepository.findByEmail(dto.email())
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+
+        //비밀번호 일치 여부 확인
+        if(member.getPassword() == null || !passwordEncoder.matches(dto.password(), member.getPassword())) {
+            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+        }
+
+        //토큰 생성을 위해 AuthMember 생성
+        AuthMember authMember = new AuthMember(member);
+
+        //AccessToken 발급
+        String accessToken = jwtUtil.createAccessToken(authMember);
+
+        //RefreshToken 발급
+        String refreshToken = jwtUtil.createRefreshToken(authMember);
+
+        return MemberResponse.toLoginResponse(accessToken, refreshToken, member);
+    }
+
+
 }

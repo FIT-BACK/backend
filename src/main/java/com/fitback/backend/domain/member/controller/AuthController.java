@@ -22,8 +22,17 @@ public class AuthController {
             "프로필 이미지, 닉네임, 관심 스타일 태그는 회원가입 직후 /members/me/onboarding에서 별도 설정.")
     @PostMapping("/v1/auth/sign")
     public ApiResponse<MemberResponse.SignUpResponse> signUp(
-            @Valid @RequestBody MemberRequest.SignUpRequest signUpdto)
+            @Valid @RequestBody MemberRequest.SignUpRequest signUpDto)
     {
-        return ApiResponse.onCreated(authService.signUp(signUpdto));
+        return ApiResponse.onCreated(authService.signUp(signUpDto));
+    }
+
+    @Operation(summary = "이메일 로그인", description = "이메일과 비밀번호를 검증하여 로그인 처리")
+    @PostMapping("/v1/auth/login")
+    public ApiResponse<MemberResponse.LoginResponse> login(
+            @Valid @RequestBody MemberRequest.LoginRequest loginDto)
+    {
+        return ApiResponse.onSuccess(authService.login(loginDto));
     }
 }
+
