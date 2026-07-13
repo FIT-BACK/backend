@@ -82,7 +82,7 @@ jobs:
           readiness_response=''
 
           for attempt in {1..30}; do
-            readiness_response="$(curl --fail --silent --show-error \
+            readiness_response="$(curl --fail --silent --show-error --max-time 5 \
               http://127.0.0.1:18080/actuator/health/readiness 2>/dev/null || true)"
 
             if echo "$readiness_response" | grep --quiet '"status":"UP"'; then
@@ -94,7 +94,7 @@ jobs:
 
           if ! echo "$readiness_response" | grep --quiet '"status":"UP"'; then
             docker logs "$VALIDATION_CONTAINER"
-            echo "Backend image did not become ready within 60 seconds." >&2
+            echo "Backend image did not become ready after 30 attempts." >&2
             exit 1
           fi
 
