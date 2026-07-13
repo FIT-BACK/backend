@@ -25,4 +25,10 @@ public class MemberRequest {
             @NotBlank(message = "비밀번호는 필수 입력값입니다.")
             String password
     ) {}
+
+    //토큰 재발급
+    public record RefreshRequest(
+            @NotBlank(message = "Refresh Token은 필수 입니다.")
+            String refreshToken
+    ) {}
 }

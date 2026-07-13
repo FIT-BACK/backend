@@ -8,7 +8,7 @@ import lombok.Builder;
 // 회원 응답 DTO
 public class MemberResponse {
 
-    // 회원가입 응답
+    //이메일 회원가입 응답
     @Builder
     public record SignUpResponse(
             String accessToken,
@@ -19,6 +19,7 @@ public class MemberResponse {
             MemberRole role
     ) {}
 
+    //이메일 로그인 응답
     @Builder
     public record LoginResponse(
             String accessToken,
@@ -29,6 +30,13 @@ public class MemberResponse {
             String profileImageUrl,
             LoginProvider loginProvider
     ) {}
+
+    //토큰 재발급 응답 dto
+    @Builder
+    public record RefreshResponse (
+        String accessToken,
+        String refreshToken
+    ){}
 
     //회원가입 응답 변환
     public static SignUpResponse toSignUpResponse(
@@ -62,4 +70,16 @@ public class MemberResponse {
                 .loginProvider(member.getLoginProvider())
                 .build();
     }
+
+    //토큰 재발급 응답 dto로 변환
+    public static RefreshResponse toRefreshResponse(
+            String accessToken,
+            String refreshToken
+    ){
+        return RefreshResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .build();
+    }
+
 }
