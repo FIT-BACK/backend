@@ -2,12 +2,14 @@ package com.fitback.backend.domain.member.service;
 
 import com.fitback.backend.domain.member.dto.MemberRequest;
 import com.fitback.backend.domain.member.dto.MemberResponse;
+import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberService {
 
     private final MemberRepository memberRepository;
+    private final PasswordEncoder passwordEncoder;
 
     //회원정보 수정
     @Transactional
@@ -47,5 +50,21 @@ public class MemberService {
     }
 
 
+    @Transactional
+    public void changePassword(AuthMember authMember, MemberRequest.ChangePasswordRequest dto) {
+        Member member = memberRepository.findById(authMember.getMember().getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
 
+        //Email 로그인이 아닐 경우(소셜 로그인은 비밀번호 X)
+        if(!member.getLoginProvider().equals(LoginProvider.EMAIL))
+            throw new BusinessException(ErrorCode.PASSWORD_CHANGE_NOT_ALLOWED);
+
+        //비밀번호가 일치하지 않을 경우
+        if(!passwordEncoder.matches(dto.currentPassword(), member.getPassword()))
+            throw new BusinessException(ErrorCode.PASSWORD_MISMATCH);
+
+        String encodedPassword = passwordEncoder.encode(dto.newPassword());
+        member.changePassword(encodedPassword);
+
+    }
 }

@@ -15,7 +15,10 @@ public enum ErrorCode {
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "AUTH409_1", "이미 사용 중인 이메일입니다."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "AUTH401_1", "이메일 또는 비밀번호가 올바르지 않습니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH401_2", "유효하지 않은 리프레시 토큰입니다."),
-    NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "MEMBER409_1", "이미 사용중인 닉네임입니다.")
+
+    NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "MEMBER409_1", "이미 사용중인 닉네임입니다."),
+    PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "MEMBER400_1", "현재 비밀번호가 일치하지 않습니다."),
+    PASSWORD_CHANGE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "MEMBER400_2", "소셜 로그인 회원은 비밀번호를 변경할 수 없습니다.")
     ;
 
 
