@@ -38,6 +38,14 @@ public class MemberResponse {
         String refreshToken
     ){}
 
+    //회원정보 수정 응답 dto
+    @Builder
+    public record UpdateMemberResponse(
+       Long memberId,
+       String nickname,
+       String profileImageUrl
+    ) {}
+
     //회원가입 응답 변환
     public static SignUpResponse toSignUpResponse(
             String accessToken,
@@ -82,4 +90,14 @@ public class MemberResponse {
                 .build();
     }
 
+    //회원정보 수정 dto 변환
+    public static UpdateMemberResponse toUpdateMemberResponse(
+            Member member
+    ){
+        return UpdateMemberResponse.builder()
+                .memberId(member.getId())
+                .nickname(member.getNickname())
+                .profileImageUrl(member.getProfileImageUrl())
+                .build();
+    }
 }

@@ -31,4 +31,11 @@ public class MemberRequest {
             @NotBlank(message = "Refresh Token은 필수 입니다.")
             String refreshToken
     ) {}
+
+    //회원정보 수정 (부분 수정: 전달된 필드만 반영, 미전송/null 필드는 기존 값 유지)
+    public record UpdateMemberRequest(
+            String nickname,
+
+            String profileImageUrl
+    ) {}
 }
