@@ -35,7 +35,15 @@ public class MemberRequest {
     //회원정보 수정 (부분 수정: 전달된 필드만 반영, 미전송/null 필드는 기존 값 유지)
     public record UpdateMemberRequest(
             String nickname,
-
             String profileImageUrl
     ) {}
+
+    //비밀번호 변경
+    public record ChangePasswordRequest (
+            @NotBlank(message = "현재 비밀번호는 필수 입력값 입니다.")
+            String currentPassword,
+
+            @NotBlank(message = "새 비밀번호는 필수 입력값 입니다.")
+            String newPassword
+    ){}
 }

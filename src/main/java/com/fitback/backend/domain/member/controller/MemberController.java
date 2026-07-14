@@ -30,5 +30,16 @@ public class MemberController {
         return ApiResponse.onSuccess(memberService.updateMember(authMember, updateMemberDto));
     }
 
+    @Operation(summary = "비밀번호 변경", description = "현재 로그인한 이메일 회원의 비밀번호를 변경")
+    @PatchMapping("/v1/members/me/password")
+    public ApiResponse<Void> changePassword(
+            @AuthenticationPrincipal AuthMember authMember,
+            @Valid @RequestBody MemberRequest.ChangePasswordRequest changePasswordDto)
+    {
+
+        memberService.changePassword(authMember, changePasswordDto);
+        return ApiResponse.onSuccess(null);
+    }
+
 
 }
