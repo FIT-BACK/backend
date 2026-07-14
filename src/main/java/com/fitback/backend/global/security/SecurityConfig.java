@@ -36,6 +36,7 @@ public class SecurityConfig {
             "/api/v1/auth/sign",
             "/api/v1/auth/login",
             "/api/v1/auth/token/refresh"
+    };
               
     private static final String[] HEALTH_URLS = {
             "/actuator/health",
