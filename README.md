@@ -71,8 +71,9 @@ http://localhost:8080/v3/api-docs
 
 ## Security
 
-현재는 JWT 인증 구현 전 단계이므로 `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/**` 경로를 임시로 허용합니다.
-REST API 기준으로 CSRF, Form Login, HTTP Basic, Session은 비활성화되어 있습니다.
+JWT 기반 인증을 사용합니다. `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/auth/sign`, `/api/v1/auth/login`, `/api/v1/auth/token/refresh` 경로만 인증 없이 허용하며, 그 외 모든 API는 인증이 필요합니다.
+요청의 `Authorization: Bearer {accessToken}` 헤더는 `JwtAuthFilter`가 검증하여 인증 정보를 설정합니다.
+REST API 기준으로 CSRF, Form Login, HTTP Basic은 비활성화되어 있으며, 세션은 `STATELESS`로 사용하지 않습니다.
 
 ## 브랜치 컨벤션
 
