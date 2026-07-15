@@ -73,6 +73,19 @@ jobs:
             abort 'Backend CD cannot mask the AWS account ID while exporting ECR URI job outputs.'
           end
 
+          publish_steps = Array(publish_job['steps'])
+          push_step = publish_steps.find { |step| step['name'] == 'Push image to Amazon ECR' }
+          push_script = push_step&.fetch('run', '').to_s
+
+          unless push_script.include?('aws ecr describe-images') &&
+              push_script.include?('imageTag="$IMAGE_TAG"') &&
+              push_script.include?('existing_digest') &&
+              push_script.include?('if [[ "$existing_digest" == sha256:* ]]; then') &&
+              push_script.include?('Reusing existing immutable ECR tag') &&
+              push_script.include?('docker push "$image_uri"')
+            abort 'Backend CD must reuse an existing immutable Git SHA tag before pushing.'
+          end
+
           deploy_job = workflow.dig('jobs', 'deploy-production')
           abort 'Backend CD deploy-production job is missing.' unless deploy_job.is_a?(Hash)
 

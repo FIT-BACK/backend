@@ -157,8 +157,18 @@ jobs:
         run: |
           image_uri="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
-          docker tag "$LOCAL_IMAGE" "$image_uri"
-          docker push "$image_uri"
+          existing_digest="$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text 2>/dev/null || true)"
+
+          if [[ "$existing_digest" == sha256:* ]]; then
+            echo "Reusing existing immutable ECR tag: $IMAGE_TAG"
+          else
+            docker tag "$LOCAL_IMAGE" "$image_uri"
+            docker push "$image_uri"
+          fi
 
           echo "image-uri=$image_uri" >> "$GITHUB_OUTPUT"
 
