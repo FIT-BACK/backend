@@ -10,7 +10,7 @@ AI 도구와 백엔드 팀원은 이 문서를 기준으로 같은 브랜치 전
 - Java 버전: Java 21
 - Spring Boot 버전: 4.1.0
 - 빌드 도구: Gradle
-- 기본 실행 프로필: `local`
+- 로컬 실행 프로필: `local` (명시적으로 활성화)
 - 테스트 프로필: `test`
 
 ## 2. AI 작업 기본 원칙
@@ -410,7 +410,7 @@ src/test/resources/application-test.yml
 
 ```text
 .env
-.env.*
+.env.* (.env.example 제외)
 application-secret.yml
 application-secret.properties
 ```
@@ -420,9 +420,9 @@ application-secret.properties
 예시:
 
 ```properties
-DB_URL=jdbc:mysql://localhost:3306/umc_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+DB_URL=jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
 DB_USER=your_mysql_user
-DB_PW=your_mysql_password
+DB_PASSWORD=your_mysql_password
 ```
 
 ## 14. 로컬 실행 및 검증 규칙
@@ -442,10 +442,10 @@ GRADLE_USER_HOME=/tmp/fitback-gradle-home ./gradlew clean build
 애플리케이션 실행은 다음 명령을 사용한다.
 
 ```bash
-./gradlew bootRun
+./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-기본 프로필은 local이다.
+로컬 실행 시 `local` 프로필을 명시한다. 프로필을 생략했을 때 `local`로 자동 전환하지 않는다.
 
 테스트는 test 프로필과 H2 인메모리 DB를 사용한다.
 

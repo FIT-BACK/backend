@@ -21,6 +21,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AnalysisReport extends BaseTimeEntity {
 
+    private static final int DEFAULT_MATCH_PERCENTAGE = 70;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "report_id")
@@ -39,7 +41,7 @@ public class AnalysisReport extends BaseTimeEntity {
     private AnalysisReport(Member member, String imageUrl, Integer matchPercentage) {
         this.member = member;
         this.imageUrl = imageUrl;
-        this.matchPercentage = matchPercentage == null ? 70 : matchPercentage;
+        this.matchPercentage = matchPercentageOrDefault(matchPercentage);
     }
 
     public static AnalysisReport create(Member member, String imageUrl, Integer matchPercentage) {
@@ -47,6 +49,10 @@ public class AnalysisReport extends BaseTimeEntity {
     }
 
     public void changeMatchPercentage(Integer matchPercentage) {
-        this.matchPercentage = matchPercentage;
+        this.matchPercentage = matchPercentageOrDefault(matchPercentage);
+    }
+
+    private static int matchPercentageOrDefault(Integer matchPercentage) {
+        return matchPercentage == null ? DEFAULT_MATCH_PERCENTAGE : matchPercentage;
     }
 }

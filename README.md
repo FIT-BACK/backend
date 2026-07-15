@@ -27,9 +27,9 @@ cp .env.example .env
 `.env` 파일 예시는 다음과 같습니다.
 
 ```env
-DB_URL=jdbc:mysql://localhost:3306/umc_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+DB_URL=jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
 DB_USER=your_mysql_user
-DB_PW=your_mysql_password
+DB_PASSWORD=your_mysql_password
 ```
 
 ### 2. MySQL 데이터베이스 생성
@@ -37,20 +37,16 @@ DB_PW=your_mysql_password
 로컬 MySQL에 사용할 데이터베이스를 생성합니다.
 
 ```sql
-CREATE DATABASE umc_db;
+CREATE DATABASE fitback;
 ```
 
 ### 3. 애플리케이션 실행
 
 ```bash
-./gradlew bootRun
+./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-기본 프로필은 `local`입니다.
-
-```properties
-spring.profiles.default=local
-```
+운영 설정이 실수로 로컬 설정으로 대체되지 않도록 실행 프로필을 명시합니다.
 
 ## 테스트 및 빌드
 
