@@ -69,6 +69,12 @@ http://localhost:8080/swagger-ui.html
 http://localhost:8080/v3/api-docs
 ```
 
+## 운영 배포
+
+운영 이미지는 GitHub Actions에서 ECR에 발행하고, AWS Systems Manager Run Command를 통해 EC2의 Docker Compose stack으로 배포합니다.
+
+필요한 GitHub 변수, IAM 최소 권한, Parameter Store 경로, EC2 runtime 및 rollback 절차는 [운영 배포 문서](docs/DEPLOYMENT.md)를 참고합니다.
+
 ## Security
 
 현재는 JWT 인증 구현 전 단계이므로 `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/**` 경로를 임시로 허용합니다.

@@ -209,3 +209,230 @@ jobs:
             echo "- Image digest: \`$IMAGE_DIGEST\`"
             echo "- Deploy reference: \`$IMAGE_REFERENCE\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-production:
+    name: Deploy production via SSM
+    needs: publish-image
+    if: ${{ needs.publish-image.result == 'success' && vars.EC2_INSTANCE_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+      PARAMETER_PREFIX: ${{ vars.DEPLOY_PARAMETER_PREFIX || '/fitback/prod' }}
+      IMAGE_REFERENCE: ${{ needs.publish-image.outputs.image-reference }}
+
+    steps:
+      - name: Validate deployment contract
+        shell: bash
+        run: |
+          required_variables=(AWS_REGION AWS_DEPLOY_ROLE_ARN EC2_INSTANCE_ID IMAGE_REFERENCE)
+
+          for variable_name in "${required_variables[@]}"; do
+            if [ -z "${!variable_name}" ]; then
+              echo "Required deployment value is missing: ${variable_name}" >&2
+              exit 1
+            fi
+          done
+
+          if [[ ! "$IMAGE_REFERENCE" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "Deployment requires a digest-pinned image: $IMAGE_REFERENCE" >&2
+            exit 1
+          fi
+
+          if [[ ! "$PARAMETER_PREFIX" =~ ^/[A-Za-z0-9_.\/-]+$ ]]; then
+            echo "Invalid Parameter Store prefix: $PARAMETER_PREFIX" >&2
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: fitback-ssm-${{ github.run_id }}
+          mask-aws-account-id: false
+
+      - name: Verify the SSM managed node
+        shell: bash
+        run: |
+          ping_status="$(aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=$EC2_INSTANCE_ID" \
+            --query 'InstanceInformationList[0].PingStatus' \
+            --output text)"
+
+          if [ "$ping_status" != 'Online' ]; then
+            echo "EC2 instance is not an online SSM managed node: $EC2_INSTANCE_ID" >&2
+            exit 1
+          fi
+
+      - name: Build the SSM deployment payload
+        shell: bash
+        run: |
+          release_name="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          release_dir="/opt/fitback/releases/${release_name}"
+          bundle="$(tar -czf - \
+            compose.yaml \
+            deploy/nginx/default.conf \
+            scripts/deploy/remote_deploy.sh | base64 | tr -d '\n')"
+
+          jq --null-input \
+            --arg bundle "$bundle" \
+            --arg image_reference "$IMAGE_REFERENCE" \
+            --arg aws_region "$AWS_REGION" \
+            --arg parameter_prefix "$PARAMETER_PREFIX" \
+            --arg release_dir "$release_dir" \
+            '{
+              executionTimeout: ["900"],
+              commands: [
+                "set -euo pipefail",
+                ("install -d -m 0755 " + ($release_dir | @sh)),
+                ("printf %s " + ($bundle | @sh) + " | base64 -d | tar -xzf - -C " + ($release_dir | @sh)),
+                ("chmod 0755 " + (($release_dir + "/scripts/deploy/remote_deploy.sh") | @sh)),
+                ("IMAGE_REFERENCE=" + ($image_reference | @sh)
+                  + " AWS_REGION=" + ($aws_region | @sh)
+                  + " PARAMETER_PREFIX=" + ($parameter_prefix | @sh)
+                  + " DEPLOY_ROOT=/opt/fitback"
+                  + " RELEASE_DIR=" + ($release_dir | @sh)
+                  + " " + (($release_dir + "/scripts/deploy/remote_deploy.sh") | @sh))
+              ]
+            }' > /tmp/ssm-commands.json
+
+          payload_bytes="$(wc -c < /tmp/ssm-commands.json)"
+          if [ "$payload_bytes" -gt 24000 ]; then
+            echo "SSM command payload is too large: ${payload_bytes} bytes" >&2
+            exit 1
+          fi
+
+          echo "SSM command payload: ${payload_bytes} bytes"
+
+      - name: Send deployment command
+        id: send-command
+        shell: bash
+        run: |
+          command_id="$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "FIT-BACK deploy $GITHUB_SHA" \
+            --timeout-seconds 60 \
+            --parameters file:///tmp/ssm-commands.json \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          if [ -z "$command_id" ] || [ "$command_id" = 'None' ]; then
+            echo 'AWS Systems Manager did not return a command ID.' >&2
+            exit 1
+          fi
+
+          echo "command-id=$command_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for deployment result
+        env:
+          COMMAND_ID: ${{ steps.send-command.outputs.command-id }}
+        shell: bash
+        run: |
+          command_result=''
+          command_terminal=0
+          cancellation_requested=0
+
+          cancel_pending_command() {
+            if [ "$command_terminal" -eq 0 ] && [ "$cancellation_requested" -eq 0 ]; then
+              echo "Cancelling SSM deployment command: $COMMAND_ID" >&2
+              if aws ssm cancel-command \
+                  --command-id "$COMMAND_ID" \
+                  --instance-ids "$EC2_INSTANCE_ID" > /dev/null; then
+                cancellation_requested=1
+              else
+                echo "Failed to request cancellation for SSM command: $COMMAND_ID" >&2
+                return 1
+              fi
+            fi
+          }
+
+          wait_for_terminal_after_cancellation() {
+            for cancel_attempt in {1..12}; do
+              command_result="$(aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$EC2_INSTANCE_ID" \
+                --output json 2>/dev/null || true)"
+              command_status="$(jq --raw-output '.Status // empty' <<< "$command_result")"
+
+              case "$command_status" in
+                Success|Failed|Cancelled|TimedOut|Undeliverable|Terminated)
+                  command_terminal=1
+                  break
+                  ;;
+              esac
+
+              sleep 5
+            done
+
+            jq --raw-output '.StandardOutputContent // empty' <<< "$command_result" >&2
+            jq --raw-output '.StandardErrorContent // empty' <<< "$command_result" >&2
+            if [ "$command_terminal" -eq 1 ]; then
+              echo "SSM command reached terminal status after cancellation: ${command_status:-unknown}" >&2
+            else
+              echo "SSM command cancellation was not confirmed; last status: ${command_status:-unknown}" >&2
+            fi
+          }
+
+          handle_interruption() {
+            trap - EXIT INT TERM
+            cancel_pending_command || true
+            wait_for_terminal_after_cancellation
+            exit 130
+          }
+
+          trap 'cancel_pending_command || true' EXIT
+          trap handle_interruption INT TERM
+
+          for attempt in {1..205}; do
+            command_result="$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --output json 2>/dev/null || true)"
+            command_status="$(jq --raw-output '.Status // empty' <<< "$command_result")"
+
+            case "$command_status" in
+              Success)
+                command_terminal=1
+                jq --raw-output '.StandardOutputContent' <<< "$command_result"
+                break
+                ;;
+              Failed|Cancelled|TimedOut|Undeliverable|Terminated)
+                command_terminal=1
+                jq --raw-output '.StandardOutputContent' <<< "$command_result" >&2
+                jq --raw-output '.StandardErrorContent' <<< "$command_result" >&2
+                echo "SSM deployment failed with status: $command_status" >&2
+                exit 1
+                ;;
+            esac
+
+            if [ "$attempt" -eq 205 ]; then
+              echo 'Timed out waiting for the SSM deployment command.' >&2
+              cancel_pending_command || true
+              wait_for_terminal_after_cancellation
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          trap - EXIT INT TERM
+
+          {
+            echo '## Backend deployed through SSM'
+            echo
+            echo "- Instance: \`$EC2_INSTANCE_ID\`"
+            echo "- Image: \`$IMAGE_REFERENCE\`"
+            echo "- Command: \`$COMMAND_ID\`"
+          } >> "$GITHUB_STEP_SUMMARY"
