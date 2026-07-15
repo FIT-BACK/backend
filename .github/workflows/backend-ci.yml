@@ -72,7 +72,27 @@ jobs:
           if mask_account_id == true
             abort 'Backend CD cannot mask the AWS account ID while exporting ECR URI job outputs.'
           end
+
+          deploy_job = workflow.dig('jobs', 'deploy-production')
+          abort 'Backend CD deploy-production job is missing.' unless deploy_job.is_a?(Hash)
+
+          unless deploy_job['needs'] == 'publish-image'
+            abort 'Backend CD deploy-production must depend on publish-image.'
+          end
+
+          deploy_condition = deploy_job['if'].to_s
+          unless deploy_condition.include?("vars.EC2_INSTANCE_ID != ''")
+            abort 'Backend CD deploy-production must skip without EC2_INSTANCE_ID.'
+          end
+
+          expected_image_reference = "#{expression_open} needs.publish-image.outputs.image-reference }}"
+          unless deploy_job.dig('env', 'IMAGE_REFERENCE') == expected_image_reference
+            abort 'Backend CD deploy-production must consume the digest-pinned image reference.'
+          end
           RUBY
+
+      - name: Test remote deployment script
+        run: bash scripts/deploy/test_remote_deploy.sh
 
       - name: Build backend
         run: ./gradlew clean build
