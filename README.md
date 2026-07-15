@@ -75,6 +75,17 @@ http://localhost:8080/v3/api-docs
 
 필요한 GitHub 변수, IAM 최소 권한, Parameter Store 경로, EC2 runtime 및 rollback 절차는 [운영 배포 문서](docs/DEPLOYMENT.md)를 참고합니다.
 
+현재 운영 배포는 `main` push 또는 수동 `workflow_dispatch`로 실행됩니다. Git SHA 기반 ECR 태그가 이미 있으면 기존 불변 태그를 재사용하고 digest로 배포하므로 같은 commit을 안전하게 다시 실행할 수 있습니다.
+
+운영 확인 경로는 다음과 같습니다.
+
+```text
+GET /nginx-health
+GET /actuator/health/readiness
+```
+
+Spring Boot의 8080 포트는 외부에 공개하지 않습니다. 운영 비밀값은 GitHub 변수나 저장소가 아니라 EC2 instance role이 Parameter Store SecureString에서 직접 읽습니다.
+
 ## Security
 
 현재는 JWT 인증 구현 전 단계이므로 `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/**` 경로를 임시로 허용합니다.

@@ -527,3 +527,15 @@ AI 도구는 작업 완료 전 다음을 확인한다.
 - 원격 develop 직접 push
 - PR 없이 보호 브랜치에 반영
 - API/DB 변경 후 문서 업데이트 여부 누락
+
+## 19. CI/CD 및 운영 작업 규칙
+
+- `main` push는 production 배포를 실행하므로 `develop → main` PR의 배포 영향을 확인한다.
+- GitHub Actions AWS 인증은 OIDC만 사용하고 장기 Access Key를 만들거나 저장하지 않는다.
+- 운영 이미지는 `git-${GITHUB_SHA}` 태그로 발행한 뒤 digest 참조로 배포한다.
+- 동일 SHA를 다시 실행할 때 기존 불변 ECR 태그를 재사용하며, 조회 실패를 이미지 미존재로 간주하지 않는다.
+- 운영 DB 값은 Parameter Store SecureString에서 EC2가 직접 읽고 workflow payload, `.env`, 문서, 로그에 기록하지 않는다.
+- EC2 접근은 SSM을 사용하며 SSH 22와 key pair를 열지 않는다.
+- 배포 확인은 Nginx health, backend readiness, 외부 8080 차단, Actions 로그 민감정보 노출 여부를 포함한다.
+- 장애 경로를 mock으로 검증한 경우 실제 AWS 검증과 구분해 PR과 운영 문서에 기록한다.
+- 배포 workflow, IAM 권한, Repository Variable, Parameter Store 경로가 바뀌면 `docs/DEPLOYMENT.md`를 함께 갱신한다.
