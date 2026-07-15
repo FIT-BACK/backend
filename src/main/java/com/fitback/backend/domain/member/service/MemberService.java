@@ -83,12 +83,19 @@ public class MemberService {
         //member entity에 대해 수정은 없으므로 UserDetails 객체에서 바로 얻어와 사용(쿼리 x)
         Member member = authMember.getMember();
 
-        long savedCount = closetSaveRepository.countByMemberId(member.getId());
-
-        long analysisCount = analysisReportRepository.countByMemberId(member.getId());
-
-        long uploadCount = lookbookRepository.countByMemberId(member.getId());
+        Long savedCount = closetSaveRepository.countByMemberId(member.getId());
+        Long analysisCount = analysisReportRepository.countByMemberId(member.getId());
+        Long uploadCount = lookbookRepository.countByMemberId(member.getId());
 
         return MemberResponse.toMyPageResponse(savedCount, analysisCount, uploadCount, member);
+    }
+
+    //회원 탈퇴
+    @Transactional
+    public void deleteAccount(AuthMember authMember) {
+        Member deleteMember = memberRepository.findById(authMember.getMember().getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+
+        memberRepository.delete(deleteMember);
     }
 }
