@@ -47,5 +47,15 @@ public class MemberController {
         return ApiResponse.onSuccess(memberService.myPage(authMember));
     }
 
+    @Operation(summary = "회원 탈퇴", description = "현재 로그인한 회원이 자신의 계정을 탈퇴")
+    @DeleteMapping("/v1/members/me")
+    public ApiResponse<Void> deleteAccount(
+            @AuthenticationPrincipal AuthMember authMember
+    )
+    {
+        memberService.deleteAccount(authMember);
+        return ApiResponse.onSuccess(null);
+    }
+
 
 }

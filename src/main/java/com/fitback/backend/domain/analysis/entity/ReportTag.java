@@ -16,6 +16,8 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 @Getter
 @Entity
@@ -30,6 +32,7 @@ public class ReportTag extends BaseCreateTimeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "report_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private AnalysisReport report;
 
     @ManyToOne(fetch = FetchType.LAZY)
