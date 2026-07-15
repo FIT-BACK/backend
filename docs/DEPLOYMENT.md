@@ -215,7 +215,20 @@ GRADLE_USER_HOME=/tmp/fitback-gradle-home ./gradlew clean build
 
 ## 비용 관리와 중지 기준
 
-현재 구성은 NAT Gateway와 ALB 없이 EC2 `t3.micro`, RDS `db.t4g.micro` Single-AZ, gp3 20 GiB씩, public IPv4 1개를 사용하는 최소 사양이다. 상시 실행 기준 크레딧 적용 전 월 환산 예상액은 약 USD 38~41이며, 2026-07-15 생성 시점부터 8월 말까지는 약 USD 58~61이다. 실제 금액은 사용 시간, 세금, 데이터 전송, AWS 가격 변경에 따라 달라진다. 체험 크레딧/무료 사용량이 우선 적용될 수 있지만 적용 범위와 잔액에 따라 비용이 청구될 수 있다.
+현재 구성은 NAT Gateway와 ALB 없이 EC2 `t3.micro`, RDS `db.t4g.micro` Single-AZ, gp3 20 GiB씩, public IPv4 1개를 사용하는 최소 사양이다. 아래 계산은 2026-07-15에 AWS Pricing Calculator와 각 서비스 요금 페이지에서 `ap-northeast-2` Linux On-Demand 단가를 검토한 스냅샷이다.
+
+| 비용 항목 | 계산 기준 | 730시간 월 환산 |
+| --- | --- | ---: |
+| EC2 `t3.micro` | USD 0.013/시간 × 730시간 | USD 9.49 |
+| EC2 EBS gp3 20 GiB | USD 0.096/GiB-월 × 20 GiB | USD 1.92 |
+| RDS MySQL `db.t4g.micro` Single-AZ | USD 0.026/시간 × 730시간 | USD 18.98 |
+| RDS gp3 20 GiB | USD 0.138/GiB-월 × 20 GiB | USD 2.76 |
+| public IPv4 1개 | USD 0.005/시간 × 730시간 | USD 3.65 |
+| 기본 고정비 합계 | CPU credit, 추가 backup/IO 제외 | USD 36.80 |
+
+ECR 저장량 1 GiB 미만, 소량의 CloudWatch/데이터 전송 변동분을 더해 크레딧 적용 전 월 예상액을 약 USD 38~41로 잡는다. 2026-07-15부터 8월 말까지 1,128시간을 같은 방식으로 계산하면 고정비 약 USD 56.86이며, 변동분을 포함한 누적 예상액은 약 USD 58~61이다. 이는 세금 별도 금액으로 한국 부가가치세 10%가 적용되면 약 USD 64~67까지 청구될 수 있다. CPU baseline 초과 credit, 추가 RDS backup/snapshot, 대량 데이터 전송은 포함하지 않았다.
+
+재계산 시 [AWS Pricing Calculator](https://calculator.aws/), [EC2 On-Demand](https://aws.amazon.com/ec2/pricing/on-demand/), [EBS](https://aws.amazon.com/ebs/pricing/), [RDS for MySQL](https://aws.amazon.com/rds/mysql/pricing/), [VPC public IPv4](https://aws.amazon.com/vpc/pricing/)의 최신 서울 리전 단가로 위 수식을 갱신한다. 체험 크레딧/무료 사용량이 우선 적용될 수 있지만 적용 범위와 잔액에 따라 비용이 청구될 수 있다.
 
 - AWS Budgets 알림과 Free Tier/크레딧 잔액을 정기적으로 확인한다.
 - 장기간 미사용 시 EC2만 정지해도 RDS 스토리지와 public IPv4 관련 비용은 계속될 수 있다.
