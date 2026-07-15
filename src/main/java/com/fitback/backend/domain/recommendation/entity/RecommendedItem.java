@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -55,11 +56,11 @@ public class RecommendedItem extends BaseCreateTimeEntity {
             Integer similarityScore,
             Boolean valueMatch
     ) {
-        this.report = report;
-        this.product = product;
-        this.rank = rank;
-        this.category = category;
-        this.similarityScore = similarityScore;
+        this.report = Objects.requireNonNull(report, "report must not be null");
+        this.product = Objects.requireNonNull(product, "product must not be null");
+        this.rank = Objects.requireNonNull(rank, "rank must not be null");
+        this.category = Objects.requireNonNull(category, "category must not be null");
+        this.similarityScore = Objects.requireNonNull(similarityScore, "similarityScore must not be null");
         this.valueMatch = valueMatch != null && valueMatch;
     }
 

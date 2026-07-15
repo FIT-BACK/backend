@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -53,10 +54,10 @@ public class Member extends BaseTimeEntity {
 
 
     private Member(String email, String nickname, String password, LoginProvider loginProvider) {
-        this.email = email;
-        this.nickname = nickname;
+        this.email = Objects.requireNonNull(email, "email must not be null");
+        this.nickname = Objects.requireNonNull(nickname, "nickname must not be null");
         this.password = password;
-        this.loginProvider = loginProvider;
+        this.loginProvider = Objects.requireNonNull(loginProvider, "loginProvider must not be null");
     }
 
     public static Member create(String email, String nickname, String password, LoginProvider loginProvider) {
@@ -64,7 +65,7 @@ public class Member extends BaseTimeEntity {
     }
 
     public void changeNickname(String nickname) {
-        this.nickname = nickname;
+        this.nickname = Objects.requireNonNull(nickname, "nickname must not be null");
     }
 
     public void changeProfileImageUrl(String profileImageUrl) {
@@ -72,6 +73,6 @@ public class Member extends BaseTimeEntity {
     }
 
     public void changeRole(MemberRole role) {
-        this.role = role;
+        this.role = Objects.requireNonNull(role, "role must not be null");
     }
 }
