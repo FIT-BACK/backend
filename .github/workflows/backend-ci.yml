@@ -42,28 +42,37 @@ jobs:
       - name: Verify Backend CD output contract
         shell: bash
         run: |
-          expression_prefix='$'
-          required_output_mappings=(
-            "      image-uri: ${expression_prefix}{{ steps.push-image.outputs.image-uri }}"
-            "      image-digest: ${expression_prefix}{{ steps.resolve-digest.outputs.image-digest }}"
-            "      image-reference: ${expression_prefix}{{ steps.resolve-digest.outputs.image-reference }}"
-          )
+          ruby <<'RUBY'
+          require 'yaml'
 
-          for required_mapping in "${required_output_mappings[@]}"; do
-            if ! grep --quiet --fixed-strings --line-regexp "$required_mapping" \
-                .github/workflows/backend-cd.yml; then
-              echo "Backend CD job output mapping is missing or invalid: ${required_mapping}" >&2
-              exit 1
-            fi
-          done
+          workflow = YAML.safe_load(File.read('.github/workflows/backend-cd.yml'))
+          publish_job = workflow.dig('jobs', 'publish-image')
+          abort 'Backend CD publish-image job is missing.' unless publish_job.is_a?(Hash)
 
-          if grep --quiet --extended-regexp '^[[:space:]]+mask-aws-account-id:[[:space:]]+true$' \
-              .github/workflows/backend-cd.yml \
-            && grep --quiet --extended-regexp '^[[:space:]]+image-(uri|reference):' \
-              .github/workflows/backend-cd.yml; then
-            echo 'Backend CD cannot mask the AWS account ID while exporting ECR URI job outputs.' >&2
-            exit 1
-          fi
+          expression_open = '$' + '{{'
+          expected_outputs = {
+            'image-uri' => "#{expression_open} steps.push-image.outputs.image-uri }}",
+            'image-digest' => "#{expression_open} steps.resolve-digest.outputs.image-digest }}",
+            'image-reference' => "#{expression_open} steps.resolve-digest.outputs.image-reference }}"
+          }
+          actual_outputs = publish_job['outputs']
+
+          expected_outputs.each do |name, expected_value|
+            actual_value = actual_outputs.is_a?(Hash) ? actual_outputs[name] : nil
+            next if actual_value == expected_value
+
+            abort "Backend CD job output mapping is missing or invalid: #{name}"
+          end
+
+          credentials_step = Array(publish_job['steps']).find do |step|
+            step['name'] == 'Configure AWS credentials with OIDC'
+          end
+          mask_account_id = credentials_step&.dig('with', 'mask-aws-account-id')
+
+          if mask_account_id == true
+            abort 'Backend CD cannot mask the AWS account ID while exporting ECR URI job outputs.'
+          end
+          RUBY
 
       - name: Build backend
         run: ./gradlew clean build
