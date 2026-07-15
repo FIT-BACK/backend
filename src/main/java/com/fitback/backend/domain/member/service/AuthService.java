@@ -33,8 +33,11 @@ public class AuthService {
             throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
-        //임시 닉네임 설정
-        String temporalNickName = "user_" + UUID.randomUUID().toString().substring(0, 8);
+        //임시 닉네임 설정 (중복 방지)
+        String temporalNickName;
+        do {
+            temporalNickName = "user_" + UUID.randomUUID().toString().substring(0, 8);
+        } while (memberRepository.existsByNickname(temporalNickName));
 
         //비밀번호 암호화
         String encodedPassword = passwordEncoder.encode(dto.password());
