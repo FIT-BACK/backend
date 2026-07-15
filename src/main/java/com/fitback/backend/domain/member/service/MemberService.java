@@ -1,5 +1,8 @@
 package com.fitback.backend.domain.member.service;
 
+import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
+import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.dto.MemberRequest;
 import com.fitback.backend.domain.member.dto.MemberResponse;
 import com.fitback.backend.domain.member.entity.LoginProvider;
@@ -18,6 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberService {
 
     private final MemberRepository memberRepository;
+    private final AnalysisReportRepository analysisReportRepository;
+    private final ClosetSaveRepository closetSaveRepository;
+    private final LookbookRepository lookbookRepository;
+
     private final PasswordEncoder passwordEncoder;
 
     //회원정보 수정
@@ -50,6 +57,7 @@ public class MemberService {
     }
 
 
+    //비밀번호 변경
     @Transactional
     public void changePassword(AuthMember authMember, MemberRequest.ChangePasswordRequest dto) {
         Member member = memberRepository.findById(authMember.getMember().getId())
@@ -66,5 +74,21 @@ public class MemberService {
         String encodedPassword = passwordEncoder.encode(dto.newPassword());
         member.changePassword(encodedPassword);
 
+    }
+
+    //마이페이지
+    @Transactional(readOnly = true)
+    public MemberResponse.MyPageResponse myPage(AuthMember authMember) {
+
+        //member entity에 대해 수정은 없으므로 UserDetails 객체에서 바로 얻어와 사용(쿼리 x)
+        Member member = authMember.getMember();
+
+        long savedCount = closetSaveRepository.countByMemberId(member.getId());
+
+        long analysisCount = analysisReportRepository.countByMemberId(member.getId());
+
+        long uploadCount = lookbookRepository.countByMemberId(member.getId());
+
+        return MemberResponse.toMyPageResponse(savedCount, analysisCount, uploadCount, member);
     }
 }

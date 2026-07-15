@@ -46,6 +46,34 @@ public class MemberResponse {
        String profileImageUrl
     ) {}
 
+    //마이페이지 응답 dto
+    @Builder
+    public record MyPageResponse(
+        Long memberId,
+        String email,
+        String nickname,
+        String profileImageUrl,
+        Long savedCount,
+        Long analysisCount,
+        Long uploadCount
+    ) {}
+
+    //마이페이지 응답 변환
+    public static MyPageResponse toMyPageResponse(
+            Long savedCount,
+            Long analysisCount,
+            Long uploadCount,
+            Member member
+    ){
+        return MyPageResponse.builder()
+                .memberId(member.getId())
+                .email(member.getEmail())
+                .nickname(member.getNickname())
+                .profileImageUrl(member.getProfileImageUrl())
+                .savedCount(savedCount).analysisCount(analysisCount).uploadCount(uploadCount)
+                .build();
+    }
+
     //회원가입 응답 변환
     public static SignUpResponse toSignUpResponse(
             String accessToken,
@@ -100,4 +128,5 @@ public class MemberResponse {
                 .profileImageUrl(member.getProfileImageUrl())
                 .build();
     }
+
 }
