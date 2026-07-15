@@ -89,6 +89,32 @@ jobs:
           unless deploy_job.dig('env', 'IMAGE_REFERENCE') == expected_image_reference
             abort 'Backend CD deploy-production must consume the digest-pinned image reference.'
           end
+
+          deploy_steps = Array(deploy_job['steps'])
+          payload_step = deploy_steps.find { |step| step['name'] == 'Build the SSM deployment payload' }
+          payload_script = payload_step&.fetch('run', '').to_s
+
+          unless payload_script.include?('executionTimeout: ["900"]')
+            abort 'Backend CD SSM payload must set a 900-second execution timeout.'
+          end
+
+          unless payload_script.include?('/opt/fitback/releases/') && payload_script.include?('RELEASE_DIR=')
+            abort 'Backend CD must deploy into an immutable release directory.'
+          end
+
+          send_step = deploy_steps.find { |step| step['name'] == 'Send deployment command' }
+          send_script = send_step&.fetch('run', '').to_s
+          unless send_script.include?('--timeout-seconds 60')
+            abort 'Backend CD must use a bounded SSM delivery timeout.'
+          end
+
+          wait_step = deploy_steps.find { |step| step['name'] == 'Wait for deployment result' }
+          wait_script = wait_step&.fetch('run', '').to_s
+          unless wait_script.include?('for attempt in {1..205}') &&
+              wait_script.include?('cancel-command') &&
+              wait_script.include?('wait_for_terminal_after_cancellation')
+            abort 'Backend CD must monitor the full execution window and cancel on timeout.'
+          end
           RUBY
 
       - name: Test remote deployment script
