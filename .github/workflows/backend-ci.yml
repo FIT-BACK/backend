@@ -42,6 +42,21 @@ jobs:
       - name: Verify Backend CD output contract
         shell: bash
         run: |
+          expression_prefix='$'
+          required_output_mappings=(
+            "      image-uri: ${expression_prefix}{{ steps.push-image.outputs.image-uri }}"
+            "      image-digest: ${expression_prefix}{{ steps.resolve-digest.outputs.image-digest }}"
+            "      image-reference: ${expression_prefix}{{ steps.resolve-digest.outputs.image-reference }}"
+          )
+
+          for required_mapping in "${required_output_mappings[@]}"; do
+            if ! grep --quiet --fixed-strings --line-regexp "$required_mapping" \
+                .github/workflows/backend-cd.yml; then
+              echo "Backend CD job output mapping is missing or invalid: ${required_mapping}" >&2
+              exit 1
+            fi
+          done
+
           if grep --quiet --extended-regexp '^[[:space:]]+mask-aws-account-id:[[:space:]]+true$' \
               .github/workflows/backend-cd.yml \
             && grep --quiet --extended-regexp '^[[:space:]]+image-(uri|reference):' \
