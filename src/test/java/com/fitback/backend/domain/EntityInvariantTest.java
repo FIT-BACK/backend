@@ -87,7 +87,7 @@ class EntityInvariantTest {
     }
 
     @Test
-    void duplicateSaveAndTrendTagPairsAreDatabaseConstrained() {
+    void closetSaveAndTrendTagDeclareCompositeUniqueConstraints() {
         assertThat(uniqueColumns(ClosetSave.class))
                 .contains(List.of("member_id", "target_type", "target_id"));
         assertThat(uniqueColumns(TrendTag.class))
