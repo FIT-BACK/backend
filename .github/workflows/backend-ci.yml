@@ -73,6 +73,14 @@ jobs:
             abort 'Backend CD cannot mask the AWS account ID while exporting ECR URI job outputs.'
           end
 
+          publish_steps = Array(publish_job['steps'])
+          push_step = publish_steps.find { |step| step['name'] == 'Push image to Amazon ECR' }
+          push_script = push_step&.fetch('run', '').to_s
+
+          unless push_script.strip == 'bash scripts/ci/publish_ecr_image.sh'
+            abort 'Backend CD must use the tested ECR image publication script.'
+          end
+
           deploy_job = workflow.dig('jobs', 'deploy-production')
           abort 'Backend CD deploy-production job is missing.' unless deploy_job.is_a?(Hash)
 
@@ -116,6 +124,9 @@ jobs:
             abort 'Backend CD must monitor the full execution window and cancel on timeout.'
           end
           RUBY
+
+      - name: Test ECR image publication script
+        run: bash scripts/ci/test_publish_ecr_image.sh
 
       - name: Test remote deployment script
         run: bash scripts/deploy/test_remote_deploy.sh
