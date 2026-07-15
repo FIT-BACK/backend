@@ -66,7 +66,13 @@ spring.profiles.default=local
 
 ```text
 http://localhost:8080/swagger-ui.html
+http://localhost:8080/v3/api-docs
 ```
+
+## Security
+
+현재는 JWT 인증 구현 전 단계이므로 `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/**` 경로를 임시로 허용합니다.
+REST API 기준으로 CSRF, Form Login, HTTP Basic, Session은 비활성화되어 있습니다.
 
 ## 브랜치 컨벤션
 
@@ -80,7 +86,7 @@ docs/{document-name}
 예시:
 
 ```text
-feature/#1-initial-setup
+feature/#12-auth
 docs/api-spec
 ```
 
@@ -100,11 +106,11 @@ ci: CI 설정 파일 및 스크립트 변경, GitHub Actions 설정 추가
 
 ## 협업 규칙
 
-1. 이슈 템플릿을 활용해서 이슈를 생성합니다.
-2. 생성된 이슈 번호에 맞게 브랜치를 생성합니다.
-3. 작업 후 커밋을 기능 단위로 나눕니다.
-4. PR 템플릿을 활용해서 PR을 생성합니다.
-5. 리뷰어를 지정하고 리뷰를 요청합니다.
-6. 승인 후 merge합니다.
+1. 이슈 템플릿을 활용해서 GitHub Issue를 먼저 생성합니다.
+2. `develop` 브랜치에서 이슈 번호에 맞게 작업 브랜치를 생성합니다.
+3. 이슈 범위 안에서만 작업하고 커밋은 의미 단위로 나눕니다.
+4. 작업 완료 전 `./gradlew clean build`로 검증합니다.
+5. PR 템플릿을 활용해서 `develop` 브랜치로 PR을 생성합니다.
+6. 리뷰어를 지정하고 테스트 결과를 공유한 뒤 승인 후 merge합니다.
 
-자세한 컨벤션은 `BACKEND_CONVENTION.md`를 참고합니다.
+자세한 컨벤션은 `AGENTS.md`를 참고합니다.
