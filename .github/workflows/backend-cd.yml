@@ -135,7 +135,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           role-session-name: fitback-ecr-${{ github.run_id }}
-          mask-aws-account-id: true
+          mask-aws-account-id: false
 
       - name: Verify AWS identity and ECR repository
         run: |
