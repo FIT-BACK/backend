@@ -21,7 +21,7 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 | `AWS_DEPLOY_ROLE_ARN` | ECR 발행 | GitHub OIDC가 위임받는 IAM 역할 ARN이다. |
 | `ECR_REPOSITORY` | ECR 발행 | backend ECR repository 이름이다. |
 | `EC2_INSTANCE_ID` | EC2 배포 활성화 | SSM 관리형 노드로 등록된 운영 EC2 instance ID이다. 값이 없으면 `deploy-production` job은 건너뛴다. |
-| `DEPLOY_PARAMETER_PREFIX` | 선택 | Parameter Store 경로 prefix이다. 기본값은 `/fitback/prod`이다. 다른 값을 사용하면 EC2 instance role의 Parameter Store resource ARN도 같은 경로로 변경해야 한다. |
+| `DEPLOY_PARAMETER_PREFIX` | 선택 | Parameter Store 경로 prefix이다. workflow가 이 저장소 변수를 원격 스크립트의 `PARAMETER_PREFIX`로 매핑한다. 기본값은 `/fitback/prod`이며, 다른 값을 사용하면 EC2 instance role의 Parameter Store resource ARN도 같은 경로로 변경해야 한다. |
 
 민감정보는 Repository Variable 또는 GitHub command payload에 넣지 않는다.
 

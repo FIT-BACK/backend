@@ -85,6 +85,12 @@ if [ -n "${MOCK_DOCKER_FAIL_MATCH:-}" ] \
   exit 1
 fi
 
+if [ -n "${MOCK_DOCKER_PULL_FAIL_MATCH:-}" ] \
+  && [[ "$*" == *"$MOCK_DOCKER_PULL_FAIL_MATCH"* ]] \
+  && [[ " $* " == *' pull backend '* ]]; then
+  exit 1
+fi
+
 if [ -n "${MOCK_DOCKER_SIGNAL_MATCH:-}" ] \
   && [[ "$*" == *"$MOCK_DOCKER_SIGNAL_MATCH"* ]] \
   && [[ " $* " == *' up -d --remove-orphans '* ]]; then
@@ -178,6 +184,7 @@ run_deploy() {
   MOCK_DB_PASSWORD="$special_password" \
   MOCK_CURL_FAIL_COUNT="${MOCK_CURL_FAIL_COUNT:-0}" \
   MOCK_DOCKER_FAIL_MATCH="${MOCK_DOCKER_FAIL_MATCH:-}" \
+  MOCK_DOCKER_PULL_FAIL_MATCH="${MOCK_DOCKER_PULL_FAIL_MATCH:-}" \
   MOCK_DOCKER_SIGNAL_MATCH="${MOCK_DOCKER_SIGNAL_MATCH:-}" \
   MOCK_FLOCK_FAIL="${MOCK_FLOCK_FAIL:-0}" \
   MOCK_LN_FAIL="${MOCK_LN_FAIL:-0}" \
@@ -196,6 +203,7 @@ mkdir -p "$deploy_root/releases"
 create_release "$release_one"
 
 first_image="123209654535.dkr.ecr.ap-northeast-2.amazonaws.com/fitback-backend@sha256:$(printf '1%.0s' {1..64})"
+failed_image="123209654535.dkr.ecr.ap-northeast-2.amazonaws.com/fitback-backend@sha256:$(printf '2%.0s' {1..64})"
 run_deploy "$deploy_root" "$release_one" "$first_image"
 
 test "$(readlink "$deploy_root/current")" = "$release_one"
@@ -218,12 +226,32 @@ if grep -Fq "$special_password" "$mock_log"; then
   exit 1
 fi
 
+pull_failed_release="$deploy_root/releases/release-pull-failure"
+create_release "$pull_failed_release"
+: > "$mock_log"
+: > "$curl_count_file"
+export MOCK_DOCKER_PULL_FAIL_MATCH="$pull_failed_release"
+
+if pull_failure_output="$(run_deploy "$deploy_root" "$pull_failed_release" "$failed_image" 2>&1)"; then
+  echo 'Expected the image pull failure to return non-zero.' >&2
+  exit 1
+fi
+
+grep -Fq 'rollback was skipped' <<< "$pull_failure_output"
+test "$(readlink "$deploy_root/current")" = "$release_one"
+test ! -e "$pull_failed_release/.env"
+if grep -F -- "--project-directory $release_one" "$mock_log" | grep -Fq ' up -d --remove-orphans'; then
+  echo 'The previous release was restarted before stack mutation.' >&2
+  exit 1
+fi
+
+unset MOCK_DOCKER_PULL_FAIL_MATCH
+
 create_release "$release_two"
 : > "$mock_log"
 : > "$curl_count_file"
 export MOCK_CURL_FAIL_COUNT=1
 unset MOCK_DOCKER_FAIL_MATCH
-failed_image="123209654535.dkr.ecr.ap-northeast-2.amazonaws.com/fitback-backend@sha256:$(printf '2%.0s' {1..64})"
 
 if rollback_output="$(run_deploy "$deploy_root" "$release_two" "$failed_image" 2>&1)"; then
   echo 'Expected the unhealthy deployment to fail after rollback.' >&2
@@ -332,7 +360,7 @@ release_four="$deploy_root/releases/release-four"
 create_release "$release_four"
 : > "$mock_log"
 : > "$curl_count_file"
-unset MOCK_FLOCK_FAIL MOCK_DOCKER_FAIL_MATCH MOCK_DOCKER_SIGNAL_MATCH MOCK_LN_FAIL MOCK_MV_SIGNAL
+unset MOCK_FLOCK_FAIL MOCK_DOCKER_FAIL_MATCH MOCK_DOCKER_PULL_FAIL_MATCH MOCK_DOCKER_SIGNAL_MATCH MOCK_LN_FAIL MOCK_MV_SIGNAL
 export MOCK_CURL_FAIL_COUNT=0
 final_image="123209654535.dkr.ecr.ap-northeast-2.amazonaws.com/fitback-backend@sha256:$(printf '4%.0s' {1..64})"
 run_deploy "$deploy_root" "$release_four" "$final_image"

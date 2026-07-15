@@ -303,6 +303,12 @@ fi
 
 if [ "$deployment_failed" -ne 0 ]; then
   trap - ERR INT TERM
+  if [ "$mutation_started" -eq 0 ]; then
+    rm -f "$RELEASE_DIR/.env"
+    echo 'Deployment failed before the running stack was changed; rollback was skipped.' >&2
+    exit 1
+  fi
+
   rollback_in_progress=1
   if rollback; then
     exit 1
