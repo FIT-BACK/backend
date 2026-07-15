@@ -9,10 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -39,6 +36,15 @@ public class MemberController {
 
         memberService.changePassword(authMember, changePasswordDto);
         return ApiResponse.onSuccess(null);
+    }
+
+    @Operation(summary = "마이페이지", description = "현재 로그인한 회원의 마이페이지 정보를 조회\n" +
+            "회원 기본 정보와 와이어프레임에 표시되는 저장 수, 분석 수, 업로드 수 반환")
+    @GetMapping("/v1/members/me")
+    public ApiResponse<MemberResponse.MyPageResponse> myPage(
+            @AuthenticationPrincipal AuthMember authMember
+    ){
+        return ApiResponse.onSuccess(memberService.myPage(authMember));
     }
 
 
