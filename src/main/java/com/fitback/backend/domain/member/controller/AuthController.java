@@ -51,7 +51,8 @@ public class AuthController {
             @AuthenticationPrincipal AuthMember authMember
     )
     {
-        return ApiResponse.onSuccess(authService.logout(authMember));
+        authService.logout(authMember);
+        return ApiResponse.onSuccess(null);
     }
 }
 

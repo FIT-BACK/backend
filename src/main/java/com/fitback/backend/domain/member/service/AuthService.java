@@ -119,7 +119,7 @@ public class AuthService {
 
     //로그아웃
     @Transactional
-    public Void logout(AuthMember authMember) {
+    public void logout(AuthMember authMember) {
 
         Long memberId = authMember.getMember().getId();
 
@@ -128,7 +128,5 @@ public class AuthService {
 
         //refresh token 초기화
         member.clearRefreshToken();
-
-        return null;
     }
 }
