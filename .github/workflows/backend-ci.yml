@@ -77,13 +77,8 @@ jobs:
           push_step = publish_steps.find { |step| step['name'] == 'Push image to Amazon ECR' }
           push_script = push_step&.fetch('run', '').to_s
 
-          unless push_script.include?('aws ecr describe-images') &&
-              push_script.include?('imageTag="$IMAGE_TAG"') &&
-              push_script.include?('existing_digest') &&
-              push_script.include?('if [[ "$existing_digest" == sha256:* ]]; then') &&
-              push_script.include?('Reusing existing immutable ECR tag') &&
-              push_script.include?('docker push "$image_uri"')
-            abort 'Backend CD must reuse an existing immutable Git SHA tag before pushing.'
+          unless push_script.strip == 'bash scripts/ci/publish_ecr_image.sh'
+            abort 'Backend CD must use the tested ECR image publication script.'
           end
 
           deploy_job = workflow.dig('jobs', 'deploy-production')
@@ -129,6 +124,9 @@ jobs:
             abort 'Backend CD must monitor the full execution window and cancel on timeout.'
           end
           RUBY
+
+      - name: Test ECR image publication script
+        run: bash scripts/ci/test_publish_ecr_image.sh
 
       - name: Test remote deployment script
         run: bash scripts/deploy/test_remote_deploy.sh
