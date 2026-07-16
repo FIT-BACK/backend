@@ -39,16 +39,35 @@ public class Lookbook extends BaseTimeEntity {
     @Column(name = "purchase_url", length = 2048)
     private String purchaseUrl;
 
+    @Column(name = "comment", length = 500)
+    private String comment;
 
-    private Lookbook(Member member, String originalImageUrl, String matchedImageUrl, String purchaseUrl) {
+    @Column(name = "like_count", nullable = false)
+    private Integer likeCount = 0;
+
+
+    private Lookbook(
+            Member member,
+            String originalImageUrl,
+            String matchedImageUrl,
+            String purchaseUrl,
+            String comment
+    ) {
         this.member = member;
         this.originalImageUrl = originalImageUrl;
         this.matchedImageUrl = matchedImageUrl;
         this.purchaseUrl = purchaseUrl;
+        this.comment = comment;
     }
 
-    public static Lookbook create(Member member, String originalImageUrl, String matchedImageUrl, String purchaseUrl) {
-        return new Lookbook(member, originalImageUrl, matchedImageUrl, purchaseUrl);
+    public static Lookbook create(
+            Member member,
+            String originalImageUrl,
+            String matchedImageUrl,
+            String purchaseUrl,
+            String comment
+    ) {
+        return new Lookbook(member, originalImageUrl, matchedImageUrl, purchaseUrl, comment);
     }
 
     public void changePurchaseUrl(String purchaseUrl) {
