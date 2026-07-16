@@ -10,7 +10,7 @@ AI 도구와 백엔드 팀원은 이 문서를 기준으로 같은 브랜치 전
 - Java 버전: Java 21
 - Spring Boot 버전: 4.1.0
 - 빌드 도구: Gradle
-- 기본 실행 프로필: `local`
+- 로컬 실행 프로필: `local` (명시적으로 활성화)
 - 테스트 프로필: `test`
 
 ## 2. AI 작업 기본 원칙
@@ -410,7 +410,7 @@ src/test/resources/application-test.yml
 
 ```text
 .env
-.env.*
+.env.* (.env.example 제외)
 application-secret.yml
 application-secret.properties
 ```
@@ -420,9 +420,9 @@ application-secret.properties
 예시:
 
 ```properties
-DB_URL=jdbc:mysql://localhost:3306/umc_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+DB_URL=jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
 DB_USER=your_mysql_user
-DB_PW=your_mysql_password
+DB_PASSWORD=your_mysql_password
 ```
 
 ## 14. 로컬 실행 및 검증 규칙
@@ -442,10 +442,10 @@ GRADLE_USER_HOME=/tmp/fitback-gradle-home ./gradlew clean build
 애플리케이션 실행은 다음 명령을 사용한다.
 
 ```bash
-./gradlew bootRun
+./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-기본 프로필은 local이다.
+로컬 실행 시 `local` 프로필을 명시한다. 프로필을 생략했을 때 `local`로 자동 전환하지 않는다.
 
 테스트는 test 프로필과 H2 인메모리 DB를 사용한다.
 
@@ -527,3 +527,15 @@ AI 도구는 작업 완료 전 다음을 확인한다.
 - 원격 develop 직접 push
 - PR 없이 보호 브랜치에 반영
 - API/DB 변경 후 문서 업데이트 여부 누락
+
+## 19. CI/CD 및 운영 작업 규칙
+
+- `main` push는 production 배포를 실행하므로 `develop → main` PR의 배포 영향을 확인한다.
+- GitHub Actions AWS 인증은 OIDC만 사용하고 장기 Access Key를 만들거나 저장하지 않는다.
+- 운영 이미지는 `git-${GITHUB_SHA}` 태그로 발행한 뒤 digest 참조로 배포한다.
+- 동일 SHA를 다시 실행할 때 기존 불변 ECR 태그를 재사용하며, 조회 실패를 이미지 미존재로 간주하지 않는다.
+- 운영 DB 값은 Parameter Store SecureString에서 EC2가 직접 읽고 workflow payload, `.env`, 문서, 로그에 기록하지 않는다.
+- EC2 접근은 SSM을 사용하며 SSH 22와 key pair를 열지 않는다.
+- 배포 확인은 Nginx health, backend readiness, 외부 8080 차단, Actions 로그 민감정보 노출 여부를 포함한다.
+- 장애 경로를 mock으로 검증한 경우 실제 AWS 검증과 구분해 PR과 운영 문서에 기록한다.
+- 배포 workflow, IAM 권한, Repository Variable, Parameter Store 경로가 바뀌면 `docs/DEPLOYMENT.md`를 함께 갱신한다.

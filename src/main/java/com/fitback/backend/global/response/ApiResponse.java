@@ -28,7 +28,7 @@ public record ApiResponse<T>(
         return new ApiResponse<>(true, CREATED_CODE, CREATED_MESSAGE, null);
     }
 
-    public static <T> ApiResponse<T> onFailure(String code, String message, T data) {
-        return new ApiResponse<>(false, code, message, data);
+    public static ApiResponse<Void> onFailure(String code, String message) {
+        return new ApiResponse<>(false, code, message, null);
     }
 }

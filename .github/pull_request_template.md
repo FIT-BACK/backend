@@ -21,6 +21,9 @@ close #
 - [ ] 코드 스타일이 일관적인가요?
 - [ ] Entity 또는 DB 변경 시 ERD/DDL 문서를 업데이트했나요?
 - [ ] API 변경 시 API 명세서를 업데이트했나요?
+- [ ] 배포 workflow/IAM/Repository Variable/Parameter Store 변경 시 운영 문서를 업데이트했나요?
+- [ ] production 영향이 있다면 health/rollback 및 외부 포트 정책을 확인했나요?
+- [ ] Actions 로그, payload, 문서에 민감정보가 노출되지 않는지 확인했나요?
 
 ## 스크린샷 (선택)
 
