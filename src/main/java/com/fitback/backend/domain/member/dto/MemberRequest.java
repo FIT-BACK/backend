@@ -3,6 +3,8 @@ package com.fitback.backend.domain.member.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
+import java.util.List;
+
 // 회원 요청 DTO
 public class MemberRequest {
 
@@ -46,4 +48,12 @@ public class MemberRequest {
             @NotBlank(message = "새 비밀번호는 필수 입력값 입니다.")
             String newPassword
     ){}
+
+    //회원 가입 프로필 설정
+    public record OnboardingRequest(
+            @NotBlank(message = "닉네임은 필수 입력값 입니다.")
+            String nickname,
+            String profileImageUrl,
+            List<Long> tagIds
+    ) {}
 }

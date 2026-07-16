@@ -7,7 +7,11 @@ import com.fitback.backend.domain.member.dto.MemberRequest;
 import com.fitback.backend.domain.member.dto.MemberResponse;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.member.entity.MemberTag;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.member.repository.MemberTagRepository;
+import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
@@ -16,11 +20,17 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class MemberService {
 
     private final MemberRepository memberRepository;
+
+    private final MemberTagRepository memberTagRepository;
+    private final TagRepository tagRepository;
+
     private final AnalysisReportRepository analysisReportRepository;
     private final ClosetSaveRepository closetSaveRepository;
     private final LookbookRepository lookbookRepository;
@@ -35,17 +45,7 @@ public class MemberService {
 
         //닉네임: 전달된 경우에만 변경 (미전송 시 기존 유지)
         if(dto.nickname() != null){
-            String newNickname = dto.nickname();
-            if(newNickname.isBlank()){
-                throw new BusinessException(ErrorCode.BAD_REQUEST);
-            }
-            //현재 닉네임과 다를 때만 중복 검사 후 변경 (본인 닉네임 허용)
-            if(!newNickname.equals(member.getNickname())){
-                if(memberRepository.existsByNickname(newNickname)){
-                    throw new BusinessException(ErrorCode.NICKNAME_ALREADY_EXISTS);
-                }
-                member.changeNickname(newNickname);
-            }
+            applyNickname(member, dto.nickname());
         }
 
         //프로필 이미지: 전달된 경우에만 교체 (미전송/null 시 기존 유지)
@@ -97,5 +97,74 @@ public class MemberService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
 
         memberRepository.delete(deleteMember);
+    }
+
+    //회원가입 프로필 설정
+    @Transactional
+    public MemberResponse.OnboardingResponse onboarding(
+            AuthMember authMember,
+            MemberRequest.OnboardingRequest dto)
+    {
+        Member member = memberRepository.findById(authMember.getMember().getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+
+        //닉네임 설정
+        applyNickname(member,dto.nickname());
+
+        //프로필 이미지가 전달된 경우 프로필 이미지 설정
+        if(dto.profileImageUrl() != null){
+            member.changeProfileImageUrl(dto.profileImageUrl());
+        }
+
+        List<MemberTag> memberTagList = List.of();
+
+        //전달 받은 태그가 존재하는 경우 태그 교체
+        if(dto.tagIds() != null) {
+            memberTagList = setTags(member, dto.tagIds());
+        }
+
+        return MemberResponse.toOnboardingResponse(member, memberTagList);
+    }
+
+    //닉네임의 중복을 확인한 후 닉네임을 설정하는 함수
+    private void applyNickname(Member member, String newNickname){
+        //닉네임이 비어있다면
+        if(newNickname.isBlank()){
+            throw new BusinessException(ErrorCode.BAD_REQUEST);
+        }
+        //현재 닉네임과 동일하다면 변경 X
+        if(newNickname.equals(member.getNickname())){
+            return;
+        }
+        //같은 닉네임을 가진 다른 사람이 있다면
+        if(memberRepository.existsByNickname(newNickname)){
+            throw new BusinessException(ErrorCode.NICKNAME_ALREADY_EXISTS);
+        }
+
+        member.changeNickname(newNickname);
+    }
+
+    //회원의 태그 설정
+    private List<MemberTag> setTags(Member member, List<Long> tagIds){
+
+        //요청 으로 들어온 값에서 태그 중복에 대한 쿼리 방지
+        List<Long> distinctIds = tagIds.stream().distinct().toList();
+        List<Tag> tags = tagRepository.findAllById(distinctIds);
+
+        if (tags.size() != distinctIds.size()) {
+            throw new BusinessException(ErrorCode.TAG_NOT_FOUND);
+        }
+
+        //기존 태그 삭제
+        memberTagRepository.deleteByMemberId(member.getId());
+
+        //delete -> save 의 순서를 보장
+        memberTagRepository.flush();
+
+        List<MemberTag> memberTags = tags.stream()
+                .map(t -> MemberTag.create(member, t))
+                .toList();
+
+        return memberTagRepository.saveAll(memberTags);
     }
 }
