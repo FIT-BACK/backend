@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -45,6 +46,21 @@ public class LookbookController {
                 authMember.getMember(),
                 request
         );
+        return ApiResponse.onSuccess(response);
+    }
+
+    @Operation(
+            summary = "룩북 목록 조회",
+            description = "룩북을 최신순으로 20개씩 커서 기반 조회. 비로그인 조회를 허용. "
+                    + "로그인한 경우 각 룩북의 내 좋아요 여부를 함께 계산."
+    )
+    @GetMapping
+    public ApiResponse<LookbookResponse.LookbookList> getLookbooks(
+            @Positive @RequestParam(name = "cursor", required = false) Long cursor,
+            @AuthenticationPrincipal AuthMember authMember
+    ) {
+        Member member = authMember == null ? null : authMember.getMember();
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(cursor, member);
         return ApiResponse.onSuccess(response);
     }
 

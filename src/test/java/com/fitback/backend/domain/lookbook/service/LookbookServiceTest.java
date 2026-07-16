@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,12 +26,15 @@ import com.fitback.backend.global.mock.TagRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -163,6 +167,77 @@ class LookbookServiceTest {
                 });
     }
 
+    @Test
+    void getLookbooksReturnsTwentyItemsAndNextCursor() {
+        LocalDateTime latestCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        List<Lookbook> lookbookPage = IntStream.range(0, 21)
+                .mapToObj(index -> createListLookbook(
+                        100L - index,
+                        latestCreatedAt.minusMinutes(index)
+                ))
+                .toList();
+        List<Long> returnedLookbookIds = lookbookPage.subList(0, 20)
+                .stream()
+                .map(Lookbook::getId)
+                .toList();
+        when(lookbookRepository.findAllByOrderByCreatedAtDescIdDesc(any(Pageable.class)))
+                .thenReturn(lookbookPage);
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(returnedLookbookIds))
+                .thenReturn(List.of(LookbookTag.create(lookbookPage.get(0), minimalTag)));
+        when(lookbookLikeRepository.findLikedLookbookIds(1L, returnedLookbookIds))
+                .thenReturn(Set.of(100L));
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(null, member);
+
+        assertThat(response.items()).hasSize(20);
+        assertThat(response.items().get(0).lookbookId()).isEqualTo(100L);
+        assertThat(response.items().get(0).likedByMe()).isTrue();
+        assertThat(response.items().get(0).tags())
+                .extracting(LookbookResponse.TagInfo::tagName)
+                .containsExactly("미니멀");
+        assertThat(response.items().get(1).likedByMe()).isFalse();
+        assertThat(response.nextCursor()).isEqualTo(81L);
+        assertThat(response.hasNext()).isTrue();
+    }
+
+    @Test
+    void getLookbooksReturnsLikedByMeFalseForAnonymousMember() {
+        Lookbook lookbook = createListLookbook(100L, LocalDateTime.of(2026, 7, 16, 12, 0));
+        when(lookbookRepository.findAllByOrderByCreatedAtDescIdDesc(any(Pageable.class)))
+                .thenReturn(List.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(100L)))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(null, null);
+
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).likedByMe()).isFalse();
+        assertThat(response.nextCursor()).isNull();
+        assertThat(response.hasNext()).isFalse();
+        verify(lookbookLikeRepository, never()).findLikedLookbookIds(any(), anyList());
+    }
+
+    @Test
+    void getLookbooksUsesCursorCreatedAtAndIdForNextPage() {
+        LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        Lookbook cursorLookbook = createListLookbook(100L, cursorCreatedAt);
+        Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
+        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(cursorLookbook));
+        when(lookbookRepository.findNextPage(
+                eq(cursorCreatedAt),
+                eq(100L),
+                any(Pageable.class)
+        )).thenReturn(List.of(nextLookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(99L)))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(100L, null);
+
+        assertThat(response.items())
+                .extracting(LookbookResponse.LookbookItem::lookbookId)
+                .containsExactly(99L);
+    }
+
     private LookbookRequest.LookbookCreate createRequest(List<Long> tagIds) {
         return new LookbookRequest.LookbookCreate(
                 "https://s3.example.com/original.jpg",
@@ -184,6 +259,20 @@ class LookbookServiceTest {
         );
         ReflectionTestUtils.setField(lookbook, "id", 100L);
         ReflectionTestUtils.setField(lookbook, "likeCount", 5);
+        ReflectionTestUtils.setField(lookbook, "createdAt", createdAt);
+        return lookbook;
+    }
+
+    private Lookbook createListLookbook(Long lookbookId, LocalDateTime createdAt) {
+        member.changeProfileImageUrl("https://s3.example.com/profile.jpg");
+        Lookbook lookbook = Lookbook.create(
+                member,
+                "https://s3.example.com/original-" + lookbookId + ".jpg",
+                "https://s3.example.com/matched-" + lookbookId + ".jpg",
+                null,
+                null
+        );
+        ReflectionTestUtils.setField(lookbook, "id", lookbookId);
         ReflectionTestUtils.setField(lookbook, "createdAt", createdAt);
         return lookbook;
     }

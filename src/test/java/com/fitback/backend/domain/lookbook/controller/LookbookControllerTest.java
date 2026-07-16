@@ -84,6 +84,37 @@ class LookbookControllerTest {
     }
 
     @Test
+    void getLookbooksAllowsAnonymousMember() {
+        LookbookResponse.LookbookItem item = LookbookResponse.LookbookItem.builder()
+                .lookbookId(100L)
+                .memberId(1L)
+                .nickname("fitback")
+                .profileImageUrl("https://s3.example.com/profile.jpg")
+                .originalImageUrl("https://s3.example.com/original.jpg")
+                .matchedImageUrl("https://s3.example.com/matched.jpg")
+                .tags(List.of())
+                .likeCount(5)
+                .likedByMe(false)
+                .createdAt(LocalDateTime.of(2026, 7, 16, 12, 0))
+                .build();
+        LookbookResponse.LookbookList serviceResponse = LookbookResponse.LookbookList.builder()
+                .items(List.of(item))
+                .nextCursor(null)
+                .hasNext(false)
+                .build();
+        when(lookbookService.getLookbooks(null, null)).thenReturn(serviceResponse);
+
+        ApiResponse<LookbookResponse.LookbookList> response =
+                lookbookController.getLookbooks(null, null);
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.code()).isEqualTo("COMMON200_1");
+        assertThat(response.data()).isEqualTo(serviceResponse);
+        assertThat(response.data().items()).containsExactly(item);
+        verify(lookbookService).getLookbooks(null, null);
+    }
+
+    @Test
     void getLookbookDetailAllowsAnonymousMember() {
         LookbookResponse.LookbookDetail serviceResponse = LookbookResponse.LookbookDetail.builder()
                 .lookbookId(100L)

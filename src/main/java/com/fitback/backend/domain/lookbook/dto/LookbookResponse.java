@@ -40,6 +40,62 @@ public final class LookbookResponse {
         }
     }
 
+    // 룩북 목록 조회
+    @Builder
+    public record LookbookList(
+            List<LookbookItem> items,
+            Long nextCursor,
+            boolean hasNext
+    ) {
+
+        public static LookbookList toLookbookList(
+                List<LookbookItem> items,
+                Long nextCursor,
+                boolean hasNext
+        ) {
+            return LookbookList.builder()
+                    .items(List.copyOf(items))
+                    .nextCursor(nextCursor)
+                    .hasNext(hasNext)
+                    .build();
+        }
+    }
+
+    // 룩북 목록 조회에서 사용할 룩북 정보
+    @Builder
+    public record LookbookItem(
+            Long lookbookId,
+            Long memberId,
+            String nickname,
+            String profileImageUrl,
+            String originalImageUrl,
+            String matchedImageUrl,
+            List<TagInfo> tags,
+            Integer likeCount,
+            boolean likedByMe,
+            LocalDateTime createdAt
+    ) {
+
+        public static LookbookItem toLookbookItem(
+                Lookbook lookbook,
+                List<TagInfo> tags,
+                boolean likedByMe
+        ) {
+            return LookbookItem.builder()
+                    .lookbookId(lookbook.getId())
+                    .memberId(lookbook.getMember().getId())
+                    .nickname(lookbook.getMember().getNickname())
+                    .profileImageUrl(lookbook.getMember().getProfileImageUrl())
+                    .originalImageUrl(lookbook.getOriginalImageUrl())
+                    .matchedImageUrl(lookbook.getMatchedImageUrl())
+                    .tags(List.copyOf(tags))
+                    .likeCount(lookbook.getLikeCount())
+                    .likedByMe(likedByMe)
+                    .createdAt(lookbook.getCreatedAt())
+                    .build();
+        }
+    }
+
     // 룩북 상세 조회
     @Builder
     public record LookbookDetail(

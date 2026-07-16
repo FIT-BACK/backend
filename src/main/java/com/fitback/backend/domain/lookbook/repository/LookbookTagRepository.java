@@ -9,4 +9,7 @@ public interface LookbookTagRepository extends JpaRepository<LookbookTag, Long> 
 
     @EntityGraph(attributePaths = "tag")
     List<LookbookTag> findAllByLookbookIdOrderByIdAsc(Long lookbookId);
+
+    @EntityGraph(attributePaths = "tag")
+    List<LookbookTag> findAllByLookbookIdInOrderByIdAsc(List<Long> lookbookIds);
 }
