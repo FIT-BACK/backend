@@ -25,6 +25,10 @@ public class SecurityConfig {
             "/actuator/health/readiness"
     };
 
+    private static final String[] PUBLIC_IMAGE_URLS = {
+            "/uploads/**"
+    };
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -36,6 +40,7 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(SWAGGER_URLS).permitAll()
                         .requestMatchers(HEALTH_URLS).permitAll()
+                        .requestMatchers(PUBLIC_IMAGE_URLS).permitAll()
                         .requestMatchers("/api/v1/**").permitAll()
                         .anyRequest().denyAll())
                 .build();

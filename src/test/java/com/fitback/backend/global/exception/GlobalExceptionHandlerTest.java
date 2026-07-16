@@ -6,6 +6,7 @@ import com.fitback.backend.global.response.ApiResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 class GlobalExceptionHandlerTest {
 
@@ -38,5 +39,17 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().code()).isEqualTo("COMMON405_1");
         assertThat(response.getBody().message()).isEqualTo("허용되지 않은 HTTP 메서드입니다.");
         assertThat(response.getBody().data()).isNull();
+    }
+
+    @Test
+    void handleMaxUploadSizeExceededExceptionReturnsInvalidImageResponse() {
+        MaxUploadSizeExceededException exception = new MaxUploadSizeExceededException(5L * 1024 * 1024);
+
+        ResponseEntity<ApiResponse<Void>> response =
+                globalExceptionHandler.handleMaxUploadSizeExceededException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(ErrorCode.INVALID_ANALYSIS_IMAGE.getHttpStatus());
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("ANALYSIS400_1");
     }
 }
