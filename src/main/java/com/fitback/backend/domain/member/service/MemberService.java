@@ -116,15 +116,27 @@ public class MemberService {
             member.changeProfileImageUrl(dto.profileImageUrl());
         }
 
-        List<MemberTag> memberTagList = List.of();
-
-        //전달 받은 태그가 존재하는 경우 태그 교체
-        if(dto.tagIds() != null) {
-            memberTagList = setTags(member, dto.tagIds());
-        }
+        //태그 설정
+        List<MemberTag> memberTagList = setTags(member, dto.tagIds());
 
         return MemberResponse.toOnboardingResponse(member, memberTagList);
     }
+
+    //회원 태그 변경
+    @Transactional
+    public MemberResponse.UpdateTagsResponse updateTags(
+            AuthMember authMember,
+            MemberRequest.UpdateTagsRequest dto
+    ){
+        Member member = memberRepository.findById(authMember.getMember().getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+
+        //태그 변경
+        List<MemberTag> memberTagList = setTags(member, dto.tagIds());
+
+        return MemberResponse.toUpdateTagsResponse(memberTagList);
+    }
+
 
     //닉네임의 중복을 확인한 후 닉네임을 설정하는 함수
     private void applyNickname(Member member, String newNickname){
@@ -144,13 +156,14 @@ public class MemberService {
         member.changeNickname(newNickname);
     }
 
-    //회원의 태그 설정
+    //회원의 태그 설정 함수
     private List<MemberTag> setTags(Member member, List<Long> tagIds){
 
         //요청 으로 들어온 값에서 태그 중복에 대한 쿼리 방지
         List<Long> distinctIds = tagIds.stream().distinct().toList();
         List<Tag> tags = tagRepository.findAllById(distinctIds);
 
+        //태그 id로 찾은 태그 개수와 태그 id의 수가 다르다면 잘못된 태그 id 포함
         if (tags.size() != distinctIds.size()) {
             throw new BusinessException(ErrorCode.TAG_NOT_FOUND);
         }
