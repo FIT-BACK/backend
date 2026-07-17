@@ -66,4 +66,14 @@ public class MemberController {
     {
         return ApiResponse.onSuccess(memberService.onboarding(authMember, onboardingRequestDto));
     }
+
+    @Operation(summary = "내 관심 태그 수정", description = "(인증 필요) 관심 태그 목록을 수정 (덮어쓰기)")
+    @PutMapping("/v1/members/me/tags")
+    public ApiResponse<MemberResponse.UpdateTagsResponse> updateTags(
+            @AuthenticationPrincipal AuthMember authMember,
+            @Valid @RequestBody MemberRequest.UpdateTagsRequest updateTagsRequestDto
+    )
+    {
+        return ApiResponse.onSuccess(memberService.updateTags(authMember, updateTagsRequestDto));
+    }
 }

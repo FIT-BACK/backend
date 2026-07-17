@@ -2,6 +2,7 @@ package com.fitback.backend.domain.member.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
 
@@ -54,6 +55,13 @@ public class MemberRequest {
             @NotBlank(message = "닉네임은 필수 입력값 입니다.")
             String nickname,
             String profileImageUrl,
+            @NotNull(message = "관심 태그 필드가 포함되어야 합니다. (빈 배열 허용)")
+            List<Long> tagIds
+    ) {}
+
+    //내 관심 태그 수정
+    public record UpdateTagsRequest(
+            @NotNull(message = "관심 태그 필드가 포함되어야 합니다. (빈 배열 허용)")
             List<Long> tagIds
     ) {}
 }

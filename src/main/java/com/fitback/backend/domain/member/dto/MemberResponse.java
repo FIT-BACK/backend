@@ -176,4 +176,17 @@ public class MemberResponse {
                 .build();
     }
 
+    @Builder
+    public record UpdateTagsResponse(
+            List<TagInfo> tags
+    ) {}
+
+    public static UpdateTagsResponse toUpdateTagsResponse(
+            List<MemberTag> memberTagList
+    )
+    {
+        return UpdateTagsResponse.builder()
+                .tags(memberTagList.stream().map(MemberResponse::toTagInfo).toList())
+                .build();
+    }
 }
