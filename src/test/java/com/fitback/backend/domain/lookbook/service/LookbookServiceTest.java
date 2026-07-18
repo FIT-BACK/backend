@@ -114,7 +114,7 @@ class LookbookServiceTest {
     void getLookbookDetailReturnsAuthorTagsAndLikedByMe() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 7, 16, 12, 0);
         Lookbook lookbook = createPersistedLookbook(createdAt);
-        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
         when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
                 .thenReturn(List.of(
                         LookbookTag.create(lookbook, minimalTag),
@@ -147,7 +147,7 @@ class LookbookServiceTest {
     @Test
     void getLookbookDetailReturnsLikedByMeFalseForAnonymousMember() {
         Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 16, 12, 0));
-        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
         when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
                 .thenReturn(List.of());
 
@@ -159,7 +159,7 @@ class LookbookServiceTest {
 
     @Test
     void getLookbookDetailFailsWhenLookbookDoesNotExist() {
-        when(lookbookRepository.findById(999L)).thenReturn(Optional.empty());
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(999L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> lookbookService.getLookbookDetail(999L, null))
                 .isInstanceOfSatisfying(BusinessException.class, exception -> {
@@ -171,7 +171,7 @@ class LookbookServiceTest {
     @Test
     void deleteLookbookSoftDeletesOwnersLookbook() {
         Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 18, 12, 0));
-        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
 
         lookbookService.deleteLookbook(100L, member);
 
@@ -184,7 +184,7 @@ class LookbookServiceTest {
         Member admin = Member.create("admin@fitback.com", "admin", "password", LoginProvider.EMAIL);
         ReflectionTestUtils.setField(admin, "id", 2L);
         admin.changeRole(MemberRole.ADMIN);
-        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
 
         lookbookService.deleteLookbook(100L, admin);
 
@@ -201,7 +201,7 @@ class LookbookServiceTest {
                 LoginProvider.EMAIL
         );
         ReflectionTestUtils.setField(otherMember, "id", 2L);
-        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
 
         assertThatThrownBy(() -> lookbookService.deleteLookbook(100L, otherMember))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
@@ -212,9 +212,7 @@ class LookbookServiceTest {
 
     @Test
     void deleteLookbookFailsWhenLookbookIsAlreadyDeleted() {
-        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 18, 12, 0));
-        lookbook.softDelete();
-        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> lookbookService.deleteLookbook(100L, member))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
@@ -235,7 +233,9 @@ class LookbookServiceTest {
                 .stream()
                 .map(Lookbook::getId)
                 .toList();
-        when(lookbookRepository.findAllByOrderByCreatedAtDescIdDesc(any(Pageable.class)))
+        when(lookbookRepository.findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+                any(Pageable.class)
+        ))
                 .thenReturn(lookbookPage);
         when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(returnedLookbookIds))
                 .thenReturn(List.of(LookbookTag.create(lookbookPage.get(0), minimalTag)));
@@ -258,7 +258,9 @@ class LookbookServiceTest {
     @Test
     void getLookbooksReturnsLikedByMeFalseForAnonymousMember() {
         Lookbook lookbook = createListLookbook(100L, LocalDateTime.of(2026, 7, 16, 12, 0));
-        when(lookbookRepository.findAllByOrderByCreatedAtDescIdDesc(any(Pageable.class)))
+        when(lookbookRepository.findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+                any(Pageable.class)
+        ))
                 .thenReturn(List.of(lookbook));
         when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(100L)))
                 .thenReturn(List.of());
@@ -277,7 +279,8 @@ class LookbookServiceTest {
         LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
         Lookbook cursorLookbook = createListLookbook(100L, cursorCreatedAt);
         Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
-        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(cursorLookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(cursorLookbook));
         when(lookbookRepository.findNextPage(
                 eq(cursorCreatedAt),
                 eq(100L),

@@ -123,7 +123,7 @@ public class LookbookService {
     public LookbookResponse.LookbookDetail getLookbookDetail(Long lookbookId, Member member) {
 
         // lookbookId 유효성 검사 및 조회
-        Lookbook lookbook = lookbookRepository.findById(lookbookId)
+        Lookbook lookbook = lookbookRepository.findByIdAndDeletedAtIsNull(lookbookId)
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.NOT_FOUND,
                         "룩북을 찾을 수 없습니다."
@@ -149,16 +149,11 @@ public class LookbookService {
     public void deleteLookbook(Long lookbookId, Member member) {
 
         // lookbookId 유효성 검사 및 조회
-        Lookbook lookbook = lookbookRepository.findById(lookbookId)
+        Lookbook lookbook = lookbookRepository.findByIdAndDeletedAtIsNull(lookbookId)
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.NOT_FOUND,
                         "룩북을 찾을 수 없습니다."
                 ));
-
-        // 이미 삭제된 룩북이면 오류 발생
-        if (lookbook.getDeletedAt() != null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "룩북을 찾을 수 없습니다.");
-        }
 
         // ADMIN 이거나 작성자 본인이면 룩북 삭제
         boolean isOwner = Objects.equals(lookbook.getMember().getId(), member.getId());
@@ -175,11 +170,13 @@ public class LookbookService {
 
         // 첫 요청일 때 목록 조회
         if (cursor == null) {
-            return lookbookRepository.findAllByOrderByCreatedAtDescIdDesc(LOOKBOOK_PAGE_REQUEST);
+            return lookbookRepository.findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+                    LOOKBOOK_PAGE_REQUEST
+            );
         }
 
         // cursor 유효성 확인 후 목록 조회
-        Lookbook cursorLookbook = lookbookRepository.findById(cursor)
+        Lookbook cursorLookbook = lookbookRepository.findByIdAndDeletedAtIsNull(cursor)
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.NOT_FOUND,
                         "커서에 해당하는 룩북을 찾을 수 없습니다."
