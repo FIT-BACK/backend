@@ -258,6 +258,15 @@ class LookbookServiceTest {
     }
 
     @Test
+    void deleteLookbookLikeReturnsChangedLikeCount() {
+        when(lookbookLikeCommandService.deleteLike(100L, member)).thenReturn(4);
+
+        LookbookResponse.LookbookLike response = lookbookService.deleteLookbookLike(100L, member);
+
+        assertThat(response.likeCount()).isEqualTo(4);
+    }
+
+    @Test
     void getLookbooksReturnsTwentyItemsAndNextCursor() {
         LocalDateTime latestCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
         List<Lookbook> lookbookPage = IntStream.range(0, 21)

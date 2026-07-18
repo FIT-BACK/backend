@@ -43,6 +43,15 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             """)
     int incrementLikeCount(@Param("lookbookId") Long lookbookId);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Lookbook lookbook
+            SET lookbook.likeCount = lookbook.likeCount - 1
+            WHERE lookbook.id = :lookbookId
+              AND lookbook.deletedAt IS NULL
+            """)
+    int decrementLikeCount(@Param("lookbookId") Long lookbookId);
+
     @Query("""
             SELECT lookbook.likeCount
             FROM Lookbook lookbook

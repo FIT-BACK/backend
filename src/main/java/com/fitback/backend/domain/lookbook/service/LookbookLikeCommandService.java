@@ -46,4 +46,29 @@ public class LookbookLikeCommandService {
                         "룩북을 찾을 수 없습니다."
                 ));
     }
+
+    // 룩북-좋아요 엔티티 삭제
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Integer deleteLike(Long lookbookId, Member member) {
+
+        // 현재 회원의 룩북-좋아요 엔티티를 hard delete 방식으로 삭제
+        int deletedRows = lookbookLikeRepository.deleteByLookbookIdAndMemberId(
+                lookbookId,
+                member.getId()
+        );
+
+        // 실제 삭제된 좋아요가 있을 때만 룩북의 likeCount 1 감소
+        if (deletedRows > 0) {
+            int updatedRows = lookbookRepository.decrementLikeCount(lookbookId);
+            if (updatedRows == 0) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "룩북을 찾을 수 없습니다.");
+            }
+        }
+
+        return lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(lookbookId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.NOT_FOUND,
+                        "룩북을 찾을 수 없습니다."
+                ));
+    }
 }

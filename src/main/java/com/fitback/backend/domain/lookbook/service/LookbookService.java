@@ -199,6 +199,12 @@ public class LookbookService {
         return LookbookResponse.LookbookLike.toLookbookLike(likeCount);
     }
 
+    // 룩북 좋아요 삭제
+    public LookbookResponse.LookbookLike deleteLookbookLike(Long lookbookId, Member member) {
+        Integer likeCount = lookbookLikeCommandService.deleteLike(lookbookId, member);
+        return LookbookResponse.LookbookLike.toLookbookLike(likeCount);
+    }
+
     // cursor 기준 룩북 조회
     private List<Lookbook> findLookbookPage(Long cursor) {
 

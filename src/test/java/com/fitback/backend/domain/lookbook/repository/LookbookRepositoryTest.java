@@ -98,6 +98,28 @@ class LookbookRepositoryTest {
                 .isEmpty();
     }
 
+    @Test
+    void decrementLikeCountUpdatesActiveLookbookAtomically() {
+        Member member = Member.create(
+                "unlike-member@fitback.com",
+                "unlike-member",
+                "password",
+                LoginProvider.EMAIL
+        );
+        entityManager.persist(member);
+
+        Lookbook lookbook = createLookbook(member, "unlike");
+        entityManager.persist(lookbook);
+        entityManager.flush();
+        lookbookRepository.incrementLikeCount(lookbook.getId());
+
+        int updatedRows = lookbookRepository.decrementLikeCount(lookbook.getId());
+
+        assertThat(updatedRows).isEqualTo(1);
+        assertThat(lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(lookbook.getId()))
+                .contains(0);
+    }
+
     private Lookbook createLookbook(Member member, String imageName) {
         return Lookbook.create(
                 member,

@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
@@ -75,6 +77,56 @@ class LookbookLikeCommandServiceTest {
         when(lookbookRepository.incrementLikeCount(100L)).thenReturn(0);
 
         assertThatThrownBy(() -> lookbookLikeCommandService.createLike(100L, member))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
+                );
+    }
+
+    @Test
+    void deleteLikeHardDeletesRelationBeforeDecrementingLikeCount() {
+        when(lookbookLikeRepository.deleteByLookbookIdAndMemberId(100L, 1L)).thenReturn(1);
+        when(lookbookRepository.decrementLikeCount(100L)).thenReturn(1);
+        when(lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(4));
+
+        Integer likeCount = lookbookLikeCommandService.deleteLike(100L, member);
+
+        assertThat(likeCount).isEqualTo(4);
+        InOrder inOrder = inOrder(lookbookLikeRepository, lookbookRepository);
+        inOrder.verify(lookbookLikeRepository).deleteByLookbookIdAndMemberId(100L, 1L);
+        inOrder.verify(lookbookRepository).decrementLikeCount(100L);
+    }
+
+    @Test
+    void deleteLikeReturnsCurrentCountWhenLikeDoesNotExist() {
+        when(lookbookLikeRepository.deleteByLookbookIdAndMemberId(100L, 1L)).thenReturn(0);
+        when(lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(5));
+
+        Integer likeCount = lookbookLikeCommandService.deleteLike(100L, member);
+
+        assertThat(likeCount).isEqualTo(5);
+        verify(lookbookRepository, never()).decrementLikeCount(100L);
+    }
+
+    @Test
+    void deleteLikeFailsWhenLookbookIsDeletedBeforeCountUpdate() {
+        when(lookbookLikeRepository.deleteByLookbookIdAndMemberId(100L, 1L)).thenReturn(1);
+        when(lookbookRepository.decrementLikeCount(100L)).thenReturn(0);
+
+        assertThatThrownBy(() -> lookbookLikeCommandService.deleteLike(100L, member))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
+                );
+    }
+
+    @Test
+    void deleteLikeFailsWhenLookbookDoesNotExist() {
+        when(lookbookLikeRepository.deleteByLookbookIdAndMemberId(100L, 1L)).thenReturn(0);
+        when(lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> lookbookLikeCommandService.deleteLike(100L, member))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
                 );
