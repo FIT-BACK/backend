@@ -55,6 +55,49 @@ class LookbookRepositoryTest {
                 .isEmpty();
     }
 
+    @Test
+    void incrementLikeCountUpdatesActiveLookbookAtomically() {
+        Member member = Member.create(
+                "like-member@fitback.com",
+                "like-member",
+                "password",
+                LoginProvider.EMAIL
+        );
+        entityManager.persist(member);
+
+        Lookbook lookbook = createLookbook(member, "like");
+        entityManager.persist(lookbook);
+        entityManager.flush();
+
+        int updatedRows = lookbookRepository.incrementLikeCount(lookbook.getId());
+
+        assertThat(updatedRows).isEqualTo(1);
+        assertThat(lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(lookbook.getId()))
+                .contains(1);
+    }
+
+    @Test
+    void incrementLikeCountDoesNotUpdateSoftDeletedLookbook() {
+        Member member = Member.create(
+                "deleted-like-member@fitback.com",
+                "deleted-like-member",
+                "password",
+                LoginProvider.EMAIL
+        );
+        entityManager.persist(member);
+
+        Lookbook lookbook = createLookbook(member, "deleted-like");
+        lookbook.softDelete();
+        entityManager.persist(lookbook);
+        entityManager.flush();
+
+        int updatedRows = lookbookRepository.incrementLikeCount(lookbook.getId());
+
+        assertThat(updatedRows).isZero();
+        assertThat(lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(lookbook.getId()))
+                .isEmpty();
+    }
+
     private Lookbook createLookbook(Member member, String imageName) {
         return Lookbook.create(
                 member,

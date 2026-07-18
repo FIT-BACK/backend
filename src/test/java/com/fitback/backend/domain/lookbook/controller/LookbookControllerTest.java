@@ -133,6 +133,31 @@ class LookbookControllerTest {
     }
 
     @Test
+    void likeLookbookReturnsChangedLikeCount() {
+        LookbookResponse.LookbookLike serviceResponse = LookbookResponse.LookbookLike.builder()
+                .likeCount(6)
+                .build();
+        when(lookbookService.likeLookbook(100L, member)).thenReturn(serviceResponse);
+
+        ApiResponse<LookbookResponse.LookbookLike> response =
+                lookbookController.likeLookbook(100L, authMember);
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.code()).isEqualTo("COMMON200_1");
+        assertThat(response.data()).isEqualTo(serviceResponse);
+        assertThat(response.data().likeCount()).isEqualTo(6);
+        verify(lookbookService).likeLookbook(100L, member);
+    }
+
+    @Test
+    void likeLookbookFailsWithoutAuthenticationPrincipal() {
+        assertThatThrownBy(() -> lookbookController.likeLookbook(100L, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED)
+                );
+    }
+
+    @Test
     void getLookbookDetailAllowsAnonymousMember() {
         LookbookResponse.LookbookDetail serviceResponse = LookbookResponse.LookbookDetail.builder()
                 .lookbookId(100L)

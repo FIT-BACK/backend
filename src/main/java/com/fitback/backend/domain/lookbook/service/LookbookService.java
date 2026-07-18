@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,7 @@ public class LookbookService {
     private final LookbookTagRepository lookbookTagRepository;
     private final LookbookLikeRepository lookbookLikeRepository;
     private final TagRepository tagRepository;
+    private final LookbookLikeCommandService lookbookLikeCommandService;
 
     // 룩북 업로드
     @Transactional
@@ -163,6 +165,38 @@ public class LookbookService {
         }
 
         lookbook.softDelete();
+    }
+
+    // 룩북 좋아요
+    public LookbookResponse.LookbookLike likeLookbook(Long lookbookId, Member member) {
+        Integer likeCount;
+
+        try {
+            // 룩북-좋아요 엔티티 생성 시도
+            likeCount = lookbookLikeCommandService.createLike(lookbookId, member);
+        } catch (DataIntegrityViolationException exception) {
+            // DB 유니크 제약 조건을 위반하면 catch
+
+            // 실제로 이미 좋아요를 누른 것인지 확인
+            boolean alreadyLiked = lookbookLikeRepository.existsByLookbookIdAndMemberId(
+                    lookbookId,
+                    member.getId()
+            );
+
+            // 다른 이유로 발생한 예외라면 다시 예외 발생
+            if (!alreadyLiked) {
+                throw exception;
+            }
+
+            // 이미 좋아요를 누른 게 확인 되었다면 현재 룩북의 좋아요를 반환 후 성공 처리
+            likeCount = lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(lookbookId)
+                    .orElseThrow(() -> new BusinessException(
+                            ErrorCode.NOT_FOUND,
+                            "룩북을 찾을 수 없습니다."
+                    ));
+        }
+
+        return LookbookResponse.LookbookLike.toLookbookLike(likeCount);
     }
 
     // cursor 기준 룩북 조회

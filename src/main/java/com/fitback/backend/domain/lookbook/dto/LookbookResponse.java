@@ -135,6 +135,19 @@ public final class LookbookResponse {
         }
     }
 
+    // 룩북 좋아요
+    @Builder
+    public record LookbookLike(
+            Integer likeCount
+    ) {
+
+        public static LookbookLike toLookbookLike(Integer likeCount) {
+            return LookbookLike.builder()
+                    .likeCount(likeCount)
+                    .build();
+        }
+    }
+
     // 룩북-태그 용 dto
     @Builder
     public record TagInfo(

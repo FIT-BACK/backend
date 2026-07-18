@@ -68,6 +68,27 @@ public class LookbookController {
     }
 
     @Operation(
+            summary = "룩북 좋아요",
+            description = "로그인한 회원이 룩북에 좋아요를 등록, 변경된 좋아요 수를 반환. "
+                    + "이미 좋아요한 룩북에 다시 요청해도 현재 좋아요 수와 함께 성공 응답을 반환."
+    )
+    @PostMapping("/{lookbookId}/like")
+    public ApiResponse<LookbookResponse.LookbookLike> likeLookbook(
+            @Positive @PathVariable("lookbookId") Long lookbookId,
+            @AuthenticationPrincipal AuthMember authMember
+    ) {
+        if (authMember == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+
+        LookbookResponse.LookbookLike response = lookbookService.likeLookbook(
+                lookbookId,
+                authMember.getMember()
+        );
+        return ApiResponse.onSuccess(response);
+    }
+
+    @Operation(
             summary = "룩북 목록 조회",
             description = "룩북을 최신순으로 20개씩 커서 기반 조회. 비로그인 조회를 허용. "
                     + "로그인한 경우 각 룩북의 내 좋아요 여부를 함께 계산."

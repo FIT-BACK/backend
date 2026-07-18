@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -32,4 +33,21 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             @Param("cursorId") Long cursorId,
             Pageable pageable
     );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Lookbook lookbook
+            SET lookbook.likeCount = lookbook.likeCount + 1
+            WHERE lookbook.id = :lookbookId
+              AND lookbook.deletedAt IS NULL
+            """)
+    int incrementLikeCount(@Param("lookbookId") Long lookbookId);
+
+    @Query("""
+            SELECT lookbook.likeCount
+            FROM Lookbook lookbook
+            WHERE lookbook.id = :lookbookId
+              AND lookbook.deletedAt IS NULL
+            """)
+    Optional<Integer> findLikeCountByIdAndDeletedAtIsNull(@Param("lookbookId") Long lookbookId);
 }

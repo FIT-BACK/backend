@@ -36,6 +36,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,6 +53,9 @@ class LookbookServiceTest {
 
     @Mock
     private TagRepository tagRepository;
+
+    @Mock
+    private LookbookLikeCommandService lookbookLikeCommandService;
 
     @InjectMocks
     private LookbookService lookbookService;
@@ -218,6 +222,39 @@ class LookbookServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
                 );
+    }
+
+    @Test
+    void likeLookbookReturnsChangedLikeCount() {
+        when(lookbookLikeCommandService.createLike(100L, member)).thenReturn(6);
+
+        LookbookResponse.LookbookLike response = lookbookService.likeLookbook(100L, member);
+
+        assertThat(response.likeCount()).isEqualTo(6);
+    }
+
+    @Test
+    void likeLookbookReturnsCurrentCountWhenAlreadyLiked() {
+        when(lookbookLikeCommandService.createLike(100L, member))
+                .thenThrow(new DataIntegrityViolationException("duplicate like"));
+        when(lookbookLikeRepository.existsByLookbookIdAndMemberId(100L, 1L)).thenReturn(true);
+        when(lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(5));
+
+        LookbookResponse.LookbookLike response = lookbookService.likeLookbook(100L, member);
+
+        assertThat(response.likeCount()).isEqualTo(5);
+    }
+
+    @Test
+    void likeLookbookRethrowsUnexpectedIntegrityViolation() {
+        DataIntegrityViolationException exception =
+                new DataIntegrityViolationException("unexpected constraint violation");
+        when(lookbookLikeCommandService.createLike(100L, member)).thenThrow(exception);
+        when(lookbookLikeRepository.existsByLookbookIdAndMemberId(100L, 1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> lookbookService.likeLookbook(100L, member))
+                .isSameAs(exception);
     }
 
     @Test
