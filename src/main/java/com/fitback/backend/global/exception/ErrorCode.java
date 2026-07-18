@@ -85,6 +85,9 @@ public enum ErrorCode {
             "RECOMMENDATION409_1",
             "추천 생성 중 분석 결과가 변경되었습니다."
     );
+=======
+    TREND_NOT_FOUND(HttpStatus.NOT_FOUND, "TREND404_1", "트렌드를 찾을 수 없습니다.");
+>>>>>>> 7805fd0 (feat: 트렌드 콘텐츠 목록/상세 조회 API 구현)
 
     private final HttpStatus httpStatus;
     private final String code;
