@@ -115,6 +115,24 @@ class LookbookControllerTest {
     }
 
     @Test
+    void deleteLookbookReturnsSuccessResponse() {
+        ApiResponse<Void> response = lookbookController.deleteLookbook(100L, authMember);
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.code()).isEqualTo("COMMON200_1");
+        assertThat(response.data()).isNull();
+        verify(lookbookService).deleteLookbook(100L, member);
+    }
+
+    @Test
+    void deleteLookbookFailsWithoutAuthenticationPrincipal() {
+        assertThatThrownBy(() -> lookbookController.deleteLookbook(100L, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED)
+                );
+    }
+
+    @Test
     void getLookbookDetailAllowsAnonymousMember() {
         LookbookResponse.LookbookDetail serviceResponse = LookbookResponse.LookbookDetail.builder()
                 .lookbookId(100L)

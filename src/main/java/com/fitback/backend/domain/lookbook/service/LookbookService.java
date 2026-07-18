@@ -8,12 +8,14 @@ import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.member.entity.MemberRole;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.mock.TagRepository;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -140,6 +142,32 @@ public class LookbookService {
                 && lookbookLikeRepository.existsByLookbookIdAndMemberId(lookbookId, member.getId());
 
         return LookbookResponse.LookbookDetail.toLookbookDetail(lookbook, tags, likedByMe);
+    }
+
+    // 룩북 삭제
+    @Transactional
+    public void deleteLookbook(Long lookbookId, Member member) {
+
+        // lookbookId 유효성 검사 및 조회
+        Lookbook lookbook = lookbookRepository.findById(lookbookId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.NOT_FOUND,
+                        "룩북을 찾을 수 없습니다."
+                ));
+
+        // 이미 삭제된 룩북이면 오류 발생
+        if (lookbook.getDeletedAt() != null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "룩북을 찾을 수 없습니다.");
+        }
+
+        // ADMIN 이거나 작성자 본인이면 룩북 삭제
+        boolean isOwner = Objects.equals(lookbook.getMember().getId(), member.getId());
+        boolean isAdmin = member.getRole() == MemberRole.ADMIN;
+        if (!isOwner && !isAdmin) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "룩북 삭제 권한이 없습니다.");
+        }
+
+        lookbook.softDelete();
     }
 
     // cursor 기준 룩북 조회

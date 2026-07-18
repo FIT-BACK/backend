@@ -18,6 +18,7 @@ import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.member.entity.MemberRole;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
@@ -165,6 +166,60 @@ class LookbookServiceTest {
                     assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND);
                     assertThat(exception.getMessage()).isEqualTo("룩북을 찾을 수 없습니다.");
                 });
+    }
+
+    @Test
+    void deleteLookbookSoftDeletesOwnersLookbook() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 18, 12, 0));
+        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(lookbook));
+
+        lookbookService.deleteLookbook(100L, member);
+
+        assertThat(lookbook.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    void deleteLookbookAllowsAdminMember() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 18, 12, 0));
+        Member admin = Member.create("admin@fitback.com", "admin", "password", LoginProvider.EMAIL);
+        ReflectionTestUtils.setField(admin, "id", 2L);
+        admin.changeRole(MemberRole.ADMIN);
+        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(lookbook));
+
+        lookbookService.deleteLookbook(100L, admin);
+
+        assertThat(lookbook.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    void deleteLookbookRejectsMemberWithoutPermission() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 18, 12, 0));
+        Member otherMember = Member.create(
+                "other@fitback.com",
+                "other",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(otherMember, "id", 2L);
+        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(lookbook));
+
+        assertThatThrownBy(() -> lookbookService.deleteLookbook(100L, otherMember))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN)
+                );
+        assertThat(lookbook.getDeletedAt()).isNull();
+    }
+
+    @Test
+    void deleteLookbookFailsWhenLookbookIsAlreadyDeleted() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 18, 12, 0));
+        lookbook.softDelete();
+        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(lookbook));
+
+        assertThatThrownBy(() -> lookbookService.deleteLookbook(100L, member))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
+                );
     }
 
     @Test

@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -45,6 +46,9 @@ public class Lookbook extends BaseTimeEntity {
     @Column(name = "like_count", nullable = false)
     private Integer likeCount = 0;
 
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
 
     private Lookbook(
             Member member,
@@ -72,5 +76,9 @@ public class Lookbook extends BaseTimeEntity {
 
     public void changePurchaseUrl(String purchaseUrl) {
         this.purchaseUrl = purchaseUrl;
+    }
+
+    public void softDelete() {
+        this.deletedAt = LocalDateTime.now();
     }
 }
