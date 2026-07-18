@@ -84,10 +84,11 @@ public enum ErrorCode {
             HttpStatus.CONFLICT,
             "RECOMMENDATION409_1",
             "추천 생성 중 분석 결과가 변경되었습니다."
-    );
-=======
-    TREND_NOT_FOUND(HttpStatus.NOT_FOUND, "TREND404_1", "트렌드를 찾을 수 없습니다.");
->>>>>>> 7805fd0 (feat: 트렌드 콘텐츠 목록/상세 조회 API 구현)
+    ),
+    TREND_NOT_FOUND(HttpStatus.NOT_FOUND, "TREND404_1", "트렌드를 찾을 수 없습니다."),
+    CLOSET_NOT_FOUND(HttpStatus.NOT_FOUND, "CLOSET404_1", "저장한 항목을 찾을 수 없습니다."),
+    CLOSET_ALREADY_SAVED(HttpStatus.BAD_REQUEST, "CLOSET400_1", "이미 저장한 항목입니다."),
+    MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER404_1", "회원을 찾을 수 없습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;
