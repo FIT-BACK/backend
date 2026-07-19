@@ -3,6 +3,7 @@ package com.fitback.backend.global.security;
 import com.fitback.backend.global.security.exception.CustomAccessDenied;
 import com.fitback.backend.global.security.exception.CustomEntryPoint;
 import com.fitback.backend.global.security.filter.JwtAuthFilter;
+import com.fitback.backend.global.security.handler.OAuthFailureHandler;
 import com.fitback.backend.global.security.handler.OAuthSuccessHandler;
 import com.fitback.backend.global.security.service.CustomOAuthService;
 import com.fitback.backend.global.security.service.CustomUserDetailsService;
@@ -65,7 +66,8 @@ public class SecurityConfig {
             HttpSecurity http,
             CorsConfigurationSource corsConfigurationSource,
             CustomOAuthService customOAuthService,
-            OAuthSuccessHandler oAuthSuccessHandler
+            OAuthSuccessHandler oAuthSuccessHandler,
+            OAuthFailureHandler oAuthFailureHandler
     ) throws Exception {
         return http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -84,6 +86,7 @@ public class SecurityConfig {
                         .redirectionEndpoint(redirect -> redirect.baseUri("/api/v1/auth/callback/*"))
                         .userInfoEndpoint(userInfo -> userInfo.userService(customOAuthService))
                         .successHandler(oAuthSuccessHandler)
+                        .failureHandler(oAuthFailureHandler)
                 )
                 .addFilterBefore(
                         new JwtAuthFilter(jwtUtil, customUserDetailsService),

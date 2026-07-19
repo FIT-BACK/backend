@@ -3,6 +3,7 @@ package com.fitback.backend.global.security.service;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.OAuthMember;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
@@ -41,8 +42,7 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
         // kakao_account.email (필수 동의라 정상 경로엔 오지만 방어)
         Map<String, Object> kakaoAccount = oAuth2User.getAttribute("kakao_account");
         if (kakaoAccount == null || kakaoAccount.get("email") == null) {
-            throw new OAuth2AuthenticationException(
-                    new OAuth2Error("email_required"), "카카오 이메일 제공 동의가 필요합니다.");
+            throw oauthException(ErrorCode.SOCIAL_EMAIL_REQUIRED);
         }
         String email = (String) kakaoAccount.get("email");
 
@@ -57,8 +57,7 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
     private Member registerNewKakaoMember(String email, String socialUid){
         //같은 email의 기존 계정이 있다면 가입 막기
         if (memberRepository.existsByEmail(email)) {
-            throw new OAuth2AuthenticationException(
-                    new OAuth2Error("email_conflict"), "이미 가입된 이메일입니다.");
+            throw oauthException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         //임시 닉네임 부여
@@ -69,5 +68,12 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
 
         Member newMember = Member.createSocial(email, tempNickname, LoginProvider.KAKAO, socialUid);
         return memberRepository.save(newMember);
+    }
+
+    // 우리 ErrorCode를 OAuth2Error에 실어 던지기 (FailureHandler에서 꺼내 프론트로 전달)
+    private OAuth2AuthenticationException oauthException(ErrorCode errorCode) {
+        return new OAuth2AuthenticationException(
+                new OAuth2Error(errorCode.getCode(), errorCode.getMessage(), null),
+                errorCode.getMessage());
     }
 }
