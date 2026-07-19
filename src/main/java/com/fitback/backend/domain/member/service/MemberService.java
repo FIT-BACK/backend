@@ -87,7 +87,10 @@ public class MemberService {
         Long analysisCount = analysisReportRepository.countByMemberId(member.getId());
         Long uploadCount = lookbookRepository.countByMemberId(member.getId());
 
-        return MemberResponse.toMyPageResponse(savedCount, analysisCount, uploadCount, member);
+        //현재 회원의 관심 태그 (fetch join으로 N+1 방지)
+        List<MemberTag> memberTagList = memberTagRepository.findByMemberIdFetchTag(member.getId());
+
+        return MemberResponse.toMyPageResponse(savedCount, analysisCount, uploadCount, member, memberTagList);
     }
 
     //회원 탈퇴

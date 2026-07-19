@@ -114,7 +114,8 @@ public class MemberResponse {
         String profileImageUrl,
         Long savedCount,
         Long analysisCount,
-        Long uploadCount
+        Long uploadCount,
+        List<TagInfo> tags
     ) {}
 
     //마이페이지 응답 변환
@@ -122,7 +123,8 @@ public class MemberResponse {
             Long savedCount,
             Long analysisCount,
             Long uploadCount,
-            Member member
+            Member member,
+            List<MemberTag> memberTagList
     ){
         return MyPageResponse.builder()
                 .memberId(member.getId())
@@ -130,6 +132,7 @@ public class MemberResponse {
                 .nickname(member.getNickname())
                 .profileImageUrl(member.getProfileImageUrl())
                 .savedCount(savedCount).analysisCount(analysisCount).uploadCount(uploadCount)
+                .tags(memberTagList.stream().map(MemberResponse::toTagInfo).toList())
                 .build();
     }
 
