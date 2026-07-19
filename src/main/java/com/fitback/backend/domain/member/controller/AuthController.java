@@ -43,13 +43,13 @@ public class AuthController {
 
     @Operation(summary = "토큰 재발급", description = "refresh token을 request body 로 받아 access token 재발급")
     @PostMapping("/v1/auth/token/refresh")
-    public ApiResponse<MemberResponse.RefreshResponse> refresh(
+    public ApiResponse<MemberResponse.TokenResponse> refresh(
             @Valid @RequestBody MemberRequest.RefreshRequest refreshDto
     ){
         return ApiResponse.onSuccess(authService.refresh(refreshDto));
     }
 
-    @Operation(summary = "로그아웃", description = "refresh token을 무효화 하는 로그아웃")
+    @Operation(summary = "로그아웃", description = "(인증필요) refresh token을 무효화 하는 로그아웃")
     @PostMapping("/v1/auth/logout")
     public ApiResponse<Void> logout(
             @AuthenticationPrincipal AuthMember authMember

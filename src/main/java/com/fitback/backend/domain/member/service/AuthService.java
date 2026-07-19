@@ -103,7 +103,7 @@ public class AuthService {
     }
 
     @Transactional
-    public MemberResponse.RefreshResponse refresh(MemberRequest.RefreshRequest dto) {
+    public MemberResponse.TokenResponse refresh(MemberRequest.RefreshRequest dto) {
 
         String refreshToken = dto.refreshToken();
 
@@ -128,7 +128,7 @@ public class AuthService {
         String newRefreshToken = jwtUtil.createRefreshToken(authMember);
         member.updateRefreshToken(newRefreshToken);
 
-        return MemberResponse.toRefreshResponse(newAccessToken, newRefreshToken);
+        return MemberResponse.toTokenResponse(newAccessToken, newRefreshToken);
     }
 
     //로그아웃
@@ -150,5 +150,20 @@ public class AuthService {
         if (withdrawalEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(hashedEmail, LocalDateTime.now())) {
             throw new BusinessException(ErrorCode.REJOIN_BLOCKED);
         }
+    }
+
+    //OAuth 방식에서 access token과 refresh token을 생성하고 refresh token을 저장하는 메서드
+    @Transactional
+    public MemberResponse.TokenResponse createOAuthToken(Long memberId) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+
+        AuthMember authMember = new AuthMember(member);
+        String accessToken = jwtUtil.createAccessToken(authMember);
+        String refreshToken = jwtUtil.createRefreshToken(authMember);
+
+        member.updateRefreshToken(refreshToken);   // 트랜잭션 안이라 dirty checking으로 저장됨
+
+        return MemberResponse.toTokenResponse(accessToken, refreshToken);
     }
 }
