@@ -71,7 +71,10 @@ class FixtureShoppingProviderAdapterTest {
         assertThat(unstable.providerRef().stable()).isFalse();
         assertThat(unstable.brand()).isNull();
         assertThat(unstable.categoryPath()).isNull();
-        assertThat(unstable.offer()).isNull();
+        assertThat(unstable.offer().regularPrice()).isNull();
+        assertThat(unstable.offer().currentPrice()).isNull();
+        assertThat(unstable.offer().salePrice()).isNull();
+        assertThat(unstable.offer().availability()).isEqualTo(ProductAvailability.UNKNOWN);
 
         ExternalProductCandidate usd = findByName(result.items(), "Fixture USD Bag");
         assertThat(usd.offer().currentPrice().currency()).isEqualTo("USD");

@@ -241,7 +241,16 @@ public class FixtureShoppingProviderAdapter implements
                 "Fixture Unstable Look",
                 null,
                 null,
-                null,
+                new ProductOffer(
+                        null,
+                        null,
+                        null,
+                        ProductAvailability.UNKNOWN,
+                        null,
+                        URI.create("https://fixture.example/discovery/unstable"),
+                        null,
+                        OBSERVED_AT
+                ),
                 null,
                 null,
                 OBSERVED_AT

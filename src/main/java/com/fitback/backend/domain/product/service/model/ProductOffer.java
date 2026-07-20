@@ -18,7 +18,6 @@ public record ProductOffer(
 ) {
 
     public ProductOffer {
-        Objects.requireNonNull(currentPrice, "currentPrice must not be null");
         Objects.requireNonNull(availability, "availability must not be null");
         seller = ModelValidation.validateNullableText(seller, "seller");
         purchaseUrl = ModelValidation.validateNullableHttpUri(purchaseUrl, "purchaseUrl");
@@ -28,8 +27,8 @@ public record ProductOffer(
         List<Money> prices = Stream.of(regularPrice, currentPrice, salePrice)
                 .filter(Objects::nonNull)
                 .toList();
-        String currency = currentPrice.currency();
-        if (prices.stream().anyMatch(price -> !currency.equals(price.currency()))) {
+        String currency = prices.isEmpty() ? null : prices.getFirst().currency();
+        if (currency != null && prices.stream().anyMatch(price -> !currency.equals(price.currency()))) {
             throw new IllegalArgumentException("offer prices must use the same currency");
         }
     }
