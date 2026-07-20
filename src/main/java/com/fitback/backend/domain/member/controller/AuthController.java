@@ -8,6 +8,8 @@ import com.fitback.backend.global.security.entity.AuthMember;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,10 +25,12 @@ public class AuthController {
     @Operation(summary = "이메일 회원가입", description = "이메일과 비밀번호를 이용한 회원가입.\n" +
             "프로필 이미지, 닉네임, 관심 스타일 태그는 회원가입 직후 /members/me/onboarding에서 별도 설정.")
     @PostMapping("/v1/auth/sign")
-    public ApiResponse<MemberResponse.SignUpResponse> signUp(
+    public ResponseEntity<ApiResponse<MemberResponse.SignUpResponse>> signUp(
             @Valid @RequestBody MemberRequest.SignUpRequest signUpDto)
     {
-        return ApiResponse.onCreated(authService.signUp(signUpDto));
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.onCreated(authService.signUp(signUpDto)));
     }
 
     @Operation(summary = "이메일 로그인", description = "이메일과 비밀번호를 검증하여 로그인 처리")
