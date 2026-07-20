@@ -56,7 +56,7 @@ class AuthControllerIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/sign")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonBody("test@fitback.com", "password123")))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.code").value("COMMON201_1"))
                 .andExpect(jsonPath("$.data.email").value("test@fitback.com"))
@@ -140,6 +140,35 @@ class AuthControllerIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/token/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH401_2"));
+    }
+
+    //토큰 재발급 회전 테스트 - 새 토큰 DB 저장, 기존 토큰 재사용 차단
+    @Test
+    void refreshRotationBlocksOldTokenTest() throws Exception {
+        JsonNode data = signUp("rotation@fitback.com", "password123");
+        String oldRefreshToken = data.get("refreshToken").asText();
+
+        //기존 토큰으로 재발급 후 새 refresh 토큰 추출
+        String responseBody = mockMvc.perform(post("/api/v1/auth/token/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("refreshToken", oldRefreshToken))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String newRefreshToken = objectMapper.readTree(responseBody).get("data").get("refreshToken").asText();
+
+        //회전으로 새 토큰은 기존 토큰과 달라야 함
+        assertThat(newRefreshToken).isNotEqualTo(oldRefreshToken);
+
+        //새 토큰이 DB에 저장되었는지 확인
+        Member member = memberRepository.findByEmail("rotation@fitback.com").orElseThrow();
+        assertThat(member.getRefreshToken()).isEqualTo(newRefreshToken);
+
+        //기존 토큰으로 다시 재발급 시 401 (재사용 차단)
+        mockMvc.perform(post("/api/v1/auth/token/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("refreshToken", oldRefreshToken))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH401_2"));
     }

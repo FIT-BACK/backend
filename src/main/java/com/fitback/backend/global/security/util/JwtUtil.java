@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 
@@ -71,6 +72,7 @@ public class JwtUtil {
     private JwtBuilder baseBuilder(String subject, Duration expiration) {
         Instant now = Instant.now();
         return Jwts.builder()
+                .id(UUID.randomUUID().toString()) // 토큰 고유 id(jti), 같은 초 발급 토큰 구분
                 .subject(subject) // User 이메일을 Subject로(getUsername -> 이메일 반환)
                 .issuedAt(Date.from(now)) // 언제 발급한지
                 .expiration(Date.from(now.plus(expiration))); // 언제까지 유효한지
