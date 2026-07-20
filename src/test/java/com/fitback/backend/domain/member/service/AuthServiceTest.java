@@ -13,6 +13,7 @@ import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.security.util.JwtUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -76,8 +77,14 @@ class AuthServiceTest {
         assertThat(response.loginProvider()).isEqualTo(LoginProvider.EMAIL);
         assertThat(response.role()).isEqualTo(MemberRole.USER);
 
-        //save 메서드가 한번 실행되었는지 검증
-        verify(memberRepository).save(any(Member.class));
+        //실제 저장된 member 필드 검증 (raw 아닌 암호화 비밀번호 포함)
+        ArgumentCaptor<Member> memberCaptor = ArgumentCaptor.forClass(Member.class);
+        verify(memberRepository).save(memberCaptor.capture());
+        Member savedMember = memberCaptor.getValue();
+        assertThat(savedMember.getEmail()).isEqualTo("test@fitback.com");
+        assertThat(savedMember.getPassword()).isEqualTo("encodedPw");
+        assertThat(savedMember.getLoginProvider()).isEqualTo(LoginProvider.EMAIL);
+        assertThat(savedMember.getRole()).isEqualTo(MemberRole.USER);
     }
 
     //회원가입 실패 - 이미 존재하는 이메일이면 EMAIL_ALREADY_EXISTS
@@ -136,6 +143,10 @@ class AuthServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode())
                                 .isEqualTo(ErrorCode.INVALID_CREDENTIALS));
+
+        //인증 실패 시 토큰 생성 미호출 검증
+        verify(jwtUtil, never()).createAccessToken(any());
+        verify(jwtUtil, never()).createRefreshToken(any());
     }
 
     //로그인 실패 - 비밀번호가 틀리면 INVALID_CREDENTIALS
@@ -153,6 +164,10 @@ class AuthServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode())
                                 .isEqualTo(ErrorCode.INVALID_CREDENTIALS));
+
+        //인증 실패 시 토큰 생성 미호출 검증
+        verify(jwtUtil, never()).createAccessToken(any());
+        verify(jwtUtil, never()).createRefreshToken(any());
     }
 
     //토큰 재발급 성공 테스트 - 저장된 refresh 토큰과 일치하면 새 access, refresh 토큰
@@ -198,6 +213,10 @@ class AuthServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode())
                                 .isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN));
+
+        //인증 실패 시 토큰 생성 미호출 검증
+        verify(jwtUtil, never()).createAccessToken(any());
+        verify(jwtUtil, never()).createRefreshToken(any());
     }
 
     //토큰 재발급 실패 테스트 - 저장된 토큰과 다르면 INVALID_REFRESH_TOKEN
@@ -220,6 +239,10 @@ class AuthServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode())
                                 .isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN));
+
+        //인증 실패 시 토큰 생성 미호출 검증
+        verify(jwtUtil, never()).createAccessToken(any());
+        verify(jwtUtil, never()).createRefreshToken(any());
     }
 
     //로그아웃 성공 테스트 - refresh 토큰 초기화

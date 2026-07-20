@@ -46,6 +46,8 @@ class JwtUtilTest {
         assertThat(jwtUtil.isRefreshToken(token)).isTrue();
         //refresh 토큰이므로 access 타입 아님
         assertThat(jwtUtil.isAccessToken(token)).isFalse();
+        //refresh 토큰 subject에도 이메일 포함 (재발급 시 회원 조회에 사용)
+        assertThat(jwtUtil.getEmailFromToken(token)).isEqualTo("test@fitback.com");
     }
 
     //만료 토큰 테스트 - 만료 토큰은 유효하지 않음
@@ -69,6 +71,8 @@ class JwtUtilTest {
 
         //우리 시크릿으로 검증 시 서명 불일치로 실패
         assertThat(jwtUtil.isValid(forgedToken)).isFalse();
+        //위조 토큰에서 이메일 추출 시 null (서명 검증 없이 payload 반환 방지)
+        assertThat(jwtUtil.getEmailFromToken(forgedToken)).isNull();
     }
 
     //형식 오류 토큰 테스트 - 깨진 문자열은 유효하지 않고 이메일도 null
