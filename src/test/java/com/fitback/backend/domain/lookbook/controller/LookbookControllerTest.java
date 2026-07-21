@@ -44,8 +44,8 @@ class LookbookControllerTest {
         request = new LookbookRequest.LookbookCreate(
                 "https://s3.example.com/original.jpg",
                 "https://s3.example.com/matched.jpg",
-                List.of(10L, 20L),
                 null,
+                List.of(10L, 20L),
                 "합리적인 가격으로 완성한 룩입니다."
         );
     }
@@ -54,13 +54,6 @@ class LookbookControllerTest {
     void createLookbookReturnsCreatedResponse() {
         LookbookResponse.LookbookCreate serviceResponse = LookbookResponse.LookbookCreate.builder()
                 .lookbookId(100L)
-                .memberId(1L)
-                .originalImageUrl(request.originalImageUrl())
-                .matchedImageUrl(request.matchedImageUrl())
-                .tagIds(request.tagIds())
-                .purchaseUrl(request.purchaseUrl())
-                .comment(request.comment())
-                .likeCount(0)
                 .build();
         when(lookbookService.createLookbook(member, request)).thenReturn(serviceResponse);
 
@@ -68,7 +61,8 @@ class LookbookControllerTest {
                 lookbookController.createLookbook(authMember, request);
 
         assertThat(response.success()).isTrue();
-        assertThat(response.code()).isEqualTo("COMMON200_1");
+        assertThat(response.code()).isEqualTo("COMMON201_1");
+        assertThat(response.message()).isEqualTo("리소스가 생성되었습니다.");
         assertThat(response.data()).isEqualTo(serviceResponse);
         verify(lookbookService).createLookbook(member, request);
     }

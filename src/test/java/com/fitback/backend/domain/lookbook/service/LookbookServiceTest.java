@@ -78,7 +78,7 @@ class LookbookServiceTest {
 
     @Test
     void createLookbookSavesLookbookAndTagRelations() {
-        LookbookRequest.LookbookCreate request = createRequest(List.of(10L, 20L, 10L));
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L, 20L));
         when(tagRepository.findAllById(List.of(10L, 20L)))
                 .thenReturn(List.of(minimalTag, streetTag));
         when(lookbookRepository.save(any(Lookbook.class))).thenAnswer(invocation -> {
@@ -90,13 +90,6 @@ class LookbookServiceTest {
         LookbookResponse.LookbookCreate response = lookbookService.createLookbook(member, request);
 
         assertThat(response.lookbookId()).isEqualTo(100L);
-        assertThat(response.memberId()).isEqualTo(1L);
-        assertThat(response.originalImageUrl()).isEqualTo("https://s3.example.com/original.jpg");
-        assertThat(response.matchedImageUrl()).isEqualTo("https://s3.example.com/matched.jpg");
-        assertThat(response.tagIds()).containsExactly(10L, 20L);
-        assertThat(response.purchaseUrl()).isEqualTo("https://shop.example.com/item");
-        assertThat(response.comment()).isEqualTo("합리적인 가격으로 완성한 룩입니다.");
-        assertThat(response.likeCount()).isZero();
         verify(lookbookTagRepository).saveAll(anyList());
     }
 
@@ -113,6 +106,19 @@ class LookbookServiceTest {
                 });
         verify(lookbookRepository, never()).save(any());
         verify(lookbookTagRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    void createLookbookRejectsDuplicateTagIds() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L, 20L, 10L));
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("태그 ID는 중복될 수 없습니다.");
+                });
+        verify(tagRepository, never()).findAllById(anyList());
+        verify(lookbookRepository, never()).save(any());
     }
 
     @Test
@@ -345,8 +351,8 @@ class LookbookServiceTest {
         return new LookbookRequest.LookbookCreate(
                 "https://s3.example.com/original.jpg",
                 "https://s3.example.com/matched.jpg",
-                tagIds,
                 "https://shop.example.com/item",
+                tagIds,
                 "합리적인 가격으로 완성한 룩입니다."
         );
     }

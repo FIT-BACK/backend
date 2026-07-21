@@ -1,11 +1,12 @@
 package com.fitback.backend.domain.lookbook.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import org.hibernate.validator.constraints.URL;
 
 // 룩북 요청 DTO
 public final class LookbookRequest {
@@ -14,6 +15,7 @@ public final class LookbookRequest {
     }
 
     // 룩북 업로드
+    @Schema(name = "LookbookCreateRequest")
     public record LookbookCreate(
             @NotBlank(message = "원본 룩 이미지 URL은 필수입니다.")
             @Size(max = 2048, message = "원본 룩 이미지 URL은 2048자 이하여야 합니다.")
@@ -23,18 +25,32 @@ public final class LookbookRequest {
             @Size(max = 2048, message = "가성비 매칭 이미지 URL은 2048자 이하여야 합니다.")
             String matchedImageUrl,
 
-            @NotEmpty(message = "스타일 태그는 하나 이상 선택해야 합니다.")
+            @Size(max = 2048, message = "구매 URL은 2048자 이하여야 합니다.")
+            @URL(
+                    regexp = "^https?://.*$",
+                    message = "올바른 링크 형식을 입력해주세요."
+            )
+            String purchaseUrl,
+
+            @NotNull(message = "스타일 태그는 필수입니다.")
+            @Size(min = 1, max = 5, message = "스타일 태그는 1개 이상 5개 이하여야 합니다.")
             List<
                     @NotNull(message = "태그 ID는 null일 수 없습니다.")
                     @Positive(message = "태그 ID는 양수여야 합니다.")
                     Long
             > tagIds,
 
-            @Size(max = 2048, message = "구매 URL은 2048자 이하여야 합니다.")
-            String purchaseUrl,
-
             @Size(max = 500, message = "한 줄 코멘트는 500자 이하여야 합니다.")
             String comment
     ) {
+
+        public LookbookCreate {
+            if (purchaseUrl != null) {
+                purchaseUrl = purchaseUrl.trim();
+                if (purchaseUrl.isEmpty()) {
+                    purchaseUrl = null;
+                }
+            }
+        }
     }
 }

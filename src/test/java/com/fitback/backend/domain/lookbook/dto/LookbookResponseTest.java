@@ -11,6 +11,17 @@ class LookbookResponseTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void lookbookCreateSerializesAccordingToApiSpecification() throws Exception {
+        LookbookResponse.LookbookCreate response = LookbookResponse.LookbookCreate.builder()
+                .lookbookId(12L)
+                .build();
+
+        String json = objectMapper.writeValueAsString(response);
+
+        assertThat(json).isEqualTo("{\"lookbookId\":12}");
+    }
+
+    @Test
     void lookbookListSerializesAccordingToApiSpecification() throws Exception {
         LookbookResponse.LookbookItem item = LookbookResponse.LookbookItem.builder()
                 .lookbookId(12L)

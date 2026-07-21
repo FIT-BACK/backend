@@ -31,7 +31,7 @@ public class LookbookController {
     @Operation(
             summary = "룩북 업로드",
             description = "로그인한 회원이 S3에 선 업로드한 원본 룩 이미지와 가성비 매칭 이미지 URL, "
-                    + "기존 태그 ID, 선택 구매 링크 및 코멘트를 전달하여 룩북을 생성."
+                    + "1개 이상 5개 이하의 중복되지 않는 태그 ID, 선택 구매 링크 및 코멘트를 전달하여 룩북을 생성."
     )
     @PostMapping
     public ApiResponse<LookbookResponse.LookbookCreate> createLookbook(
@@ -46,7 +46,7 @@ public class LookbookController {
                 authMember.getMember(),
                 request
         );
-        return ApiResponse.onSuccess(response);
+        return ApiResponse.onCreated(response);
     }
 
     @Operation(

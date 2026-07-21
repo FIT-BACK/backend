@@ -13,6 +13,7 @@ import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.mock.TagRepository;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -46,9 +47,8 @@ public class LookbookService {
     ) {
 
         // tagId로 태그 객체 찾기
-        List<Long> tagIds = request.tagIds().stream()
-                .distinct()
-                .toList();
+        List<Long> tagIds = request.tagIds();
+        validateNoDuplicateTagIds(tagIds);
         List<Tag> tags = tagRepository.findAllById(tagIds);
 
         // 룩북 객체 생성 전 태그 유효성 검사
@@ -72,7 +72,7 @@ public class LookbookService {
                 .toList();
         lookbookTagRepository.saveAll(lookbookTags);
 
-        return LookbookResponse.LookbookCreate.toLookbookCreate(savedLookbook, tagIds);
+        return LookbookResponse.LookbookCreate.toLookbookCreate(savedLookbook);
     }
 
     // 룩북 목록 조회
@@ -280,6 +280,13 @@ public class LookbookService {
                     ErrorCode.NOT_FOUND,
                     "존재하지 않는 태그입니다: " + missingTagIds
             );
+        }
+    }
+
+    // 태그 ID 중복 검사
+    private void validateNoDuplicateTagIds(List<Long> tagIds) {
+        if (new HashSet<>(tagIds).size() != tagIds.size()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "태그 ID는 중복될 수 없습니다.");
         }
     }
 }

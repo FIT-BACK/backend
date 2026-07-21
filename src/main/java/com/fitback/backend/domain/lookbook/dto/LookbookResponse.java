@@ -2,6 +2,8 @@ package com.fitback.backend.domain.lookbook.dto;
 
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
 import java.util.List;
+
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 
 // 룩북 응답 DTO
@@ -11,28 +13,15 @@ public final class LookbookResponse {
     }
 
     // 룩북 업로드
+    @Schema(name = "LookbookCreateResponse")
     @Builder
     public record LookbookCreate(
-            Long lookbookId,
-            Long memberId,
-            String originalImageUrl,
-            String matchedImageUrl,
-            List<Long> tagIds,
-            String purchaseUrl,
-            String comment,
-            Integer likeCount
+            Long lookbookId
     ) {
 
-        public static LookbookCreate toLookbookCreate(Lookbook lookbook, List<Long> tagIds) {
+        public static LookbookCreate toLookbookCreate(Lookbook lookbook) {
             return LookbookCreate.builder()
                     .lookbookId(lookbook.getId())
-                    .memberId(lookbook.getMember().getId())
-                    .originalImageUrl(lookbook.getOriginalImageUrl())
-                    .matchedImageUrl(lookbook.getMatchedImageUrl())
-                    .tagIds(List.copyOf(tagIds))
-                    .purchaseUrl(lookbook.getPurchaseUrl())
-                    .comment(lookbook.getComment())
-                    .likeCount(lookbook.getLikeCount())
                     .build();
         }
     }
