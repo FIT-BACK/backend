@@ -110,4 +110,16 @@ class LookbookResponseTest {
 
         assertThat(json).isEqualTo("{\"isLiked\":true,\"likeCount\":129}");
     }
+
+    @Test
+    void lookbookUnlikeSerializesAccordingToApiSpecification() throws Exception {
+        LookbookResponse.LookbookUnlike response = LookbookResponse.LookbookUnlike.builder()
+                .isLiked(false)
+                .likeCount(128)
+                .build();
+
+        String json = objectMapper.writeValueAsString(response);
+
+        assertThat(json).isEqualTo("{\"isLiked\":false,\"likeCount\":128}");
+    }
 }

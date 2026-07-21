@@ -69,7 +69,7 @@ public class LookbookController {
     @Operation(
             summary = "룩북 좋아요",
             description = "로그인한 회원이 룩북에 좋아요를 등록, 변경된 좋아요 수를 반환. "
-                    + "이미 좋아요한 룩북에 다시 요청해도 현재 좋아요 수와 함께 성공 응답을 반환."
+                    + "이미 좋아요한 룩북에 다시 요청해도 현재 좋아요 수, 좋아요를 눌렀는지 여부와 함께 성공 응답을 반환."
     )
     @PostMapping("/{lookbookId}/like")
     public ApiResponse<LookbookResponse.LookbookLike> likeLookbook(
@@ -90,7 +90,7 @@ public class LookbookController {
     @Operation(
             summary = "룩북 좋아요 취소",
             description = "로그인한 회원의 룩북 좋아요를 hard delete 방식으로 삭제하고 변경된 좋아요 수를 반환. "
-                    + "좋아요하지 않은 룩북에 다시 요청해도 현재 좋아요 수와 함께 성공 응답을 반환."
+                    + "좋아요하지 않은 룩북에 다시 요청해도 현재 좋아요 수, 좋아요를 눌렀는지 여부와 함께 성공 응답을 반환."
     )
     @DeleteMapping("/{lookbookId}/like")
     public ApiResponse<LookbookResponse.LookbookUnlike> deleteLookbookLike(

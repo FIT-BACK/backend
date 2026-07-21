@@ -155,6 +155,7 @@ class LookbookControllerTest {
     @Test
     void deleteLookbookLikeReturnsChangedLikeCount() {
         LookbookResponse.LookbookUnlike serviceResponse = LookbookResponse.LookbookUnlike.builder()
+                .isLiked(false)
                 .likeCount(4)
                 .build();
         when(lookbookService.deleteLookbookLike(100L, member)).thenReturn(serviceResponse);
@@ -165,6 +166,7 @@ class LookbookControllerTest {
         assertThat(response.success()).isTrue();
         assertThat(response.code()).isEqualTo("COMMON200_1");
         assertThat(response.data()).isEqualTo(serviceResponse);
+        assertThat(response.data().isLiked()).isFalse();
         assertThat(response.data().likeCount()).isEqualTo(4);
         verify(lookbookService).deleteLookbookLike(100L, member);
     }

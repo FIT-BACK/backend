@@ -295,6 +295,7 @@ class LookbookServiceTest {
 
         LookbookResponse.LookbookUnlike response = lookbookService.deleteLookbookLike(100L, member);
 
+        assertThat(response.isLiked()).isFalse();
         assertThat(response.likeCount()).isEqualTo(4);
     }
 

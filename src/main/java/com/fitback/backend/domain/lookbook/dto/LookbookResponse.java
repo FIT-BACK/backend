@@ -153,11 +153,13 @@ public final class LookbookResponse {
     // 룩북 좋아요 취소
     @Builder
     public record LookbookUnlike(
+            boolean isLiked,
             Integer likeCount
     ) {
 
         public static LookbookUnlike toLookbookUnlike(Integer likeCount) {
             return LookbookUnlike.builder()
+                    .isLiked(false)
                     .likeCount(likeCount)
                     .build();
         }
