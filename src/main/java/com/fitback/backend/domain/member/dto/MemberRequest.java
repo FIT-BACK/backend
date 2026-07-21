@@ -40,7 +40,9 @@ public class MemberRequest {
     public record UpdateMemberRequest(
             @Size(min = 2, max = 16, message = "닉네임은 2~16자여야 합니다.")
             String nickname,
-            String profileImageUrl
+            String profileImageUrl,
+            @Size(max = 5, message = "관심 태그는 최대 5개까지 선택할 수 있습니다.")
+            List<Long> tagIds
     ) {}
 
     //비밀번호 변경

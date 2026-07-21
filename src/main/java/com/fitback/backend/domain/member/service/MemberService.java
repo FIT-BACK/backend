@@ -62,7 +62,15 @@ public class MemberService {
             member.changeProfileImageUrl(dto.profileImageUrl());
         }
 
-        return MemberResponse.toUpdateMemberResponse(member);
+        //관심 태그: 전달된 경우에만 교체 (미전송 시 기존 유지, [] 전체 해제)
+        List<MemberTag> memberTagList;
+        if(dto.tagIds() != null){
+            memberTagList = setTags(member, dto.tagIds());
+        } else {
+            memberTagList = memberTagRepository.findByMemberIdFetchTag(member.getId());
+        }
+
+        return MemberResponse.toUpdateMemberResponse(member, memberTagList);
     }
 
 

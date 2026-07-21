@@ -18,7 +18,7 @@ public class MemberController {
 
     private final MemberService memberService;
 
-    @Operation(summary = "회원정보 수정", description = "(인증필요) 마이페이지에서 현재 로그인한 회원의 닉네임과 프로필 이미지 URL을 수정, ")
+    @Operation(summary = "회원정보 수정", description = "(인증필요) 마이페이지에서 현재 로그인한 회원의 닉네임·프로필 이미지 URL·관심 태그를 수정 (전달된 필드만 반영, tagIds 미전송 시 태그 유지)")
     @PatchMapping("/v1/members/me")
     public ApiResponse<MemberResponse.UpdateMemberResponse> updateMember(
             @AuthenticationPrincipal AuthMember authMember,
