@@ -115,6 +115,7 @@ public class MemberResponse {
         String email,
         String nickname,
         String profileImageUrl,
+        LoginProvider loginProvider,
         Long savedCount,
         Long analysisCount,
         Long uploadCount,
@@ -134,6 +135,7 @@ public class MemberResponse {
                 .email(member.getEmail())
                 .nickname(member.getNickname())
                 .profileImageUrl(member.getProfileImageUrl())
+                .loginProvider(member.getLoginProvider())
                 .savedCount(savedCount).analysisCount(analysisCount).uploadCount(uploadCount)
                 .tags(memberTagList.stream().map(MemberResponse::toTagInfo).toList())
                 .build();
