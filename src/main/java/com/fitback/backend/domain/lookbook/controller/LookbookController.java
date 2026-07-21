@@ -10,7 +10,6 @@ import com.fitback.backend.global.mock.AuthMember;
 import com.fitback.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -56,7 +55,7 @@ public class LookbookController {
     )
     @DeleteMapping("/{lookbookId}")
     public ApiResponse<Void> deleteLookbook(
-            @Positive @PathVariable("lookbookId") Long lookbookId,
+            @PathVariable("lookbookId") Long lookbookId,
             @AuthenticationPrincipal AuthMember authMember
     ) {
         if (authMember == null) {
@@ -74,7 +73,7 @@ public class LookbookController {
     )
     @PostMapping("/{lookbookId}/like")
     public ApiResponse<LookbookResponse.LookbookLike> likeLookbook(
-            @Positive @PathVariable("lookbookId") Long lookbookId,
+            @PathVariable("lookbookId") Long lookbookId,
             @AuthenticationPrincipal AuthMember authMember
     ) {
         if (authMember == null) {
@@ -95,7 +94,7 @@ public class LookbookController {
     )
     @DeleteMapping("/{lookbookId}/like")
     public ApiResponse<LookbookResponse.LookbookLike> deleteLookbookLike(
-            @Positive @PathVariable("lookbookId") Long lookbookId,
+            @PathVariable("lookbookId") Long lookbookId,
             @AuthenticationPrincipal AuthMember authMember
     ) {
         if (authMember == null) {
@@ -117,8 +116,8 @@ public class LookbookController {
     )
     @GetMapping
     public ApiResponse<LookbookResponse.LookbookList> getLookbooks(
-            @Positive @RequestParam(name = "cursor", required = false) Long cursor,
-            @Positive @RequestParam(name = "pageSize", required = false, defaultValue = "20")
+            @RequestParam(name = "cursor", required = false) Long cursor,
+            @RequestParam(name = "pageSize", required = false, defaultValue = "20")
             Integer pageSize,
             @AuthenticationPrincipal AuthMember authMember
     ) {
@@ -133,12 +132,12 @@ public class LookbookController {
 
     @Operation(
             summary = "룩북 상세 조회",
-            description = "룩북의 이미지, 작성자, 태그, 구매 링크, 코멘트와 좋아요 정보를 조회. "
+            description = "룩북의 원본 이미지, 매칭 이미지, 작성자 닉네임, 태그, 구매 링크와 좋아요 정보를 조회. "
                     + "비로그인 조회를 허용하며 로그인한 경우 isLiked 를 통해 내 좋아요 여부를 함께 계산."
     )
     @GetMapping("/{lookbookId}")
     public ApiResponse<LookbookResponse.LookbookDetail> getLookbookDetail(
-            @Positive @PathVariable("lookbookId") Long lookbookId,
+            @PathVariable("lookbookId") Long lookbookId,
             @AuthenticationPrincipal AuthMember authMember
     ) {
         Member member = authMember == null ? null : authMember.getMember();

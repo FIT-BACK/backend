@@ -1,9 +1,6 @@
 package com.fitback.backend.domain.lookbook.dto;
 
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
-import com.fitback.backend.domain.tag.entity.Tag;
-import com.fitback.backend.domain.tag.entity.TagType;
-import java.time.LocalDateTime;
 import java.util.List;
 import lombok.Builder;
 
@@ -98,38 +95,28 @@ public final class LookbookResponse {
     // 룩북 상세 조회
     @Builder
     public record LookbookDetail(
-            Long lookbookId,
-            Long memberId,
-            String nickname,
-            String profileImageUrl,
             String originalImageUrl,
             String matchedImageUrl,
-            List<TagInfo> tags,
+            String authorNickname,
             String purchaseUrl,
-            String comment,
+            List<String> tags,
             Integer likeCount,
-            boolean likedByMe,
-            LocalDateTime createdAt
+            boolean isLiked
     ) {
 
         public static LookbookDetail toLookbookDetail(
                 Lookbook lookbook,
-                List<TagInfo> tags,
-                boolean likedByMe
+                List<String> tags,
+                boolean isLiked
         ) {
             return LookbookDetail.builder()
-                    .lookbookId(lookbook.getId())
-                    .memberId(lookbook.getMember().getId())
-                    .nickname(lookbook.getMember().getNickname())
-                    .profileImageUrl(lookbook.getMember().getProfileImageUrl())
                     .originalImageUrl(lookbook.getOriginalImageUrl())
                     .matchedImageUrl(lookbook.getMatchedImageUrl())
-                    .tags(List.copyOf(tags))
+                    .authorNickname(lookbook.getMember().getNickname())
                     .purchaseUrl(lookbook.getPurchaseUrl())
-                    .comment(lookbook.getComment())
+                    .tags(List.copyOf(tags))
                     .likeCount(lookbook.getLikeCount())
-                    .likedByMe(likedByMe)
-                    .createdAt(lookbook.getCreatedAt())
+                    .isLiked(isLiked)
                     .build();
         }
     }
@@ -147,20 +134,4 @@ public final class LookbookResponse {
         }
     }
 
-    // 룩북-태그 용 dto
-    @Builder
-    public record TagInfo(
-            Long tagId,
-            String tagName,
-            TagType tagType
-    ) {
-
-        public static TagInfo toTagInfo(Tag tag) {
-            return TagInfo.builder()
-                    .tagId(tag.getId())
-                    .tagName(tag.getTagName())
-                    .tagType(tag.getTagType())
-                    .build();
-        }
-    }
 }

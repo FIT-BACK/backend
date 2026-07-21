@@ -116,7 +116,7 @@ class LookbookServiceTest {
     }
 
     @Test
-    void getLookbookDetailReturnsAuthorTagsAndLikedByMe() {
+    void getLookbookDetailReturnsAuthorTagsAndIsLiked() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 7, 16, 12, 0);
         Lookbook lookbook = createPersistedLookbook(createdAt);
         when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
@@ -130,27 +130,17 @@ class LookbookServiceTest {
 
         LookbookResponse.LookbookDetail response = lookbookService.getLookbookDetail(100L, member);
 
-        assertThat(response.lookbookId()).isEqualTo(100L);
-        assertThat(response.memberId()).isEqualTo(1L);
-        assertThat(response.nickname()).isEqualTo("fitback");
-        assertThat(response.profileImageUrl()).isEqualTo("https://s3.example.com/profile.jpg");
         assertThat(response.originalImageUrl()).isEqualTo("https://s3.example.com/original.jpg");
         assertThat(response.matchedImageUrl()).isEqualTo("https://s3.example.com/matched.jpg");
-        assertThat(response.tags())
-                .extracting(LookbookResponse.TagInfo::tagName)
-                .containsExactly("미니멀", "스트릿");
-        assertThat(response.tags())
-                .extracting(LookbookResponse.TagInfo::tagType)
-                .containsOnly(TagType.DETAIL);
+        assertThat(response.authorNickname()).isEqualTo("fitback");
         assertThat(response.purchaseUrl()).isEqualTo("https://shop.example.com/item");
-        assertThat(response.comment()).isEqualTo("합리적인 가격으로 완성한 룩입니다.");
+        assertThat(response.tags()).containsExactly("미니멀", "스트릿");
         assertThat(response.likeCount()).isEqualTo(5);
-        assertThat(response.likedByMe()).isTrue();
-        assertThat(response.createdAt()).isEqualTo(createdAt);
+        assertThat(response.isLiked()).isTrue();
     }
 
     @Test
-    void getLookbookDetailReturnsLikedByMeFalseForAnonymousMember() {
+    void getLookbookDetailReturnsIsLikedFalseForAnonymousMember() {
         Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 16, 12, 0));
         when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
         when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
@@ -158,7 +148,7 @@ class LookbookServiceTest {
 
         LookbookResponse.LookbookDetail response = lookbookService.getLookbookDetail(100L, null);
 
-        assertThat(response.likedByMe()).isFalse();
+        assertThat(response.isLiked()).isFalse();
         verify(lookbookLikeRepository, never()).existsByLookbookIdAndMemberId(any(), any());
     }
 

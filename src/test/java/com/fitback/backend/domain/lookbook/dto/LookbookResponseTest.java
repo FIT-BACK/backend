@@ -41,4 +41,34 @@ class LookbookResponseTest {
                 .doesNotContain("\"createdAt\"")
                 .doesNotContain("\"likedByMe\"");
     }
+
+    @Test
+    void lookbookDetailSerializesAccordingToApiSpecification() throws Exception {
+        LookbookResponse.LookbookDetail response = LookbookResponse.LookbookDetail.builder()
+                .originalImageUrl("https://original.jpg")
+                .matchedImageUrl("https://matched.jpg")
+                .authorNickname("mini_style")
+                .purchaseUrl("https://shopping.naver.com/item")
+                .tags(List.of("스트릿", "와이드핏"))
+                .likeCount(128)
+                .isLiked(false)
+                .build();
+
+        String json = objectMapper.writeValueAsString(response);
+
+        assertThat(json)
+                .contains("\"originalImageUrl\":\"https://original.jpg\"")
+                .contains("\"matchedImageUrl\":\"https://matched.jpg\"")
+                .contains("\"authorNickname\":\"mini_style\"")
+                .contains("\"purchaseUrl\":\"https://shopping.naver.com/item\"")
+                .contains("\"tags\":[\"스트릿\",\"와이드핏\"]")
+                .contains("\"likeCount\":128")
+                .contains("\"isLiked\":false")
+                .doesNotContain("\"lookbookId\"")
+                .doesNotContain("\"memberId\"")
+                .doesNotContain("\"profileImageUrl\"")
+                .doesNotContain("\"comment\"")
+                .doesNotContain("\"createdAt\"")
+                .doesNotContain("\"likedByMe\"");
+    }
 }

@@ -143,18 +143,18 @@ public class LookbookService {
                 ));
 
         // 룩북-태그 조회
-        List<LookbookResponse.TagInfo> tags = lookbookTagRepository
+        List<String> tags = lookbookTagRepository
                 .findAllByLookbookIdOrderByIdAsc(lookbookId)
                 .stream()
                 .map(LookbookTag::getTag)
-                .map(LookbookResponse.TagInfo::toTagInfo)
+                .map(Tag::getTagName)
                 .toList();
 
         // 로그인 상태면 해당 룩북에 좋아요 눌렀는지 여부 계산
-        boolean likedByMe = member != null
+        boolean isLiked = member != null
                 && lookbookLikeRepository.existsByLookbookIdAndMemberId(lookbookId, member.getId());
 
-        return LookbookResponse.LookbookDetail.toLookbookDetail(lookbook, tags, likedByMe);
+        return LookbookResponse.LookbookDetail.toLookbookDetail(lookbook, tags, isLiked);
     }
 
     // 룩북 삭제
