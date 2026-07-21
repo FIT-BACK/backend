@@ -14,8 +14,6 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.OnDelete;
-import org.hibernate.annotations.OnDeleteAction;
 
 @Getter
 @Entity
@@ -28,9 +26,9 @@ public class Lookbook extends BaseTimeEntity {
     @Column(name = "lookbook_id")
     private Long id;
 
+    //회원 탈퇴 시 삭제하지 않고 '탈퇴한 유저'로 익명화(재지정)하므로 cascade 미적용
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "member_id", nullable = false)
-    @OnDelete(action = OnDeleteAction.CASCADE)
     private Member member;
 
     @Column(name = "original_image_url", nullable = false, length = 2048)

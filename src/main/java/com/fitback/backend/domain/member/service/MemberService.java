@@ -3,6 +3,7 @@ package com.fitback.backend.domain.member.service;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
+import com.fitback.backend.domain.member.constant.WithdrawnMember;
 import com.fitback.backend.domain.member.dto.MemberRequest;
 import com.fitback.backend.domain.member.dto.MemberResponse;
 import com.fitback.backend.domain.member.entity.LoginProvider;
@@ -99,6 +100,14 @@ public class MemberService {
         Member deleteMember = memberRepository.findById(authMember.getMember().getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
 
+        //탈퇴 회원 계정 조회 (초기화로 항상 존재)
+        Member withdrawnMember = memberRepository.findByEmail(WithdrawnMember.EMAIL)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR));
+
+        //룩북은 삭제하지 않고 탈퇴 회원 계정으로 익명화 (member 삭제 전에!)
+        lookbookRepository.reassignToWithdrawnMember(deleteMember.getId(), withdrawnMember);
+
+        //그 외(마이 클로젯·분석·관심태그·본인 좋아요)는 cascade로 삭제
         memberRepository.delete(deleteMember);
     }
 
@@ -146,6 +155,9 @@ public class MemberService {
         //닉네임이 비어있다면
         if(newNickname.isBlank()){
             throw new BusinessException(ErrorCode.BAD_REQUEST);
+        }
+        if (WithdrawnMember.NICKNAME.equals(newNickname)) {
+            throw new BusinessException(ErrorCode.NICKNAME_ALREADY_EXISTS);
         }
         //현재 닉네임과 동일하다면 변경 X
         if(newNickname.equals(member.getNickname())){
