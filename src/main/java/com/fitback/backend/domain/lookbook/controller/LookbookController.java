@@ -132,8 +132,8 @@ public class LookbookController {
 
     @Operation(
             summary = "룩북 상세 조회",
-            description = "룩북의 원본 이미지, 매칭 이미지, 작성자 닉네임, 태그, 구매 링크와 좋아요 정보를 조회. "
-                    + "비로그인 조회를 허용하며 로그인한 경우 isLiked 를 통해 내 좋아요 여부를 함께 계산."
+            description = "룩북의 원본 이미지, 매칭 이미지, 작성자 정보, 작성 시각, 태그, 구매 링크와 좋아요 정보를 조회. "
+                    + "비로그인 조회를 허용하며 로그인한 경우 isLiked와 isOwner를 함께 계산."
     )
     @GetMapping("/{lookbookId}")
     public ApiResponse<LookbookResponse.LookbookDetail> getLookbookDetail(

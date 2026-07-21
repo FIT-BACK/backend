@@ -1,9 +1,10 @@
 package com.fitback.backend.domain.lookbook.dto;
 
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
-import java.util.List;
-
+import com.fitback.backend.domain.tag.entity.Tag;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.LocalDateTime;
+import java.util.List;
 import lombok.Builder;
 
 // 룩북 응답 DTO
@@ -87,25 +88,49 @@ public final class LookbookResponse {
             String originalImageUrl,
             String matchedImageUrl,
             String authorNickname,
+            String authorProfileImageUrl,
+            LocalDateTime createdAt,
             String purchaseUrl,
-            List<String> tags,
+            String comment,
+            List<TagItem> tags,
             Integer likeCount,
-            boolean isLiked
+            boolean isLiked,
+            boolean isOwner
     ) {
 
         public static LookbookDetail toLookbookDetail(
                 Lookbook lookbook,
-                List<String> tags,
-                boolean isLiked
+                List<TagItem> tags,
+                boolean isLiked,
+                boolean isOwner
         ) {
             return LookbookDetail.builder()
                     .originalImageUrl(lookbook.getOriginalImageUrl())
                     .matchedImageUrl(lookbook.getMatchedImageUrl())
                     .authorNickname(lookbook.getMember().getNickname())
+                    .authorProfileImageUrl(lookbook.getMember().getProfileImageUrl())
+                    .createdAt(lookbook.getCreatedAt())
                     .purchaseUrl(lookbook.getPurchaseUrl())
+                    .comment(lookbook.getComment())
                     .tags(List.copyOf(tags))
                     .likeCount(lookbook.getLikeCount())
                     .isLiked(isLiked)
+                    .isOwner(isOwner)
+                    .build();
+        }
+    }
+
+    // 룩북 상세 조회 태그
+    @Builder
+    public record TagItem(
+            Long tagId,
+            String tagName
+    ) {
+
+        public static TagItem toTagItem(Tag tag) {
+            return TagItem.builder()
+                    .tagId(tag.getId())
+                    .tagName(tag.getTagName())
                     .build();
         }
     }

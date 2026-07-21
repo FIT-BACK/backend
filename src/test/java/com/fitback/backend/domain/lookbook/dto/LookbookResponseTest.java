@@ -2,6 +2,7 @@ package com.fitback.backend.domain.lookbook.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -59,10 +60,23 @@ class LookbookResponseTest {
                 .originalImageUrl("https://original.jpg")
                 .matchedImageUrl("https://matched.jpg")
                 .authorNickname("mini_style")
+                .authorProfileImageUrl("https://profiles/1.jpg")
+                .createdAt(LocalDateTime.of(2026, 7, 21, 18, 30))
                 .purchaseUrl("https://shopping.naver.com/item")
-                .tags(List.of("스트릿", "와이드핏"))
+                .comment("test")
+                .tags(List.of(
+                        LookbookResponse.TagItem.builder()
+                                .tagId(1L)
+                                .tagName("스트릿")
+                                .build(),
+                        LookbookResponse.TagItem.builder()
+                                .tagId(3L)
+                                .tagName("와이드핏")
+                                .build()
+                ))
                 .likeCount(128)
                 .isLiked(false)
+                .isOwner(true)
                 .build();
 
         String json = objectMapper.writeValueAsString(response);
@@ -71,15 +85,17 @@ class LookbookResponseTest {
                 .contains("\"originalImageUrl\":\"https://original.jpg\"")
                 .contains("\"matchedImageUrl\":\"https://matched.jpg\"")
                 .contains("\"authorNickname\":\"mini_style\"")
+                .contains("\"authorProfileImageUrl\":\"https://profiles/1.jpg\"")
+                .contains("\"createdAt\":\"2026-07-21T18:30:00\"")
                 .contains("\"purchaseUrl\":\"https://shopping.naver.com/item\"")
-                .contains("\"tags\":[\"스트릿\",\"와이드핏\"]")
+                .contains("\"comment\":\"test\"")
+                .contains("\"tags\":[{\"tagId\":1,\"tagName\":\"스트릿\"},"
+                        + "{\"tagId\":3,\"tagName\":\"와이드핏\"}]")
                 .contains("\"likeCount\":128")
                 .contains("\"isLiked\":false")
+                .contains("\"isOwner\":true")
                 .doesNotContain("\"lookbookId\"")
                 .doesNotContain("\"memberId\"")
-                .doesNotContain("\"profileImageUrl\"")
-                .doesNotContain("\"comment\"")
-                .doesNotContain("\"createdAt\"")
                 .doesNotContain("\"likedByMe\"");
     }
 

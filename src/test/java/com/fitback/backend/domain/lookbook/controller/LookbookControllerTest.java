@@ -14,6 +14,7 @@ import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.mock.AuthMember;
 import com.fitback.backend.global.response.ApiResponse;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -182,10 +183,19 @@ class LookbookControllerTest {
                 .originalImageUrl("https://s3.example.com/original.jpg")
                 .matchedImageUrl("https://s3.example.com/matched.jpg")
                 .authorNickname("fitback")
+                .authorProfileImageUrl("https://s3.example.com/profile.jpg")
+                .createdAt(LocalDateTime.of(2026, 7, 21, 18, 30))
                 .purchaseUrl("https://shop.example.com/item")
-                .tags(List.of("미니멀"))
+                .comment("합리적인 가격으로 완성한 룩입니다.")
+                .tags(List.of(
+                        LookbookResponse.TagItem.builder()
+                                .tagId(10L)
+                                .tagName("미니멀")
+                                .build()
+                ))
                 .likeCount(5)
                 .isLiked(false)
+                .isOwner(false)
                 .build();
         when(lookbookService.getLookbookDetail(100L, null)).thenReturn(serviceResponse);
 
@@ -196,6 +206,7 @@ class LookbookControllerTest {
         assertThat(response.code()).isEqualTo("COMMON200_1");
         assertThat(response.data()).isEqualTo(serviceResponse);
         assertThat(response.data().isLiked()).isFalse();
+        assertThat(response.data().isOwner()).isFalse();
         verify(lookbookService).getLookbookDetail(100L, null);
     }
 }

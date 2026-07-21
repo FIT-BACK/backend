@@ -122,7 +122,7 @@ class LookbookServiceTest {
     }
 
     @Test
-    void getLookbookDetailReturnsAuthorTagsAndIsLiked() {
+    void getLookbookDetailReturnsAuthorTagsLikedAndOwnerStatus() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 7, 16, 12, 0);
         Lookbook lookbook = createPersistedLookbook(createdAt);
         when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
@@ -139,10 +139,20 @@ class LookbookServiceTest {
         assertThat(response.originalImageUrl()).isEqualTo("https://s3.example.com/original.jpg");
         assertThat(response.matchedImageUrl()).isEqualTo("https://s3.example.com/matched.jpg");
         assertThat(response.authorNickname()).isEqualTo("fitback");
+        assertThat(response.authorProfileImageUrl())
+                .isEqualTo("https://s3.example.com/profile.jpg");
+        assertThat(response.createdAt()).isEqualTo(createdAt);
         assertThat(response.purchaseUrl()).isEqualTo("https://shop.example.com/item");
-        assertThat(response.tags()).containsExactly("미니멀", "스트릿");
+        assertThat(response.comment()).isEqualTo("합리적인 가격으로 완성한 룩입니다.");
+        assertThat(response.tags())
+                .extracting(LookbookResponse.TagItem::tagId)
+                .containsExactly(10L, 20L);
+        assertThat(response.tags())
+                .extracting(LookbookResponse.TagItem::tagName)
+                .containsExactly("미니멀", "스트릿");
         assertThat(response.likeCount()).isEqualTo(5);
         assertThat(response.isLiked()).isTrue();
+        assertThat(response.isOwner()).isTrue();
     }
 
     @Test
@@ -155,7 +165,30 @@ class LookbookServiceTest {
         LookbookResponse.LookbookDetail response = lookbookService.getLookbookDetail(100L, null);
 
         assertThat(response.isLiked()).isFalse();
+        assertThat(response.isOwner()).isFalse();
         verify(lookbookLikeRepository, never()).existsByLookbookIdAndMemberId(any(), any());
+    }
+
+    @Test
+    void getLookbookDetailReturnsIsOwnerFalseForAuthenticatedNonOwner() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 16, 12, 0));
+        Member otherMember = Member.create(
+                "other@fitback.com",
+                "other",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(otherMember, "id", 2L);
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookDetail response = lookbookService.getLookbookDetail(
+                100L,
+                otherMember
+        );
+
+        assertThat(response.isOwner()).isFalse();
     }
 
     @Test
