@@ -5,15 +5,18 @@ import com.fitback.backend.domain.member.dto.MemberResponse;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.member.repository.WithdrawnEmailBlockRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.security.util.JwtUtil;
+import com.fitback.backend.global.util.HmacUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -24,6 +27,9 @@ public class AuthService {
     private final MemberRepository memberRepository;
     private final JwtUtil jwtUtil;
 
+    private final WithdrawnEmailBlockRepository withdrawnEmailBlockRepository;
+    private final HmacUtil hmacUtil;
+
     //이메일 회원가입
     @Transactional
     public MemberResponse.SignUpResponse signUp(MemberRequest.SignUpRequest dto) {
@@ -32,6 +38,9 @@ public class AuthService {
         if (memberRepository.existsByEmail(dto.email())) {
             throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
+
+        //30일 재가입 차단 검사
+        assertNotRejoinBlocked(dto.email());
 
         //임시 닉네임 설정 (중복 방지)
         String temporalNickName;
@@ -128,5 +137,13 @@ public class AuthService {
 
         //refresh token 초기화
         member.clearRefreshToken();
+    }
+
+    //탈퇴 후 30일 재가입 차단 검사 (이메일·소셜 가입 공용)
+    private void assertNotRejoinBlocked(String email) {
+        String hashedEmail = hmacUtil.hashHex(email);
+        if (withdrawnEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(hashedEmail, LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.REJOIN_BLOCKED);
+        }
     }
 }

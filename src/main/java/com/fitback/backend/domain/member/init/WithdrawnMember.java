@@ -1,4 +1,4 @@
-package com.fitback.backend.domain.member.constant;
+package com.fitback.backend.domain.member.init;
 
 //탈퇴 회원 계정(탈퇴한 유저) 예약 값 — 탈퇴 시 룩북 작성자를 이 계정으로 익명화
 public final class WithdrawnMember {

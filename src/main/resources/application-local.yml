@@ -27,3 +27,6 @@ jwt:
     expiration:
       access: 1800000       # 30분 (ms)
       refresh: 1209600000   # 14일 (ms)
+
+hmac:
+  secret-key: ${HMAC_SECRET_KEY}

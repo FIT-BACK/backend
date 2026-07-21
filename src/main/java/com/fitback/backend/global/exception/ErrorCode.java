@@ -20,6 +20,7 @@ public enum ErrorCode {
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "MEMBER400_1", "현재 비밀번호가 일치하지 않습니다."),
     PASSWORD_CHANGE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "MEMBER400_2", "소셜 로그인 회원은 비밀번호를 변경할 수 없습니다."),
     TAG_NOT_FOUND(HttpStatus.BAD_REQUEST, "MEMBER400_3", "존재하지 않는 태그가 포함되어 있습니다."),
+    REJOIN_BLOCKED(HttpStatus.FORBIDDEN, "MEMBER403_1", "탈퇴 후 30일 동안 재가입할 수 없습니다."),
     ;
 
 

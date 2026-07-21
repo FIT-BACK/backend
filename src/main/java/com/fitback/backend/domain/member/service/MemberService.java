@@ -3,7 +3,8 @@ package com.fitback.backend.domain.member.service;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
-import com.fitback.backend.domain.member.constant.WithdrawnMember;
+import com.fitback.backend.domain.member.entity.WithdrawnEmailBlock;
+import com.fitback.backend.domain.member.init.WithdrawnMember;
 import com.fitback.backend.domain.member.dto.MemberRequest;
 import com.fitback.backend.domain.member.dto.MemberResponse;
 import com.fitback.backend.domain.member.entity.LoginProvider;
@@ -11,17 +12,21 @@ import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberTag;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.repository.MemberTagRepository;
+import com.fitback.backend.domain.member.repository.WithdrawnEmailBlockRepository;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
+import com.fitback.backend.global.util.HmacUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +42,9 @@ public class MemberService {
     private final LookbookRepository lookbookRepository;
 
     private final PasswordEncoder passwordEncoder;
+
+    private final WithdrawnEmailBlockRepository withdrawnEmailBlockRepository;
+    private final HmacUtil hmacUtil;
 
     //회원정보 수정
     @Transactional
@@ -100,15 +108,29 @@ public class MemberService {
         Member deleteMember = memberRepository.findById(authMember.getMember().getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
 
-        //탈퇴 회원 계정 조회 (초기화로 항상 존재)
+        //탈퇴 회원 계정 조회 (익명 처리)
         Member withdrawnMember = memberRepository.findByEmail(WithdrawnMember.EMAIL)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR));
 
-        //룩북은 삭제하지 않고 탈퇴 회원 계정으로 익명화 (member 삭제 전에!)
+        //동일 이메일 30일 재가입 방지
+        String hashedEmail = hmacUtil.hashHex(deleteMember.getEmail());
+        LocalDateTime blockedUntil = LocalDateTime.now().plusDays(30);
+
+        //기존 차단 기록이 있으면 갱신, 없으면 신규 저장 (email_hash UNIQUE 충돌 방지)
+        Optional<WithdrawnEmailBlock> existingBlock = withdrawnEmailBlockRepository.findByEmailHash(hashedEmail);
+        if (existingBlock.isPresent()) {
+            existingBlock.get().renew(blockedUntil);
+        } else {
+            withdrawnEmailBlockRepository.save(WithdrawnEmailBlock.create(hashedEmail, blockedUntil));
+        }
+
+        //룩북은 삭제하지 않고 탈퇴 회원 계정으로 익명화 (member 삭제 전에)
         lookbookRepository.reassignToWithdrawnMember(deleteMember.getId(), withdrawnMember);
 
         //그 외(마이 클로젯·분석·관심태그·본인 좋아요)는 cascade로 삭제
         memberRepository.delete(deleteMember);
+
+
     }
 
     //회원가입 프로필 설정

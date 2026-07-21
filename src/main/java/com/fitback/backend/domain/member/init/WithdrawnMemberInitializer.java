@@ -1,6 +1,5 @@
 package com.fitback.backend.domain.member.init;
 
-import com.fitback.backend.domain.member.constant.WithdrawnMember;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
