@@ -3,6 +3,7 @@ package com.fitback.backend.domain.member.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
@@ -37,6 +38,7 @@ public class MemberRequest {
 
     //회원정보 수정 (부분 수정: 전달된 필드만 반영, 미전송/null 필드는 기존 값 유지)
     public record UpdateMemberRequest(
+            @Size(min = 2, max = 16, message = "닉네임은 2~16자여야 합니다.")
             String nickname,
             String profileImageUrl
     ) {}
@@ -53,15 +55,18 @@ public class MemberRequest {
     //회원 가입 프로필 설정
     public record OnboardingRequest(
             @NotBlank(message = "닉네임은 필수 입력값 입니다.")
+            @Size(min = 2, max = 16, message = "닉네임은 2~16자여야 합니다.")
             String nickname,
             String profileImageUrl,
             @NotNull(message = "관심 태그 필드가 포함되어야 합니다. (빈 배열 허용)")
+            @Size(max = 5, message = "관심 태그는 최대 5개까지 선택할 수 있습니다.")
             List<Long> tagIds
     ) {}
 
     //내 관심 태그 수정
     public record UpdateTagsRequest(
             @NotNull(message = "관심 태그 필드가 포함되어야 합니다. (빈 배열 허용)")
+            @Size(max = 5, message = "관심 태그는 최대 5개까지 선택할 수 있습니다.")
             List<Long> tagIds
     ) {}
 }
