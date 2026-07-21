@@ -91,17 +91,20 @@ public class MemberResponse {
     public record UpdateMemberResponse(
        Long memberId,
        String nickname,
-       String profileImageUrl
+       String profileImageUrl,
+       List<TagInfo> tags
     ) {}
 
     //회원정보 수정 dto 변환
     public static UpdateMemberResponse toUpdateMemberResponse(
-            Member member
+            Member member,
+            List<MemberTag> memberTagList
     ){
         return UpdateMemberResponse.builder()
                 .memberId(member.getId())
                 .nickname(member.getNickname())
                 .profileImageUrl(member.getProfileImageUrl())
+                .tags(memberTagList.stream().map(MemberResponse::toTagInfo).toList())
                 .build();
     }
 
