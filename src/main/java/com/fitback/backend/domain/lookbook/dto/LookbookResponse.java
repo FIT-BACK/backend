@@ -45,18 +45,21 @@ public final class LookbookResponse {
     public record LookbookList(
             List<LookbookItem> items,
             Long nextCursor,
-            boolean hasNext
+            boolean hasNext,
+            Integer pageSize
     ) {
 
         public static LookbookList toLookbookList(
                 List<LookbookItem> items,
                 Long nextCursor,
-                boolean hasNext
+                boolean hasNext,
+                Integer pageSize
         ) {
             return LookbookList.builder()
                     .items(List.copyOf(items))
                     .nextCursor(nextCursor)
                     .hasNext(hasNext)
+                    .pageSize(pageSize)
                     .build();
         }
     }
@@ -65,33 +68,29 @@ public final class LookbookResponse {
     @Builder
     public record LookbookItem(
             Long lookbookId,
-            Long memberId,
-            String nickname,
-            String profileImageUrl,
             String originalImageUrl,
             String matchedImageUrl,
-            List<TagInfo> tags,
+            String authorNickname,
+            String authorProfileImageUrl,
+            List<String> tags,
             Integer likeCount,
-            boolean likedByMe,
-            LocalDateTime createdAt
+            boolean isLiked
     ) {
 
         public static LookbookItem toLookbookItem(
                 Lookbook lookbook,
-                List<TagInfo> tags,
-                boolean likedByMe
+                List<String> tags,
+                boolean isLiked
         ) {
             return LookbookItem.builder()
                     .lookbookId(lookbook.getId())
-                    .memberId(lookbook.getMember().getId())
-                    .nickname(lookbook.getMember().getNickname())
-                    .profileImageUrl(lookbook.getMember().getProfileImageUrl())
                     .originalImageUrl(lookbook.getOriginalImageUrl())
                     .matchedImageUrl(lookbook.getMatchedImageUrl())
+                    .authorNickname(lookbook.getMember().getNickname())
+                    .authorProfileImageUrl(lookbook.getMember().getProfileImageUrl())
                     .tags(List.copyOf(tags))
                     .likeCount(lookbook.getLikeCount())
-                    .likedByMe(likedByMe)
-                    .createdAt(lookbook.getCreatedAt())
+                    .isLiked(isLiked)
                     .build();
         }
     }

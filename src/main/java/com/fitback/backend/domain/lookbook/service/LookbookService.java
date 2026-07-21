@@ -30,8 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class LookbookService {
 
-    private static final int LOOKBOOK_PAGE_SIZE = 20;
-    private static final Pageable LOOKBOOK_PAGE_REQUEST = PageRequest.of(0, LOOKBOOK_PAGE_SIZE + 1);
+    private static final int DEFAULT_LOOKBOOK_PAGE_SIZE = 20;
 
     private final LookbookRepository lookbookRepository;
     private final LookbookTagRepository lookbookTagRepository;
@@ -78,18 +77,25 @@ public class LookbookService {
 
     // 룩북 목록 조회
     @Transactional(readOnly = true)
-    public LookbookResponse.LookbookList getLookbooks(Long cursor, Member member) {
+    public LookbookResponse.LookbookList getLookbooks(
+            Long cursor,
+            Integer pageSize,
+            Member member
+    ) {
+
+        int resolvedPageSize = pageSize == null ? DEFAULT_LOOKBOOK_PAGE_SIZE : pageSize;
+        Pageable pageRequest = PageRequest.of(0, resolvedPageSize + 1);
 
         // cursor 기준 다음 페이지 분량의 룩북 목록 조회
-        List<Lookbook> lookbookPage = findLookbookPage(cursor);
+        List<Lookbook> lookbookPage = findLookbookPage(cursor, pageRequest);
 
         // 다음 페이지 존재 여부 계산
-        boolean hasNext = lookbookPage.size() > LOOKBOOK_PAGE_SIZE;
+        boolean hasNext = lookbookPage.size() > resolvedPageSize;
 
         // 실제 화면에 보여줄 룩북 계산
         List<Lookbook> lookbooks = lookbookPage.subList(
                 0,
-                Math.min(lookbookPage.size(), LOOKBOOK_PAGE_SIZE)
+                Math.min(lookbookPage.size(), resolvedPageSize)
         );
 
         // lookbookId 추출
@@ -98,7 +104,7 @@ public class LookbookService {
                 .toList();
 
         // lookbookId 로 태그 조회
-        Map<Long, List<LookbookResponse.TagInfo>> tagsByLookbookId = findTagsByLookbookId(lookbookIds);
+        Map<Long, List<String>> tagNamesByLookbookId = findTagNamesByLookbookId(lookbookIds);
 
         // 현재 로그인 한 유저가 좋아요를 누른 룩북 조회
         Set<Long> likedLookbookIds = findLikedLookbookIds(lookbookIds, member);
@@ -107,7 +113,7 @@ public class LookbookService {
         List<LookbookResponse.LookbookItem> items = lookbooks.stream()
                 .map(lookbook -> LookbookResponse.LookbookItem.toLookbookItem(
                         lookbook,
-                        tagsByLookbookId.getOrDefault(lookbook.getId(), List.of()),
+                        tagNamesByLookbookId.getOrDefault(lookbook.getId(), List.of()),
                         likedLookbookIds.contains(lookbook.getId())
                 ))
                 .toList();
@@ -117,7 +123,12 @@ public class LookbookService {
                 ? lookbooks.get(lookbooks.size() - 1).getId()
                 : null;
 
-        return LookbookResponse.LookbookList.toLookbookList(items, nextCursor, hasNext);
+        return LookbookResponse.LookbookList.toLookbookList(
+                items,
+                nextCursor,
+                hasNext,
+                resolvedPageSize
+        );
     }
 
     // 룩북 상세 조회
@@ -199,19 +210,19 @@ public class LookbookService {
         return LookbookResponse.LookbookLike.toLookbookLike(likeCount);
     }
 
-    // 룩북 좋아요 삭제
+    // 룩북 좋아요 취소
     public LookbookResponse.LookbookLike deleteLookbookLike(Long lookbookId, Member member) {
         Integer likeCount = lookbookLikeCommandService.deleteLike(lookbookId, member);
         return LookbookResponse.LookbookLike.toLookbookLike(likeCount);
     }
 
     // cursor 기준 룩북 조회
-    private List<Lookbook> findLookbookPage(Long cursor) {
+    private List<Lookbook> findLookbookPage(Long cursor, Pageable pageRequest) {
 
         // 첫 요청일 때 목록 조회
         if (cursor == null) {
             return lookbookRepository.findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(
-                    LOOKBOOK_PAGE_REQUEST
+                    pageRequest
             );
         }
 
@@ -225,12 +236,12 @@ public class LookbookService {
         return lookbookRepository.findNextPage(
                 cursorLookbook.getCreatedAt(),
                 cursorLookbook.getId(),
-                LOOKBOOK_PAGE_REQUEST
+                pageRequest
         );
     }
 
-    // 룩북 id 로 태그 조회
-    private Map<Long, List<LookbookResponse.TagInfo>> findTagsByLookbookId(List<Long> lookbookIds) {
+    // 룩북 id 로 태그명 조회
+    private Map<Long, List<String>> findTagNamesByLookbookId(List<Long> lookbookIds) {
 
         if (lookbookIds.isEmpty()) {
             return Map.of();
@@ -241,7 +252,7 @@ public class LookbookService {
                 .collect(Collectors.groupingBy(
                         lookbookTag -> lookbookTag.getLookbook().getId(),
                         Collectors.mapping(
-                                lookbookTag -> LookbookResponse.TagInfo.toTagInfo(lookbookTag.getTag()),
+                                lookbookTag -> lookbookTag.getTag().getTagName(),
                                 Collectors.toList()
                         )
                 ));

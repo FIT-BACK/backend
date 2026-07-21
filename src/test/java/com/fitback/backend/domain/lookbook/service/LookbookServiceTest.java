@@ -32,6 +32,7 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -267,15 +268,15 @@ class LookbookServiceTest {
     }
 
     @Test
-    void getLookbooksReturnsTwentyItemsAndNextCursor() {
+    void getLookbooksUsesRequestedPageSizeAndReturnsNextCursor() {
         LocalDateTime latestCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
-        List<Lookbook> lookbookPage = IntStream.range(0, 21)
+        List<Lookbook> lookbookPage = IntStream.range(0, 6)
                 .mapToObj(index -> createListLookbook(
                         100L - index,
                         latestCreatedAt.minusMinutes(index)
                 ))
                 .toList();
-        List<Long> returnedLookbookIds = lookbookPage.subList(0, 20)
+        List<Long> returnedLookbookIds = lookbookPage.subList(0, 5)
                 .stream()
                 .map(Lookbook::getId)
                 .toList();
@@ -288,17 +289,24 @@ class LookbookServiceTest {
         when(lookbookLikeRepository.findLikedLookbookIds(1L, returnedLookbookIds))
                 .thenReturn(Set.of(100L));
 
-        LookbookResponse.LookbookList response = lookbookService.getLookbooks(null, member);
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(null, 5, member);
 
-        assertThat(response.items()).hasSize(20);
+        assertThat(response.items()).hasSize(5);
         assertThat(response.items().get(0).lookbookId()).isEqualTo(100L);
-        assertThat(response.items().get(0).likedByMe()).isTrue();
-        assertThat(response.items().get(0).tags())
-                .extracting(LookbookResponse.TagInfo::tagName)
-                .containsExactly("미니멀");
-        assertThat(response.items().get(1).likedByMe()).isFalse();
-        assertThat(response.nextCursor()).isEqualTo(81L);
+        assertThat(response.items().get(0).authorNickname()).isEqualTo("fitback");
+        assertThat(response.items().get(0).authorProfileImageUrl())
+                .isEqualTo("https://s3.example.com/profile.jpg");
+        assertThat(response.items().get(0).isLiked()).isTrue();
+        assertThat(response.items().get(0).tags()).containsExactly("미니멀");
+        assertThat(response.items().get(1).isLiked()).isFalse();
+        assertThat(response.nextCursor()).isEqualTo(96L);
         assertThat(response.hasNext()).isTrue();
+        assertThat(response.pageSize()).isEqualTo(5);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(lookbookRepository)
+                .findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(6);
     }
 
     @Test
@@ -311,12 +319,13 @@ class LookbookServiceTest {
         when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(100L)))
                 .thenReturn(List.of());
 
-        LookbookResponse.LookbookList response = lookbookService.getLookbooks(null, null);
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(null, null, null);
 
         assertThat(response.items()).hasSize(1);
-        assertThat(response.items().get(0).likedByMe()).isFalse();
+        assertThat(response.items().get(0).isLiked()).isFalse();
         assertThat(response.nextCursor()).isNull();
         assertThat(response.hasNext()).isFalse();
+        assertThat(response.pageSize()).isEqualTo(20);
         verify(lookbookLikeRepository, never()).findLikedLookbookIds(any(), anyList());
     }
 
@@ -335,7 +344,7 @@ class LookbookServiceTest {
         when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(99L)))
                 .thenReturn(List.of());
 
-        LookbookResponse.LookbookList response = lookbookService.getLookbooks(100L, null);
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(100L, 5, null);
 
         assertThat(response.items())
                 .extracting(LookbookResponse.LookbookItem::lookbookId)

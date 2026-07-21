@@ -89,7 +89,7 @@ public class LookbookController {
     }
 
     @Operation(
-            summary = "룩북 좋아요 삭제",
+            summary = "룩북 좋아요 취소",
             description = "로그인한 회원의 룩북 좋아요를 hard delete 방식으로 삭제하고 변경된 좋아요 수를 반환. "
                     + "좋아요하지 않은 룩북에 다시 요청해도 현재 좋아요 수와 함께 성공 응답을 반환."
     )
@@ -111,23 +111,30 @@ public class LookbookController {
 
     @Operation(
             summary = "룩북 목록 조회",
-            description = "룩북을 최신순으로 20개씩 커서 기반 조회. 비로그인 조회를 허용. "
+            description = "룩북을 최신순으로 요청한 pageSize만큼 커서 기반 조회. pageSize 기본값은 20. "
+                    + "비로그인 조회를 허용. "
                     + "로그인한 경우 각 룩북의 내 좋아요 여부를 함께 계산."
     )
     @GetMapping
     public ApiResponse<LookbookResponse.LookbookList> getLookbooks(
             @Positive @RequestParam(name = "cursor", required = false) Long cursor,
+            @Positive @RequestParam(name = "pageSize", required = false, defaultValue = "20")
+            Integer pageSize,
             @AuthenticationPrincipal AuthMember authMember
     ) {
         Member member = authMember == null ? null : authMember.getMember();
-        LookbookResponse.LookbookList response = lookbookService.getLookbooks(cursor, member);
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                cursor,
+                pageSize,
+                member
+        );
         return ApiResponse.onSuccess(response);
     }
 
     @Operation(
             summary = "룩북 상세 조회",
             description = "룩북의 이미지, 작성자, 태그, 구매 링크, 코멘트와 좋아요 정보를 조회. "
-                    + "비로그인 조회를 허용하며 로그인한 경우 likedByMe 를 통해 내 좋아요 여부를 함께 계산."
+                    + "비로그인 조회를 허용하며 로그인한 경우 isLiked 를 통해 내 좋아요 여부를 함께 계산."
     )
     @GetMapping("/{lookbookId}")
     public ApiResponse<LookbookResponse.LookbookDetail> getLookbookDetail(

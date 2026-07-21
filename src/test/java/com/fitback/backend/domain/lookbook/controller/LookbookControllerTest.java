@@ -87,31 +87,31 @@ class LookbookControllerTest {
     void getLookbooksAllowsAnonymousMember() {
         LookbookResponse.LookbookItem item = LookbookResponse.LookbookItem.builder()
                 .lookbookId(100L)
-                .memberId(1L)
-                .nickname("fitback")
-                .profileImageUrl("https://s3.example.com/profile.jpg")
                 .originalImageUrl("https://s3.example.com/original.jpg")
                 .matchedImageUrl("https://s3.example.com/matched.jpg")
-                .tags(List.of())
+                .authorNickname("fitback")
+                .authorProfileImageUrl("https://s3.example.com/profile.jpg")
+                .tags(List.of("미니멀"))
                 .likeCount(5)
-                .likedByMe(false)
-                .createdAt(LocalDateTime.of(2026, 7, 16, 12, 0))
+                .isLiked(false)
                 .build();
         LookbookResponse.LookbookList serviceResponse = LookbookResponse.LookbookList.builder()
                 .items(List.of(item))
                 .nextCursor(null)
                 .hasNext(false)
+                .pageSize(20)
                 .build();
-        when(lookbookService.getLookbooks(null, null)).thenReturn(serviceResponse);
+        when(lookbookService.getLookbooks(null, 20, null)).thenReturn(serviceResponse);
 
         ApiResponse<LookbookResponse.LookbookList> response =
-                lookbookController.getLookbooks(null, null);
+                lookbookController.getLookbooks(null, 20, null);
 
         assertThat(response.success()).isTrue();
         assertThat(response.code()).isEqualTo("COMMON200_1");
         assertThat(response.data()).isEqualTo(serviceResponse);
         assertThat(response.data().items()).containsExactly(item);
-        verify(lookbookService).getLookbooks(null, null);
+        assertThat(response.data().pageSize()).isEqualTo(20);
+        verify(lookbookService).getLookbooks(null, 20, null);
     }
 
     @Test
