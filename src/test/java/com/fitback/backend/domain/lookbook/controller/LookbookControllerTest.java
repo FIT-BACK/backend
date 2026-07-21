@@ -127,6 +127,7 @@ class LookbookControllerTest {
     @Test
     void likeLookbookReturnsChangedLikeCount() {
         LookbookResponse.LookbookLike serviceResponse = LookbookResponse.LookbookLike.builder()
+                .isLiked(true)
                 .likeCount(6)
                 .build();
         when(lookbookService.likeLookbook(100L, member)).thenReturn(serviceResponse);
@@ -137,6 +138,7 @@ class LookbookControllerTest {
         assertThat(response.success()).isTrue();
         assertThat(response.code()).isEqualTo("COMMON200_1");
         assertThat(response.data()).isEqualTo(serviceResponse);
+        assertThat(response.data().isLiked()).isTrue();
         assertThat(response.data().likeCount()).isEqualTo(6);
         verify(lookbookService).likeLookbook(100L, member);
     }
@@ -151,12 +153,12 @@ class LookbookControllerTest {
 
     @Test
     void deleteLookbookLikeReturnsChangedLikeCount() {
-        LookbookResponse.LookbookLike serviceResponse = LookbookResponse.LookbookLike.builder()
+        LookbookResponse.LookbookUnlike serviceResponse = LookbookResponse.LookbookUnlike.builder()
                 .likeCount(4)
                 .build();
         when(lookbookService.deleteLookbookLike(100L, member)).thenReturn(serviceResponse);
 
-        ApiResponse<LookbookResponse.LookbookLike> response =
+        ApiResponse<LookbookResponse.LookbookUnlike> response =
                 lookbookController.deleteLookbookLike(100L, authMember);
 
         assertThat(response.success()).isTrue();

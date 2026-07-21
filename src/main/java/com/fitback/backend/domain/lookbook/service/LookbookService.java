@@ -211,9 +211,9 @@ public class LookbookService {
     }
 
     // 룩북 좋아요 취소
-    public LookbookResponse.LookbookLike deleteLookbookLike(Long lookbookId, Member member) {
+    public LookbookResponse.LookbookUnlike deleteLookbookLike(Long lookbookId, Member member) {
         Integer likeCount = lookbookLikeCommandService.deleteLike(lookbookId, member);
-        return LookbookResponse.LookbookLike.toLookbookLike(likeCount);
+        return LookbookResponse.LookbookUnlike.toLookbookUnlike(likeCount);
     }
 
     // cursor 기준 룩북 조회

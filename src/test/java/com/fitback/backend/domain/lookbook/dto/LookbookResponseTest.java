@@ -82,4 +82,16 @@ class LookbookResponseTest {
                 .doesNotContain("\"createdAt\"")
                 .doesNotContain("\"likedByMe\"");
     }
+
+    @Test
+    void lookbookLikeSerializesAccordingToApiSpecification() throws Exception {
+        LookbookResponse.LookbookLike response = LookbookResponse.LookbookLike.builder()
+                .isLiked(true)
+                .likeCount(129)
+                .build();
+
+        String json = objectMapper.writeValueAsString(response);
+
+        assertThat(json).isEqualTo("{\"isLiked\":true,\"likeCount\":129}");
+    }
 }

@@ -227,6 +227,7 @@ class LookbookServiceTest {
 
         LookbookResponse.LookbookLike response = lookbookService.likeLookbook(100L, member);
 
+        assertThat(response.isLiked()).isTrue();
         assertThat(response.likeCount()).isEqualTo(6);
     }
 
@@ -240,6 +241,7 @@ class LookbookServiceTest {
 
         LookbookResponse.LookbookLike response = lookbookService.likeLookbook(100L, member);
 
+        assertThat(response.isLiked()).isTrue();
         assertThat(response.likeCount()).isEqualTo(5);
     }
 
@@ -258,7 +260,7 @@ class LookbookServiceTest {
     void deleteLookbookLikeReturnsChangedLikeCount() {
         when(lookbookLikeCommandService.deleteLike(100L, member)).thenReturn(4);
 
-        LookbookResponse.LookbookLike response = lookbookService.deleteLookbookLike(100L, member);
+        LookbookResponse.LookbookUnlike response = lookbookService.deleteLookbookLike(100L, member);
 
         assertThat(response.likeCount()).isEqualTo(4);
     }

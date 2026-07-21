@@ -113,11 +113,26 @@ public final class LookbookResponse {
     // 룩북 좋아요
     @Builder
     public record LookbookLike(
+            boolean isLiked,
             Integer likeCount
     ) {
 
         public static LookbookLike toLookbookLike(Integer likeCount) {
             return LookbookLike.builder()
+                    .isLiked(true)
+                    .likeCount(likeCount)
+                    .build();
+        }
+    }
+
+    // 룩북 좋아요 취소
+    @Builder
+    public record LookbookUnlike(
+            Integer likeCount
+    ) {
+
+        public static LookbookUnlike toLookbookUnlike(Integer likeCount) {
+            return LookbookUnlike.builder()
                     .likeCount(likeCount)
                     .build();
         }

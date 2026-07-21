@@ -93,7 +93,7 @@ public class LookbookController {
                     + "좋아요하지 않은 룩북에 다시 요청해도 현재 좋아요 수와 함께 성공 응답을 반환."
     )
     @DeleteMapping("/{lookbookId}/like")
-    public ApiResponse<LookbookResponse.LookbookLike> deleteLookbookLike(
+    public ApiResponse<LookbookResponse.LookbookUnlike> deleteLookbookLike(
             @PathVariable("lookbookId") Long lookbookId,
             @AuthenticationPrincipal AuthMember authMember
     ) {
@@ -101,7 +101,7 @@ public class LookbookController {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
 
-        LookbookResponse.LookbookLike response = lookbookService.deleteLookbookLike(
+        LookbookResponse.LookbookUnlike response = lookbookService.deleteLookbookLike(
                 lookbookId,
                 authMember.getMember()
         );
