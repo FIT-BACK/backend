@@ -94,17 +94,18 @@ class LookbookControllerTest {
                 .hasNext(false)
                 .pageSize(20)
                 .build();
-        when(lookbookService.getLookbooks(null, 20, null)).thenReturn(serviceResponse);
+        when(lookbookService.getLookbooks(null, 20, "미니멀", null))
+                .thenReturn(serviceResponse);
 
         ApiResponse<LookbookResponse.LookbookList> response =
-                lookbookController.getLookbooks(null, 20, null);
+                lookbookController.getLookbooks(null, 20, "미니멀", null);
 
         assertThat(response.success()).isTrue();
         assertThat(response.code()).isEqualTo("COMMON200_1");
         assertThat(response.data()).isEqualTo(serviceResponse);
         assertThat(response.data().items()).containsExactly(item);
         assertThat(response.data().pageSize()).isEqualTo(20);
-        verify(lookbookService).getLookbooks(null, 20, null);
+        verify(lookbookService).getLookbooks(null, 20, "미니멀", null);
     }
 
     @Test

@@ -321,7 +321,12 @@ class LookbookServiceTest {
         when(lookbookLikeRepository.findLikedLookbookIds(1L, returnedLookbookIds))
                 .thenReturn(Set.of(100L));
 
-        LookbookResponse.LookbookList response = lookbookService.getLookbooks(null, 5, member);
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                null,
+                5,
+                "   ",
+                member
+        );
 
         assertThat(response.items()).hasSize(5);
         assertThat(response.items().get(0).lookbookId()).isEqualTo(100L);
@@ -351,7 +356,12 @@ class LookbookServiceTest {
         when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(100L)))
                 .thenReturn(List.of());
 
-        LookbookResponse.LookbookList response = lookbookService.getLookbooks(null, null, null);
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                null,
+                null,
+                null,
+                null
+        );
 
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().get(0).isLiked()).isFalse();
@@ -362,13 +372,14 @@ class LookbookServiceTest {
     }
 
     @Test
-    void getLookbooksUsesCursorCreatedAtAndIdForNextPage() {
+    void getLookbooksUsesTagFilteredCursorForNextPage() {
         LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
         Lookbook cursorLookbook = createListLookbook(100L, cursorCreatedAt);
         Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
-        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L))
+        when(lookbookRepository.findByIdAndTagName(100L, "미니멀"))
                 .thenReturn(Optional.of(cursorLookbook));
-        when(lookbookRepository.findNextPage(
+        when(lookbookRepository.findNextPageByTagName(
+                eq("미니멀"),
                 eq(cursorCreatedAt),
                 eq(100L),
                 any(Pageable.class)
@@ -376,11 +387,37 @@ class LookbookServiceTest {
         when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(99L)))
                 .thenReturn(List.of());
 
-        LookbookResponse.LookbookList response = lookbookService.getLookbooks(100L, 5, null);
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                100L,
+                5,
+                " 미니멀 ",
+                null
+        );
 
         assertThat(response.items())
                 .extracting(LookbookResponse.LookbookItem::lookbookId)
                 .containsExactly(99L);
+    }
+
+    @Test
+    void getLookbooksFiltersFirstPageByTag() {
+        Lookbook lookbook = createListLookbook(100L, LocalDateTime.of(2026, 7, 16, 12, 0));
+        when(lookbookRepository.findAllByTagName(eq("미니멀"), any(Pageable.class)))
+                .thenReturn(List.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(100L)))
+                .thenReturn(List.of(LookbookTag.create(lookbook, minimalTag)));
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                null,
+                20,
+                "미니멀",
+                null
+        );
+
+        assertThat(response.items())
+                .extracting(LookbookResponse.LookbookItem::lookbookId)
+                .containsExactly(100L);
+        assertThat(response.items().get(0).tags()).containsExactly("미니멀");
     }
 
     private LookbookRequest.LookbookCreate createRequest(List<Long> tagIds) {

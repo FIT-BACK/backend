@@ -24,11 +24,69 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             SELECT lookbook
             FROM Lookbook lookbook
             WHERE lookbook.deletedAt IS NULL
+              AND EXISTS (
+                  SELECT lookbookTag.id
+                  FROM LookbookTag lookbookTag
+                  WHERE lookbookTag.lookbook = lookbook
+                    AND lookbookTag.tag.tagName = :tagName
+              )
+            ORDER BY lookbook.createdAt DESC, lookbook.id DESC
+            """)
+    List<Lookbook> findAllByTagName(
+            @Param("tagName") String tagName,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = "member")
+    @Query("""
+            SELECT lookbook
+            FROM Lookbook lookbook
+            WHERE lookbook.id = :lookbookId
+              AND lookbook.deletedAt IS NULL
+              AND EXISTS (
+                  SELECT lookbookTag.id
+                  FROM LookbookTag lookbookTag
+                  WHERE lookbookTag.lookbook = lookbook
+                    AND lookbookTag.tag.tagName = :tagName
+              )
+            """)
+    Optional<Lookbook> findByIdAndTagName(
+            @Param("lookbookId") Long lookbookId,
+            @Param("tagName") String tagName
+    );
+
+    @EntityGraph(attributePaths = "member")
+    @Query("""
+            SELECT lookbook
+            FROM Lookbook lookbook
+            WHERE lookbook.deletedAt IS NULL
               AND (lookbook.createdAt < :cursorCreatedAt
                OR (lookbook.createdAt = :cursorCreatedAt AND lookbook.id < :cursorId))
             ORDER BY lookbook.createdAt DESC, lookbook.id DESC
             """)
     List<Lookbook> findNextPage(
+            @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = "member")
+    @Query("""
+            SELECT lookbook
+            FROM Lookbook lookbook
+            WHERE lookbook.deletedAt IS NULL
+              AND EXISTS (
+                  SELECT lookbookTag.id
+                  FROM LookbookTag lookbookTag
+                  WHERE lookbookTag.lookbook = lookbook
+                    AND lookbookTag.tag.tagName = :tagName
+              )
+              AND (lookbook.createdAt < :cursorCreatedAt
+               OR (lookbook.createdAt = :cursorCreatedAt AND lookbook.id < :cursorId))
+            ORDER BY lookbook.createdAt DESC, lookbook.id DESC
+            """)
+    List<Lookbook> findNextPageByTagName(
+            @Param("tagName") String tagName,
             @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
             @Param("cursorId") Long cursorId,
             Pageable pageable

@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -80,14 +81,19 @@ public class LookbookService {
     public LookbookResponse.LookbookList getLookbooks(
             Long cursor,
             Integer pageSize,
+            String tag,
             Member member
     ) {
 
+        // pageSize 를 따로 입력받지 않으면 20 으로 계산
         int resolvedPageSize = pageSize == null ? DEFAULT_LOOKBOOK_PAGE_SIZE : pageSize;
+
+        // 입력 받은 태그의 앞 뒤 공백 제거
+        String normalizedTag = normalizeTag(tag);
         Pageable pageRequest = PageRequest.of(0, resolvedPageSize + 1);
 
         // cursor 기준 다음 페이지 분량의 룩북 목록 조회
-        List<Lookbook> lookbookPage = findLookbookPage(cursor, pageRequest);
+        List<Lookbook> lookbookPage = findLookbookPage(cursor, normalizedTag, pageRequest);
 
         // 다음 페이지 존재 여부 계산
         boolean hasNext = lookbookPage.size() > resolvedPageSize;
@@ -226,27 +232,60 @@ public class LookbookService {
     }
 
     // cursor 기준 룩북 조회
-    private List<Lookbook> findLookbookPage(Long cursor, Pageable pageRequest) {
+    private List<Lookbook> findLookbookPage(
+            Long cursor,
+            String tag,
+            Pageable pageRequest
+    ) {
 
         // 첫 요청일 때 목록 조회
         if (cursor == null) {
+            if (tag != null) {
+                // 선택된 태그가 있을 때
+                return lookbookRepository.findAllByTagName(tag, pageRequest);
+            }
+            // 선택된 태그가 없을 때
             return lookbookRepository.findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(
                     pageRequest
             );
         }
 
         // cursor 유효성 확인 후 목록 조회
-        Lookbook cursorLookbook = lookbookRepository.findByIdAndDeletedAtIsNull(cursor)
+        Lookbook cursorLookbook = findCursorLookbook(cursor, tag)
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.NOT_FOUND,
                         "커서에 해당하는 룩북을 찾을 수 없습니다."
                 ));
+
+        if (tag != null) {
+            return lookbookRepository.findNextPageByTagName(
+                    tag,
+                    cursorLookbook.getCreatedAt(),
+                    cursorLookbook.getId(),
+                    pageRequest
+            );
+        }
 
         return lookbookRepository.findNextPage(
                 cursorLookbook.getCreatedAt(),
                 cursorLookbook.getId(),
                 pageRequest
         );
+    }
+
+    private Optional<Lookbook> findCursorLookbook(Long cursor, String tag) {
+        if (tag != null) {
+            return lookbookRepository.findByIdAndTagName(cursor, tag);
+        }
+        return lookbookRepository.findByIdAndDeletedAtIsNull(cursor);
+    }
+
+    // 입력 받은 태그 공백 제거
+    private String normalizeTag(String tag) {
+        if (tag == null || tag.isBlank()) {
+            return null;
+        }
+        return tag.trim();
     }
 
     // 룩북 id 로 태그명 조회

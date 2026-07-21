@@ -111,6 +111,7 @@ public class LookbookController {
     @Operation(
             summary = "룩북 목록 조회",
             description = "룩북을 최신순으로 요청한 pageSize만큼 커서 기반 조회. pageSize 기본값은 20. "
+                    + "tag를 전달하면 해당 태그가 등록된 룩북만 조회. "
                     + "비로그인 조회를 허용. "
                     + "로그인한 경우 각 룩북의 내 좋아요 여부를 함께 계산."
     )
@@ -119,12 +120,14 @@ public class LookbookController {
             @RequestParam(name = "cursor", required = false) Long cursor,
             @RequestParam(name = "pageSize", required = false, defaultValue = "20")
             Integer pageSize,
+            @RequestParam(name = "tag", required = false) String tag,
             @AuthenticationPrincipal AuthMember authMember
     ) {
         Member member = authMember == null ? null : authMember.getMember();
         LookbookResponse.LookbookList response = lookbookService.getLookbooks(
                 cursor,
                 pageSize,
+                tag,
                 member
         );
         return ApiResponse.onSuccess(response);
