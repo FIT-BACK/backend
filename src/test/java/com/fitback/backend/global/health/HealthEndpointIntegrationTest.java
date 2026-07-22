@@ -23,6 +23,8 @@ import org.springframework.test.web.servlet.MockMvc;
         "spring.datasource.password=",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.flyway.enabled=false",
+        "image.storage.aws-region=ap-northeast-2",
         "jwt.token.secretKey=test-jwt-secret-key-for-health-endpoint-tests"
 })
 class HealthEndpointIntegrationTest {

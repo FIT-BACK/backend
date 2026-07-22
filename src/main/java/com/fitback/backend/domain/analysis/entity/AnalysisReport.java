@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.analysis.entity;
 
+import com.fitback.backend.domain.image.entity.ImageAsset;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.entity.BaseTimeEntity;
@@ -15,6 +16,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -43,11 +45,21 @@ public class AnalysisReport extends BaseTimeEntity {
     @JoinColumn(name = "member_id", nullable = false)
     private Member member;
 
-    @Column(name = "image_url", nullable = false, length = 2048)
+    @Column(name = "image_url", length = 2048)
     private String imageUrl;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "original_image_id")
+    private ImageAsset originalImage;
 
     @Column(name = "match_percentage", nullable = false)
     private Integer matchPercentage;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @Column(name = "purge_after")
+    private Instant purgeAfter;
 
     @Getter(AccessLevel.NONE)
     @OneToMany(mappedBy = "report", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -61,8 +73,32 @@ public class AnalysisReport extends BaseTimeEntity {
         validateMatchPercentage(this.matchPercentage);
     }
 
+    private AnalysisReport(Member member, ImageAsset originalImage, Integer matchPercentage) {
+        this.member = Objects.requireNonNull(member, "member must not be null");
+        this.originalImage = Objects.requireNonNull(
+                originalImage,
+                "originalImage must not be null"
+        );
+        this.matchPercentage = matchPercentage == null ? DEFAULT_MATCH_PERCENTAGE : matchPercentage;
+        validateMatchPercentage(this.matchPercentage);
+    }
+
     public static AnalysisReport create(Member member, String imageUrl, Integer matchPercentage) {
         return new AnalysisReport(member, imageUrl, matchPercentage);
+    }
+
+    public static AnalysisReport create(
+            Member member,
+            ImageAsset originalImage,
+            Integer matchPercentage
+    ) {
+        return new AnalysisReport(member, originalImage, matchPercentage);
+    }
+
+    public void softDelete(Instant deletedAt) {
+        if (this.deletedAt == null) {
+            this.deletedAt = Objects.requireNonNull(deletedAt, "deletedAt must not be null");
+        }
     }
 
     public void changeMatchPercentage(Integer matchPercentage) {

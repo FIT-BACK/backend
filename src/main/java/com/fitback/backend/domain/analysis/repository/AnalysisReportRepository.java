@@ -9,12 +9,17 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AnalysisReportRepository extends JpaRepository<AnalysisReport, Long> {
 
+    boolean existsByOriginalImageId(Long imageId);
+
     @EntityGraph(attributePaths = {"reportTags", "reportTags.tag"})
-    Optional<AnalysisReport> findByIdAndMemberId(Long reportId, Long memberId);
+    Optional<AnalysisReport> findByIdAndMemberIdAndDeletedAtIsNull(Long reportId, Long memberId);
 
-    Slice<AnalysisReport> findByMemberIdOrderByIdDesc(Long memberId, Pageable pageable);
+    Slice<AnalysisReport> findByMemberIdAndDeletedAtIsNullOrderByIdDesc(
+            Long memberId,
+            Pageable pageable
+    );
 
-    Slice<AnalysisReport> findByMemberIdAndIdLessThanOrderByIdDesc(
+    Slice<AnalysisReport> findByMemberIdAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
             Long memberId,
             Long cursor,
             Pageable pageable

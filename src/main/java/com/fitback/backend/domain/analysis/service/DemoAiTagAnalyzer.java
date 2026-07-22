@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.analysis.service;
 
+import com.fitback.backend.domain.image.entity.ImageAsset;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import java.util.List;
@@ -15,6 +16,11 @@ public class DemoAiTagAnalyzer implements AiTagAnalyzer {
 
     @Override
     public List<Tag> analyze(MultipartFile image) {
+        return tagRepository.findTop3ByOrderByIdAsc();
+    }
+
+    @Override
+    public List<Tag> analyze(ImageAsset image) {
         return tagRepository.findTop3ByOrderByIdAsc();
     }
 }

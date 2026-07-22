@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.analysis.controller;
 
+import com.fitback.backend.domain.analysis.dto.AnalysisByImageRequest;
 import com.fitback.backend.domain.analysis.dto.AnalysisCreateResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisDetailResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisListResponse;
@@ -44,6 +45,17 @@ public class AnalysisController {
         AnalysisCreateResponse response = analysisService.create(
                 currentMemberProvider.getCurrentMemberId(),
                 image
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.onCreated(response));
+    }
+
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ApiResponse<AnalysisCreateResponse>> createAnalysis(
+            @Valid @RequestBody AnalysisByImageRequest request
+    ) {
+        AnalysisCreateResponse response = analysisService.create(
+                currentMemberProvider.getCurrentMemberId(),
+                request
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.onCreated(response));
     }

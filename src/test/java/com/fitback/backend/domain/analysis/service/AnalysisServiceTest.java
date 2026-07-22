@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fitback.backend.domain.analysis.dto.AnalysisByImageRequest;
 import com.fitback.backend.domain.analysis.dto.AnalysisCreateResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisDetailResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisListResponse;
@@ -17,6 +18,9 @@ import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.entity.ReportTag;
 import com.fitback.backend.domain.analysis.entity.ReportTagSource;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
+import com.fitback.backend.domain.image.entity.ImageAsset;
+import com.fitback.backend.domain.image.entity.ImagePurpose;
+import com.fitback.backend.domain.image.service.ImageAssetService;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
@@ -25,6 +29,9 @@ import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,6 +65,14 @@ class AnalysisServiceTest {
     @Mock
     private RecommendationResultProvider recommendationResultProvider;
 
+    @Mock
+    private ImageAssetService imageAssetService;
+
+    private final Clock clock = Clock.fixed(
+            Instant.parse("2026-07-22T00:00:00Z"),
+            ZoneOffset.UTC
+    );
+
     private AnalysisService analysisService;
 
     @BeforeEach
@@ -68,8 +83,44 @@ class AnalysisServiceTest {
                 tagRepository,
                 imageStorage,
                 aiTagAnalyzer,
-                recommendationResultProvider
+                recommendationResultProvider,
+                imageAssetService,
+                clock
         );
+    }
+
+    @Test
+    void createsReportFromCompletedImageAsset() {
+        Member member = member(1L);
+        Tag minimal = tag(10L, "미니멀");
+        ImageAsset imageAsset = ImageAsset.create(
+                member,
+                ImagePurpose.ANALYSIS,
+                "images/analysis/1/2026/07/image.jpg",
+                "image/jpeg",
+                3,
+                clock.instant().plusSeconds(300)
+        );
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(imageAssetService.activateAnalysisImage(1L, "image-public-id"))
+                .thenReturn(imageAsset);
+        when(aiTagAnalyzer.analyze(imageAsset)).thenReturn(List.of(minimal));
+        when(imageAssetService.createReadUrl(imageAsset))
+                .thenReturn("https://cdn.example.com/signed-image");
+        when(analysisReportRepository.save(any(AnalysisReport.class))).thenAnswer(invocation -> {
+            AnalysisReport report = invocation.getArgument(0);
+            ReflectionTestUtils.setField(report, "id", 502L);
+            return report;
+        });
+
+        AnalysisCreateResponse response = analysisService.create(
+                1L,
+                new AnalysisByImageRequest("image-public-id")
+        );
+
+        assertThat(response.reportId()).isEqualTo(502L);
+        assertThat(response.imageUrl()).isEqualTo("https://cdn.example.com/signed-image");
+        assertThat(response.suggestedTags()).extracting("tagName").containsExactly("미니멀");
     }
 
     @Test
@@ -112,7 +163,7 @@ class AnalysisServiceTest {
         Tag wideFit = tag(20L, "와이드핏");
         Tag beige = tag(30L, "베이지톤");
         AnalysisReport report = report(501L, member, minimal, wideFit);
-        when(analysisReportRepository.findByIdAndMemberId(501L, 1L))
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
                 .thenReturn(Optional.of(report));
         when(tagRepository.findAllById(any())).thenReturn(List.of(minimal, beige));
         when(recommendationResultProvider.generateFor(report)).thenReturn(List.of());
@@ -139,7 +190,10 @@ class AnalysisServiceTest {
         Tag minimal = tag(10L, "미니멀");
         AnalysisReport newestReport = report(501L, member, minimal);
         AnalysisReport nextReport = report(500L, member, minimal);
-        when(analysisReportRepository.findByMemberIdOrderByIdDesc(1L, PageRequest.of(0, 2)))
+        when(analysisReportRepository.findByMemberIdAndDeletedAtIsNullOrderByIdDesc(
+                1L,
+                PageRequest.of(0, 2)
+        ))
                 .thenReturn(new SliceImpl<>(
                         List.of(newestReport, nextReport),
                         PageRequest.of(0, 2),
@@ -176,7 +230,7 @@ class AnalysisServiceTest {
                         "https://example.com/purchase"
                 ))
         );
-        when(analysisReportRepository.findByIdAndMemberId(501L, 1L))
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
                 .thenReturn(Optional.of(report));
         when(recommendationResultProvider.findByReportId(501L))
                 .thenReturn(List.of(recommendationGroup));
@@ -193,7 +247,7 @@ class AnalysisServiceTest {
         Member member = member(1L);
         Tag minimal = tag(10L, "미니멀");
         AnalysisReport report = report(501L, member, minimal);
-        when(analysisReportRepository.findByIdAndMemberId(501L, 1L))
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
                 .thenReturn(Optional.of(report));
         when(tagRepository.findAllById(any())).thenReturn(List.of(minimal));
 
@@ -210,13 +264,26 @@ class AnalysisServiceTest {
 
     @Test
     void preventsDeletingAnotherMembersReport() {
-        when(analysisReportRepository.findByIdAndMemberId(501L, 2L))
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 2L))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> analysisService.deleteReport(2L, 501L))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.ANALYSIS_REPORT_NOT_FOUND);
+        verify(analysisReportRepository, never()).delete(any());
+    }
+
+    @Test
+    void softDeletesOwnedReportWithoutRemovingRelationships() {
+        Member member = member(1L);
+        AnalysisReport report = report(501L, member);
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
+                .thenReturn(Optional.of(report));
+
+        analysisService.deleteReport(1L, 501L);
+
+        assertThat(report.getDeletedAt()).isEqualTo(clock.instant());
         verify(analysisReportRepository, never()).delete(any());
     }
 
