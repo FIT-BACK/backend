@@ -81,10 +81,13 @@ db-url=jdbc:mysql://<private-rds-endpoint>:3306/fitback?serverTimezone=Asia/Seou
 db-user=<application-user>
 db-password=<generated-password>
 jwt-secret-key=<at-least-32-byte-random-secret>
-cloudfront-private-key=<base64-encoded-pkcs8-pem>
+cloudfront-private-key=<base64-encoded-pkcs8-der>
 ```
 
-`cloudfront-private-key`의 실제 키 원문과 Base64 값은 문서, 저장소, GitHub payload, 로그에 기록하지 않는다.
+`cloudfront-private-key`는 PEM header/footer를 포함한 전체 문자열이 아니라 PKCS8 DER bytes를
+줄바꿈 없는 Base64로 인코딩한다. 전체 PEM을 다시 Base64로 인코딩하면 RSA key 크기에 따라
+Standard Parameter의 4096자 제한을 초과할 수 있다. 실제 키 원문과 Base64 값은 문서,
+저장소, GitHub payload, 로그에 기록하지 않는다.
 
 고객 관리형 KMS key로 암호화하면 EC2 instance role에 해당 key의 `kms:Decrypt` 권한도 추가해야 한다.
 
