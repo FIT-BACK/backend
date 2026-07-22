@@ -4,6 +4,9 @@ set -Eeuo pipefail
 
 : "${IMAGE_REFERENCE:?IMAGE_REFERENCE is required}"
 : "${AWS_REGION:?AWS_REGION is required}"
+: "${IMAGE_BUCKET:?IMAGE_BUCKET is required}"
+: "${IMAGE_CDN_BASE_URL:?IMAGE_CDN_BASE_URL is required}"
+: "${CLOUDFRONT_KEY_PAIR_ID:?CLOUDFRONT_KEY_PAIR_ID is required}"
 
 PARAMETER_PREFIX="${PARAMETER_PREFIX:-/fitback/prod}"
 PARAMETER_PREFIX="${PARAMETER_PREFIX%/}"
@@ -24,6 +27,21 @@ fi
 
 if [[ ! "$PARAMETER_PREFIX" =~ ^/[A-Za-z0-9_.\/-]+$ ]]; then
   echo "Invalid PARAMETER_PREFIX: $PARAMETER_PREFIX" >&2
+  exit 1
+fi
+
+if [[ ! "$IMAGE_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]]; then
+  echo "Invalid IMAGE_BUCKET: $IMAGE_BUCKET" >&2
+  exit 1
+fi
+
+if [[ ! "$IMAGE_CDN_BASE_URL" =~ ^https://[a-z0-9]+\.cloudfront\.net$ ]]; then
+  echo "Invalid IMAGE_CDN_BASE_URL: $IMAGE_CDN_BASE_URL" >&2
+  exit 1
+fi
+
+if [[ ! "$CLOUDFRONT_KEY_PAIR_ID" =~ ^[A-Z0-9]+$ ]]; then
+  echo "Invalid CLOUDFRONT_KEY_PAIR_ID: $CLOUDFRONT_KEY_PAIR_ID" >&2
   exit 1
 fi
 
@@ -138,6 +156,10 @@ write_environment() {
     printf 'BACKEND_IMAGE=%s\n' "$image_reference"
     printf 'HTTP_BIND_ADDRESS=%s\n' "$HTTP_BIND_ADDRESS"
     printf 'HTTP_PORT=%s\n' "$HTTP_PORT"
+    printf 'AWS_REGION=%s\n' "$AWS_REGION"
+    printf 'IMAGE_BUCKET=%s\n' "$IMAGE_BUCKET"
+    printf 'IMAGE_CDN_BASE_URL=%s\n' "$IMAGE_CDN_BASE_URL"
+    printf 'CLOUDFRONT_KEY_PAIR_ID=%s\n' "$CLOUDFRONT_KEY_PAIR_ID"
     printf 'SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.cj.jdbc.Driver\n'
     printf 'SPRING_JPA_HIBERNATE_DDL_AUTO=validate\n'
   } > "$temporary_env"
@@ -152,6 +174,7 @@ compose_in() {
   DB_USER="$db_user" \
   DB_PASSWORD="$db_password" \
   JWT_SECRET_KEY="$jwt_secret_key" \
+  CLOUDFRONT_PRIVATE_KEY_BASE64="$cloudfront_private_key_base64" \
     docker compose \
     --project-directory "$release_dir" \
     --env-file "$release_dir/.env" \
@@ -253,11 +276,18 @@ db_url="$(get_parameter 'db-url')"
 db_user="$(get_parameter 'db-user')"
 db_password="$(get_parameter 'db-password')"
 jwt_secret_key="$(get_parameter 'jwt-secret-key')"
+cloudfront_private_key_base64="$(get_parameter 'cloudfront-private-key')"
 
 require_single_line 'db-url' "$db_url"
 require_single_line 'db-user' "$db_user"
 require_single_line 'db-password' "$db_password"
 require_single_line 'jwt-secret-key' "$jwt_secret_key"
+require_single_line 'cloudfront-private-key' "$cloudfront_private_key_base64"
+
+if [[ ! "$cloudfront_private_key_base64" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
+  echo 'cloudfront-private-key must contain a Base64-encoded private key.' >&2
+  exit 1
+fi
 
 write_environment "$RELEASE_DIR" "$IMAGE_REFERENCE"
 

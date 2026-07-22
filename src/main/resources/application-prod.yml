@@ -19,3 +19,11 @@ jwt:
     expiration:
       access: 1800000       # 30분 (ms)
       refresh: 1209600000   # 14일 (ms)
+
+image:
+  storage:
+    aws-region: ${AWS_REGION}
+    bucket: ${IMAGE_BUCKET}
+    cdn-base-url: ${IMAGE_CDN_BASE_URL}
+    cloudfront-key-pair-id: ${CLOUDFRONT_KEY_PAIR_ID}
+    cloudfront-private-key-base64: ${CLOUDFRONT_PRIVATE_KEY_BASE64}
