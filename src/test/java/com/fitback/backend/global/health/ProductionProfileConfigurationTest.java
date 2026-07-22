@@ -23,7 +23,10 @@ class ProductionProfileConfigurationTest {
                     "IMAGE_BUCKET=fitback-prod-images",
                     "IMAGE_CDN_BASE_URL=https://images.example.com",
                     "CLOUDFRONT_KEY_PAIR_ID=TESTKEY",
-                    "CLOUDFRONT_PRIVATE_KEY_BASE64=dGVzdC1rZXk="
+                    "CLOUDFRONT_PRIVATE_KEY_BASE64=dGVzdC1rZXk=",
+                    "KAKAO_REST_API_KEY=test-kakao-client-id",
+                    "KAKAO_REST_API_SECRET=test-kakao-client-secret",
+                    "FRONT_REDIRECT_URI=http://localhost:3000/oauth/success"
             );
 
     @Test
@@ -62,6 +65,8 @@ class ProductionProfileConfigurationTest {
                     .isFalse();
             assertThat(environment.getProperty("shopping.candidate-token.ttl"))
                     .isEqualTo("PT10M");
+            assertThat(environment.getProperty("app.oauth.front-redirect-uri"))
+                    .isEqualTo("http://localhost:3000/oauth/success");
         });
     }
 

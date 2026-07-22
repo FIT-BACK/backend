@@ -226,7 +226,7 @@ class AuthServiceTest {
         when(jwtUtil.createRefreshToken(any(AuthMember.class))).thenReturn("new-refresh");
 
         //when
-        MemberResponse.RefreshResponse response = authService.refresh(request);
+        MemberResponse.TokenResponse response = authService.refresh(request);
 
         //then
         assertThat(response.accessToken()).isEqualTo("new-access");
