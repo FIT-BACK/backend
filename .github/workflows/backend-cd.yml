@@ -219,6 +219,7 @@ jobs:
       AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
       EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
       PARAMETER_PREFIX: ${{ vars.DEPLOY_PARAMETER_PREFIX || '/fitback/prod' }}
+      PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
       IMAGE_REFERENCE: ${{ needs.publish-image.outputs.image-reference }}
 
     steps:
@@ -430,4 +431,36 @@ jobs:
             echo "- Instance: \`$EC2_INSTANCE_ID\`"
             echo "- Image: \`$IMAGE_REFERENCE\`"
             echo "- Command: \`$COMMAND_ID\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify public HTTPS endpoint
+        if: ${{ env.PUBLIC_BASE_URL != '' }}
+        shell: bash
+        run: |
+          if [[ ! "$PUBLIC_BASE_URL" =~ ^https://[^/]+/?$ ]]; then
+            echo "PUBLIC_BASE_URL must be an HTTPS origin without a path: $PUBLIC_BASE_URL" >&2
+            exit 1
+          fi
+
+          public_base_url="${PUBLIC_BASE_URL%/}"
+          nginx_health="$(curl --fail --silent --show-error --max-time 10 \
+            "$public_base_url/nginx-health")"
+          readiness="$(curl --fail --silent --show-error --max-time 10 \
+            "$public_base_url/actuator/health/readiness")"
+
+          if [ "$nginx_health" != 'ok' ]; then
+            echo "Unexpected public Nginx health response: $nginx_health" >&2
+            exit 1
+          fi
+
+          if ! grep --quiet '"status":"UP"' <<< "$readiness"; then
+            echo "Unexpected public readiness response: $readiness" >&2
+            exit 1
+          fi
+
+          {
+            echo
+            echo "- Public endpoint: \`$public_base_url\`"
+            echo "- Public Nginx health: \`$nginx_health\`"
+            echo "- Public readiness: \`$readiness\`"
           } >> "$GITHUB_STEP_SUMMARY"
