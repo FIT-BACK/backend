@@ -63,3 +63,4 @@ hmac:
 app:
   oauth:
     front-redirect-uri: ${FRONT_REDIRECT_URI}
+    temp-token-ttl: 180000

@@ -72,4 +72,10 @@ public class MemberRequest {
             @Size(max = 5, message = "관심 태그는 최대 5개까지 선택할 수 있습니다.")
             List<Long> tagIds
     ) {}
+
+    //카카오 임시 토큰 교환
+    public record TokenExchangeRequest(
+            @NotBlank(message = "임시 토큰은 필수입니다.")
+            String tempToken
+    ) {}
 }

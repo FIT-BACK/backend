@@ -23,6 +23,13 @@ public class MemberResponse {
             MemberRole role
     ) {}
 
+    //카카오 임시 토큰 교환 응답
+    public record TokenExchangeResponse(
+            String accessToken,
+            String refreshToken,
+            boolean isNewMember
+    ) {}
+
     //회원가입 응답 변환
     public static SignUpResponse toSignUpResponse(
             String accessToken,
@@ -213,5 +220,12 @@ public class MemberResponse {
                 .nickname(nickname)
                 .available(available)
                 .build();
+    }
+
+    //카카오 임시 토큰 교환 응답 변환
+    public static TokenExchangeResponse toTokenExchangeResponse(
+            String accessToken, String refreshToken, boolean isNewMember
+    ){
+        return new TokenExchangeResponse(accessToken, refreshToken, isNewMember);
     }
 }

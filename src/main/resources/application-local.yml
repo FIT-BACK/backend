@@ -61,3 +61,8 @@ jwt:
 
 hmac:
   secret-key: ${HMAC_SECRET_KEY}
+
+app:
+  oauth:
+    front-redirect-uri: ${FRONT_REDIRECT_URI:http://localhost:3000/oauth/success}
+    temp-token-ttl: 180000

@@ -10,6 +10,8 @@ import com.fitback.backend.domain.notification.service.NotificationSettingServic
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
+import com.fitback.backend.global.security.token.TempTokenPayload;
+import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
 import com.fitback.backend.global.util.HmacUtil;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final MemberRepository memberRepository;
     private final JwtUtil jwtUtil;
+    private final TempTokenStore tempTokenStore;
 
     private final WithdrawalEmailBlockRepository withdrawalEmailBlockRepository;
     private final HmacUtil hmacUtil;
@@ -152,18 +155,21 @@ public class AuthService {
         }
     }
 
-    //OAuth 방식에서 access token과 refresh token을 생성하고 refresh token을 저장하는 메서드
+    //카카오 임시 토큰을 실제 access/refresh 토큰으로 교환 (일회용)
     @Transactional
-    public MemberResponse.TokenResponse createOAuthToken(Long memberId) {
-        Member member = memberRepository.findById(memberId)
+    public MemberResponse.TokenExchangeResponse exchangeToken(String tempToken) {
+        TempTokenPayload payload = tempTokenStore.consume(tempToken)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TEMP_TOKEN));
+
+        Member member = memberRepository.findById(payload.memberId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
 
         AuthMember authMember = new AuthMember(member);
         String accessToken = jwtUtil.createAccessToken(authMember);
         String refreshToken = jwtUtil.createRefreshToken(authMember);
 
-        member.updateRefreshToken(refreshToken);   // 트랜잭션 안이라 dirty checking으로 저장됨
+        member.updateRefreshToken(refreshToken);
 
-        return MemberResponse.toTokenResponse(accessToken, refreshToken);
+        return MemberResponse.toTokenExchangeResponse(accessToken, refreshToken, payload.isNewMember());
     }
 }

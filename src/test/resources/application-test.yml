@@ -58,3 +58,4 @@ hmac:
 app:
   oauth:
     front-redirect-uri: http://localhost:3000/oauth/success
+    temp-token-ttl: 180000

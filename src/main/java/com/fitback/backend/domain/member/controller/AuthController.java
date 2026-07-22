@@ -49,6 +49,14 @@ public class AuthController {
         return ApiResponse.onSuccess(authService.refresh(refreshDto));
     }
 
+    @Operation(summary = "카카오 임시 토큰 교환", description = "카카오 로그인 후 받은 임시 토큰을 실제 access/refresh 토큰으로 교환")
+    @PostMapping("/v1/auth/token/exchange")
+    public ApiResponse<MemberResponse.TokenExchangeResponse> exchange(
+            @Valid @RequestBody MemberRequest.TokenExchangeRequest request
+    ){
+        return ApiResponse.onSuccess(authService.exchangeToken(request.tempToken()));
+    }
+
     @Operation(summary = "로그아웃", description = "(인증필요) refresh token을 무효화 하는 로그아웃")
     @PostMapping("/v1/auth/logout")
     public ApiResponse<Void> logout(
@@ -58,4 +66,5 @@ public class AuthController {
         authService.logout(authMember);
         return ApiResponse.onSuccess(null);
     }
+
 }
