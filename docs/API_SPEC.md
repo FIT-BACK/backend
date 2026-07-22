@@ -1,11 +1,11 @@
-# Recommendation/Product API 계약
+# Recommendation/Product 및 이미지 업로드 API 계약
 
 ## 0. 문서 정보
 
 | 항목 | 값 |
 | --- | --- |
-| 기준일 | 2026-07-21 |
-| 적용 범위 | 원상품 후보·가격 확인, 상품 검색·상세, 추천 생성·조회, 상품 찜 |
+| 기준일 | 2026-07-22 |
+| 적용 범위 | 원상품 후보·가격 확인, 상품 검색·상세, 추천 생성·조회, 상품 찜, 사용자 이미지 업로드 URL 발급 |
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
 | 연동 참고 | Auth `#20`은 PR `#34`로 병합되어 `AuthMember` principal 계약을 확인함. Analysis `#35`는 실제 연동 전 병합본 재확인 |
@@ -301,6 +301,7 @@ finalScore DESC
 | PUT | `/api/v1/members/me/saved-products/{productId}` | 상품 찜 | 필수 |
 | GET | `/api/v1/members/me/saved-products` | 상품 찜 목록 | 필수 |
 | DELETE | `/api/v1/members/me/saved-products/{productId}` | 상품 찜 해제 | 필수 |
+| POST | `/api/v1/images/presigned-uploads` | 이미지 Presigned PUT URL 발급 | 필수 |
 
 ---
 
@@ -931,6 +932,7 @@ body는 없다.
 | `PRODUCT_PROVIDER_QUOTA_EXCEEDED` | `PRODUCT503_2` | 503 | 429 또는 공급자 quota 초과 |
 | `PRODUCT_PROVIDER_PERSISTENCE_UNSUPPORTED` | `PRODUCT503_3` | 503 | 반환 후보를 허용된 방식으로 하나도 materialize할 수 없음 |
 | `RECOMMENDATION_INPUT_CHANGED` | `RECOMMENDATION409_1` | 409 | 외부 호출 중 태그·match 또는 reference revision이 변경됨 |
+| `IMAGE_UNSUPPORTED_CONTENT_TYPE` | `IMAGE400_1` | 400 | JPEG, PNG, WebP 이외의 업로드 MIME type |
 
 정책:
 
@@ -988,6 +990,7 @@ Controller와 Service는 Shopify, Lykdat, ADPICK 같은 공급자 이름을 DTO 
 | 추천 생성 요청/응답 | `RecommendationCreateRequest`, `RecommendationResultResponse` |
 | 추천 그룹 | `RecommendationGroupResponse` |
 | 찜 응답/목록 | `SavedProductResponse`, `SavedProductListResponse` |
+| 이미지 업로드 URL 요청/응답 | `ImageUploadRequest`, `ImageUploadResponse` |
 
 Controller는 Entity나 외부 provider response를 직접 반환하지 않는다.
 
@@ -1032,3 +1035,75 @@ Auth `#20`의 병합 계약은 위와 같이 사용한다. Analysis `#35`가 병
 - [ ] provider 장애 중 찜 해제와 partial 목록이 동작함
 - [ ] API key, candidate token, 사용자 이미지 URL 원문이 로그에 노출되지 않음
 - [ ] API 변경 PR에서 이 문서가 함께 갱신됨
+
+---
+
+## 18. 이미지 Presigned Upload
+
+### `POST /api/v1/images/presigned-uploads`
+
+인증 회원이 브라우저에서 private S3 버킷으로 이미지를 직접 업로드할 수 있도록 5분 유효한
+Presigned PUT URL을 발급한다. Request의 회원 식별자는 받지 않으며 JWT principal의 회원을
+소유자로 사용한다.
+
+### Request
+
+```json
+{
+  "purpose": "ANALYSIS_ORIGINAL",
+  "contentType": "image/jpeg",
+  "fileSize": 3145728
+}
+```
+
+| 필드 | 필수 | 계약 |
+| --- | --- | --- |
+| `purpose` | 예 | `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `LOOKBOOK_MATCHED`, `PROFILE` |
+| `contentType` | 예 | `image/jpeg`, `image/png`, `image/webp`만 허용 |
+| `fileSize` | 예 | 1 byte 이상 5 MiB(`5,242,880` byte) 이하 |
+
+### Response `201 Created`
+
+```json
+{
+  "success": true,
+  "code": "COMMON201_1",
+  "message": "리소스가 생성되었습니다.",
+  "data": {
+    "imageId": "5f8ca021-02fe-4fba-982f-8de356789abc",
+    "uploadUrl": "https://fitback-prod-images.example/presigned-put",
+    "uploadMethod": "PUT",
+    "requiredHeaders": {
+      "Content-Type": "image/jpeg"
+    },
+    "expiresAt": "2026-07-22T05:05:00Z",
+    "imageUrl": "https://d1p2ierkew26r1.cloudfront.net/prod/images/analysis_original/2026/07/5f8ca021-02fe-4fba-982f-8de356789abc.jpg"
+  }
+}
+```
+
+클라이언트는 `uploadMethod`와 `requiredHeaders`를 그대로 사용해 `uploadUrl`로 파일 body를
+전송한다. `uploadUrl`은 자격 증명 URL이므로 저장하거나 로그에 남기지 않는다. `imageUrl`은
+영구 리소스 위치이며 private CloudFront 배포의 서명 없는 조회 URL이므로 그 자체로는 `403`을
+반환한다. 업로드 직후 화면 미리보기는 브라우저의 local object URL을 사용한다.
+
+Presigned PUT 서명에는 요청의 `fileSize`와 동일한 `Content-Length`가 포함된다. 브라우저가
+파일 body 크기를 기준으로 이 헤더를 자동 생성하므로 클라이언트 JavaScript에서 직접 설정하지
+않으며, 요청 크기와 실제 body 크기가 다르면 S3가 업로드를 거부한다.
+
+### 상태와 검증
+
+- 발급과 함께 `image.status=PENDING`, `visibility=PRIVATE` 행을 저장한다.
+- 객체 key는 서버가 UUID로 생성하며 클라이언트 파일명은 사용하지 않는다.
+- 이 API가 받은 `fileSize`는 발급 전 요청 검증용이다. 업로드 완료 후 활성화할 때 S3 metadata와
+  실제 MIME/크기를 다시 검증해야 하며, 그 기능은 이 endpoint에 포함하지 않는다.
+- `PENDING` 이미지의 활성화, 조회용 CloudFront signed URL 발급, 만료 객체 정리는 별도 API와
+  작업자로 처리한다.
+
+### 오류
+
+| 조건 | HTTP | code |
+| --- | ---: | --- |
+| 인증 없음 또는 유효하지 않은 토큰 | 401 | `COMMON401_1` |
+| 필수값, enum, 파일 크기 위반 | 400 | `COMMON400_1` 또는 `COMMON400_2` |
+| 지원하지 않는 MIME type | 400 | `IMAGE400_1` |

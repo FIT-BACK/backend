@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS image (
+    image_id VARCHAR(36) NOT NULL,
+    owner_id BIGINT NOT NULL,
+    object_key VARCHAR(512) NOT NULL,
+    purpose VARCHAR(30) NOT NULL,
+    content_type VARCHAR(30) NOT NULL,
+    file_size BIGINT NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    visibility VARCHAR(20) NOT NULL,
+    presigned_expires_at DATETIME(6) NOT NULL,
+    activated_at DATETIME(6) NULL,
+    delete_requested_at DATETIME(6) NULL,
+    deleted_at DATETIME(6) NULL,
+    retry_count INT NOT NULL DEFAULT 0,
+    next_retry_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL,
+    CONSTRAINT PK_IMAGE PRIMARY KEY (image_id),
+    CONSTRAINT UK_IMAGE_OBJECT_KEY UNIQUE (object_key),
+    CONSTRAINT FK_IMAGE_OWNER FOREIGN KEY (owner_id) REFERENCES member (member_id),
+    INDEX IX_IMAGE_OWNER_STATUS (owner_id, status),
+    INDEX IX_IMAGE_STATUS_CREATED_AT (status, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
