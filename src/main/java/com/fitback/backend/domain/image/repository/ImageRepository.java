@@ -25,6 +25,7 @@ public interface ImageRepository extends JpaRepository<Image, String> {
             from Image image
             where image.status in :statuses
               and (image.nextRetryAt is null or image.nextRetryAt <= :now)
+              and (:afterId is null or image.id > :afterId)
               and (
                     (image.uploadedAt is null and image.createdAt < :createdBefore)
                     or image.uploadedAt < :createdBefore
@@ -35,6 +36,7 @@ public interface ImageRepository extends JpaRepository<Image, String> {
             @Param("statuses") Collection<ImageStatus> statuses,
             @Param("createdBefore") LocalDateTime createdBefore,
             @Param("now") Instant now,
+            @Param("afterId") String afterId,
             Pageable pageable
     );
 }

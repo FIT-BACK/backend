@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fitback.backend.domain.image.dto.ImageCompleteResponse;
 import com.fitback.backend.domain.image.dto.ImageUploadRequest;
 import com.fitback.backend.domain.image.dto.ImageUploadResponse;
 import com.fitback.backend.domain.image.entity.Image;
@@ -30,8 +32,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class ImageUploadServiceTest {
@@ -51,7 +55,7 @@ class ImageUploadServiceTest {
     private ImageAccessUrlProvider imageAccessUrlProvider;
 
     @Mock
-    private ImageSignatureValidator imageSignatureValidator;
+    private ImageUploadTransactionService imageUploadTransactionService;
 
     private ImageUploadService imageUploadService;
 
@@ -63,7 +67,7 @@ class ImageUploadServiceTest {
                 imageUploadUrlPort,
                 imageObjectStorage,
                 imageAccessUrlProvider,
-                imageSignatureValidator,
+                imageUploadTransactionService,
                 clock
         );
     }
@@ -138,5 +142,36 @@ class ImageUploadServiceTest {
                                 .isEqualTo(ErrorCode.IMAGE_UNSUPPORTED_CONTENT_TYPE)
                 );
         verify(imageRepository, never()).save(any());
+    }
+
+    @Test
+    void inspectsStorageBetweenPendingValidationAndTransactionalCompletion() {
+        Member owner = Member.create(
+                "complete@fitback.com",
+                "complete-user",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(owner, "id", 7L);
+        ImageObjectStorage.StoredImageObject storedObject =
+                new ImageObjectStorage.StoredImageObject(
+                        3,
+                        "image/jpeg",
+                        new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF}
+                );
+        when(imageUploadTransactionService.getPendingUpload(7L, "image-id"))
+                .thenReturn(new ImageUploadTransactionService.PendingUpload("object-key"));
+        when(imageObjectStorage.inspect("object-key")).thenReturn(storedObject);
+        when(imageUploadTransactionService.completeUpload(7L, "image-id", storedObject))
+                .thenReturn(new ImageCompleteResponse("image-id", "READY"));
+
+        ImageCompleteResponse response = imageUploadService.completeUpload(owner, "image-id");
+
+        assertThat(response.status()).isEqualTo("READY");
+        InOrder inOrder = inOrder(imageUploadTransactionService, imageObjectStorage);
+        inOrder.verify(imageUploadTransactionService).getPendingUpload(7L, "image-id");
+        inOrder.verify(imageObjectStorage).inspect("object-key");
+        inOrder.verify(imageUploadTransactionService)
+                .completeUpload(7L, "image-id", storedObject);
     }
 }

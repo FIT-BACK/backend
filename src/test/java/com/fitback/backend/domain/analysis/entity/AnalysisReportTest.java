@@ -53,6 +53,18 @@ class AnalysisReportTest {
     }
 
     @Test
+    void storesDuplicateNewlyConfirmedTagOnlyOnce() {
+        AnalysisReport report = AnalysisReport.create(member(), "/uploads/look.jpg", 70);
+        Tag beige = tag(30L, "베이지톤");
+
+        report.confirmTags(List.of(beige, beige), 85);
+
+        assertThat(report.getReportTags())
+                .extracting(ReportTag::getTag)
+                .containsExactly(beige);
+    }
+
+    @Test
     void rejectsMatchPercentageOutsideRange() {
         AnalysisReport report = AnalysisReport.create(member(), "/uploads/look.jpg", 70);
 

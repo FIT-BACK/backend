@@ -16,7 +16,6 @@ import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Locale;
@@ -41,7 +40,7 @@ public class ImageUploadService {
     private final ImageUploadUrlPort imageUploadUrlPort;
     private final ImageObjectStorage imageObjectStorage;
     private final ImageAccessUrlProvider imageAccessUrlProvider;
-    private final ImageSignatureValidator imageSignatureValidator;
+    private final ImageUploadTransactionService imageUploadTransactionService;
     private final Clock clock;
 
     @Transactional
@@ -78,36 +77,17 @@ public class ImageUploadService {
         return toResponse(image, createUploadUrl(image), expiresAt);
     }
 
-    @Transactional(noRollbackFor = BusinessException.class)
     public ImageCompleteResponse completeUpload(Member owner, String imageId) {
-        Image image = findOwnedImage(owner.getId(), imageId);
-        if (image.getStatus() != ImageStatus.PENDING) {
-            throw new BusinessException(ErrorCode.IMAGE_INVALID_STATE);
-        }
-        if (image.uploadExpired(clock.instant())) {
-            throw new BusinessException(ErrorCode.IMAGE_UPLOAD_EXPIRED);
-        }
-
+        ImageUploadTransactionService.PendingUpload pendingUpload =
+                imageUploadTransactionService.getPendingUpload(owner.getId(), imageId);
+        // S3 조회는 DB 잠금을 놓은 뒤 수행하고, 결과 반영 시 엔티티를 다시 검증한다.
         ImageObjectStorage.StoredImageObject storedObject =
-                imageObjectStorage.inspect(image.getObjectKey());
-        LocalDateTime completedAt = LocalDateTime.now(clock);
-        if (!imageSignatureValidator.matches(
-                image.getContentType(),
-                storedObject.signatureBytes()
-        )) {
-            image.reject(completedAt);
-            throw new BusinessException(ErrorCode.INVALID_IMAGE_CONTENT);
-        }
-        try {
-            image.completeUpload(
-                    storedObject.fileSizeBytes(),
-                    storedObject.contentType(),
-                    completedAt
-            );
-        } catch (IllegalArgumentException exception) {
-            throw new BusinessException(ErrorCode.INVALID_IMAGE_CONTENT);
-        }
-        return new ImageCompleteResponse(image.getId(), image.getStatus().name());
+                imageObjectStorage.inspect(pendingUpload.objectKey());
+        return imageUploadTransactionService.completeUpload(
+                owner.getId(),
+                imageId,
+                storedObject
+        );
     }
 
     @Transactional

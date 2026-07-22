@@ -5,10 +5,12 @@ import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 @Component
+@Profile({"default", "local", "test"})
 @RequiredArgsConstructor
 public class DemoAiTagAnalyzer implements AiTagAnalyzer {
 

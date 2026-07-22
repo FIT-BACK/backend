@@ -63,6 +63,25 @@ public class LocalImageStorage implements ImageStorage {
         }
     }
 
+    @Override
+    public void delete(String imageUrl) {
+        if (imageUrl == null || !imageUrl.startsWith("/uploads/")) {
+            return;
+        }
+
+        Path target = uploadDirectory
+                .resolve(imageUrl.substring("/uploads/".length()))
+                .normalize();
+        if (!target.getParent().equals(uploadDirectory)) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException exception) {
+            throw new BusinessException(ErrorCode.ANALYSIS_IMAGE_STORAGE_ERROR);
+        }
+    }
+
     private boolean hasExpectedSignature(byte[] content, String extension) {
         return switch (extension) {
             case "jpg" -> content.length >= 3

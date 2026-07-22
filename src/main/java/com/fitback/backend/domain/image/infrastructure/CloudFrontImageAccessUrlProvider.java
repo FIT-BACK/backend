@@ -26,6 +26,7 @@ public class CloudFrontImageAccessUrlProvider implements ImageAccessUrlProvider 
 
     private final ImageStorageProperties properties;
     private final Clock clock;
+    private volatile PrivateKey cachedPrivateKey;
 
     @Override
     public String createReadUrl(Image image) {
@@ -52,6 +53,19 @@ public class CloudFrontImageAccessUrlProvider implements ImageAccessUrlProvider 
     }
 
     private PrivateKey readPrivateKey() {
+        PrivateKey privateKey = cachedPrivateKey;
+        if (privateKey != null) {
+            return privateKey;
+        }
+        synchronized (this) {
+            if (cachedPrivateKey == null) {
+                cachedPrivateKey = parsePrivateKey();
+            }
+            return cachedPrivateKey;
+        }
+    }
+
+    private PrivateKey parsePrivateKey() {
         try {
             byte[] encoded = Base64.getDecoder().decode(
                     properties.cloudfrontPrivateKeyBase64()

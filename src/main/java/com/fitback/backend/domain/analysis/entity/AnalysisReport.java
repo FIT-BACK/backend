@@ -126,12 +126,14 @@ public class AnalysisReport extends BaseTimeEntity {
                 .collect(LinkedHashMap::new,
                         (tags, reportTag) -> tags.put(reportTag.getTag().getId(), reportTag),
                         LinkedHashMap::putAll);
-        Set<Long> confirmedTagIds = confirmedTags.stream()
-                .map(Tag::getId)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Map<Long, Tag> uniqueConfirmedTags = confirmedTags.stream()
+                .collect(LinkedHashMap::new,
+                        (tags, tag) -> tags.putIfAbsent(tag.getId(), tag),
+                        LinkedHashMap::putAll);
+        Set<Long> confirmedTagIds = new LinkedHashSet<>(uniqueConfirmedTags.keySet());
 
         reportTags.removeIf(reportTag -> !confirmedTagIds.contains(reportTag.getTag().getId()));
-        for (Tag tag : confirmedTags) {
+        for (Tag tag : uniqueConfirmedTags.values()) {
             ReportTag reportTag = currentTags.get(tag.getId());
             if (reportTag == null) {
                 reportTags.add(ReportTag.addedByMember(this, tag));

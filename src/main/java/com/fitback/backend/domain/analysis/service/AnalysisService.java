@@ -25,16 +25,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
 public class AnalysisService {
 
+    private static final Logger log = LoggerFactory.getLogger(AnalysisService.class);
     private static final int DEFAULT_MATCH_PERCENTAGE = 70;
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 50;
@@ -53,24 +58,36 @@ public class AnalysisService {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
         String imageUrl = imageStorage.store(image);
-        List<Tag> suggestedTags = aiTagAnalyzer.analyze(image);
+        boolean rollbackCleanupRegistered = registerRollbackCleanup(imageUrl);
+        try {
+            List<Tag> suggestedTags = aiTagAnalyzer.analyze(image);
 
-        AnalysisReport report = AnalysisReport.create(member, imageUrl, DEFAULT_MATCH_PERCENTAGE);
-        suggestedTags.forEach(report::addAiSuggestedTag);
-        AnalysisReport savedReport = analysisReportRepository.save(report);
+            AnalysisReport report = AnalysisReport.create(
+                    member,
+                    imageUrl,
+                    DEFAULT_MATCH_PERCENTAGE
+            );
+            suggestedTags.forEach(report::addAiSuggestedTag);
+            AnalysisReport savedReport = analysisReportRepository.save(report);
 
-        List<SuggestedTagResponse> tagResponses = savedReport.getReportTags().stream()
-                .map(reportTag -> new SuggestedTagResponse(
-                        reportTag.getTag().getId(),
-                        reportTag.getTag().getTagName()
-                ))
-                .toList();
-        return new AnalysisCreateResponse(
-                savedReport.getId(),
-                savedReport.getImageUrl(),
-                savedReport.getMatchPercentage(),
-                tagResponses
-        );
+            List<SuggestedTagResponse> tagResponses = savedReport.getReportTags().stream()
+                    .map(reportTag -> new SuggestedTagResponse(
+                            reportTag.getTag().getId(),
+                            reportTag.getTag().getTagName()
+                    ))
+                    .toList();
+            return new AnalysisCreateResponse(
+                    savedReport.getId(),
+                    savedReport.getImageUrl(),
+                    savedReport.getMatchPercentage(),
+                    tagResponses
+            );
+        } catch (RuntimeException exception) {
+            if (!rollbackCleanupRegistered) {
+                deleteStoredImage(imageUrl);
+            }
+            throw exception;
+        }
     }
 
     @Transactional
@@ -217,5 +234,32 @@ public class AnalysisService {
             throw new BusinessException(ErrorCode.BAD_REQUEST);
         }
         return pageSize;
+    }
+
+    private boolean registerRollbackCleanup(String imageUrl) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return false;
+        }
+        // 커밋 단계의 DB 실패까지 포함해 롤백된 multipart 파일만 제거한다.
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status != STATUS_COMMITTED) {
+                            deleteStoredImage(imageUrl);
+                        }
+                    }
+                }
+        );
+        return true;
+    }
+
+    private void deleteStoredImage(String imageUrl) {
+        try {
+            imageStorage.delete(imageUrl);
+        } catch (RuntimeException cleanupException) {
+            log.warn("Failed to clean up rolled back analysis image. imageUrl={}", imageUrl,
+                    cleanupException);
+        }
     }
 }

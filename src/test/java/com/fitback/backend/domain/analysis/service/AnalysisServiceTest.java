@@ -160,6 +160,25 @@ class AnalysisServiceTest {
     }
 
     @Test
+    void deletesMultipartImageWhenAnalysisFails() {
+        Member member = member(1L);
+        MockMultipartFile image = new MockMultipartFile(
+                "image",
+                "look.jpg",
+                "image/jpeg",
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF}
+        );
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(imageStorage.store(image)).thenReturn("/uploads/look.jpg");
+        when(aiTagAnalyzer.analyze(image)).thenThrow(new IllegalStateException("AI failed"));
+
+        assertThatThrownBy(() -> analysisService.create(1L, image))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(imageStorage).delete("/uploads/look.jpg");
+    }
+
+    @Test
     void confirmsOnlyExistingTagsAndPreservesAiSource() {
         Member member = member(1L);
         Tag minimal = tag(10L, "미니멀");

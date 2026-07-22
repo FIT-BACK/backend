@@ -17,6 +17,13 @@ public record ImageStorageProperties(
         cdnBaseUrl = normalizeCdnBaseUrl(cdnBaseUrl);
     }
 
+    @Override
+    public String toString() {
+        return ("ImageStorageProperties[awsRegion=%s, bucket=%s, cdnBaseUrl=%s, "
+                + "cloudfrontKeyPairId=%s, cloudfrontPrivateKeyBase64=****]")
+                .formatted(awsRegion, bucket, cdnBaseUrl, cloudfrontKeyPairId);
+    }
+
     private static String requireText(String value, String propertyName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(propertyName + " must not be blank");

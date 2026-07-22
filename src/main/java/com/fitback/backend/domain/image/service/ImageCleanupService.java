@@ -31,25 +31,42 @@ public class ImageCleanupService {
     @Transactional
     public List<String> claimExpiredImages() {
         LocalDateTime createdBefore = LocalDateTime.now(clock).minusHours(24);
-        List<Image> candidates = imageRepository.findCleanupCandidates(
-                List.of(
-                        ImageStatus.PENDING,
-                        ImageStatus.READY,
-                        ImageStatus.REJECTED,
-                        ImageStatus.DELETE_FAILED
-                ),
-                createdBefore,
-                clock.instant(),
-                PageRequest.of(0, CLEANUP_BATCH_SIZE)
+        List<ImageStatus> cleanupStatuses = List.of(
+                ImageStatus.PENDING,
+                ImageStatus.READY,
+                ImageStatus.REJECTED,
+                ImageStatus.DELETE_FAILED
         );
         // 도메인 참조를 확인한 뒤 잠금 트랜잭션 안에서 DELETING 상태로 선점한다.
         List<String> claimedImageIds = new ArrayList<>();
-        for (Image image : candidates) {
-            boolean referenced = imageReferenceProbes.stream()
-                    .anyMatch(probe -> probe.exists(image.getId()));
-            if (!referenced) {
-                image.claimForDeletion(clock.instant());
-                claimedImageIds.add(image.getId());
+        String afterId = null;
+        while (claimedImageIds.size() < CLEANUP_BATCH_SIZE) {
+            List<Image> candidates = imageRepository.findCleanupCandidates(
+                    cleanupStatuses,
+                    createdBefore,
+                    clock.instant(),
+                    afterId,
+                    PageRequest.of(0, CLEANUP_BATCH_SIZE)
+            );
+            if (candidates.isEmpty()) {
+                break;
+            }
+
+            for (Image image : candidates) {
+                boolean referenced = imageReferenceProbes.stream()
+                        .anyMatch(probe -> probe.exists(image.getId()));
+                if (!referenced) {
+                    image.claimForDeletion(clock.instant());
+                    claimedImageIds.add(image.getId());
+                    if (claimedImageIds.size() == CLEANUP_BATCH_SIZE) {
+                        break;
+                    }
+                }
+            }
+
+            afterId = candidates.get(candidates.size() - 1).getId();
+            if (candidates.size() < CLEANUP_BATCH_SIZE) {
+                break;
             }
         }
         return claimedImageIds;
