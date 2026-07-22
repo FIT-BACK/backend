@@ -76,6 +76,51 @@ public class LookbookService {
         return LookbookResponse.LookbookCreate.toLookbookCreate(savedLookbook);
     }
 
+    // 룩북 수정
+    @Transactional
+    public LookbookResponse.LookbookUpdate updateLookbook(
+            Long lookbookId,
+            Member member,
+            LookbookRequest.LookbookUpdate request
+    ) {
+
+        // lookbookId 유효성 검사 및 조회
+        Lookbook lookbook = lookbookRepository.findByIdAndDeletedAtIsNull(lookbookId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.NOT_FOUND,
+                        "룩북을 찾을 수 없습니다."
+                ));
+
+        // 룩북 게시자 본인이 아니면 수정 불가
+        if (!Objects.equals(lookbook.getMember().getId(), member.getId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "룩북 수정 권한이 없습니다.");
+        }
+
+        // 룩북 내용 수정
+        List<Long> tagIds = request.tagIds();
+        validateNoDuplicateTagIds(tagIds);
+        List<Tag> tags = tagRepository.findAllById(tagIds);
+        validateAllTagsExist(tagIds, tags);
+
+        lookbook.update(
+                request.originalImageUrl(),
+                request.matchedImageUrl(),
+                request.purchaseUrl(),
+                request.comment()
+        );
+
+        // 수정된 태그로 교체
+        lookbookTagRepository.deleteAllByLookbookId(lookbookId);
+        Map<Long, Tag> tagsById = tags.stream()
+                .collect(Collectors.toMap(Tag::getId, Function.identity()));
+        List<LookbookTag> lookbookTags = tagIds.stream()
+                .map(tagId -> LookbookTag.create(lookbook, tagsById.get(tagId)))
+                .toList();
+        lookbookTagRepository.saveAll(lookbookTags);
+
+        return LookbookResponse.LookbookUpdate.toLookbookUpdate(lookbook);
+    }
+
     // 룩북 목록 조회
     @Transactional(readOnly = true)
     public LookbookResponse.LookbookList getLookbooks(

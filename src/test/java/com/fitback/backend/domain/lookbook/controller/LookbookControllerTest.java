@@ -77,6 +77,46 @@ class LookbookControllerTest {
     }
 
     @Test
+    void updateLookbookReturnsSuccessResponse() {
+        LookbookRequest.LookbookUpdate updateRequest = new LookbookRequest.LookbookUpdate(
+                "https://s3.example.com/updated-original.jpg",
+                "https://s3.example.com/updated-matched.jpg",
+                "https://shop.example.com/updated-item",
+                List.of(10L, 20L),
+                "수정된 코멘트"
+        );
+        LookbookResponse.LookbookUpdate serviceResponse = LookbookResponse.LookbookUpdate.builder()
+                .lookbookId(100L)
+                .build();
+        when(lookbookService.updateLookbook(100L, member, updateRequest))
+                .thenReturn(serviceResponse);
+
+        ApiResponse<LookbookResponse.LookbookUpdate> response =
+                lookbookController.updateLookbook(100L, authMember, updateRequest);
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.code()).isEqualTo("COMMON200_1");
+        assertThat(response.data()).isEqualTo(serviceResponse);
+        verify(lookbookService).updateLookbook(100L, member, updateRequest);
+    }
+
+    @Test
+    void updateLookbookFailsWithoutAuthenticationPrincipal() {
+        LookbookRequest.LookbookUpdate updateRequest = new LookbookRequest.LookbookUpdate(
+                "https://s3.example.com/updated-original.jpg",
+                "https://s3.example.com/updated-matched.jpg",
+                null,
+                List.of(10L),
+                null
+        );
+
+        assertThatThrownBy(() -> lookbookController.updateLookbook(100L, null, updateRequest))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED)
+                );
+    }
+
+    @Test
     void getLookbooksAllowsAnonymousMember() {
         LookbookResponse.LookbookItem item = LookbookResponse.LookbookItem.builder()
                 .lookbookId(100L)

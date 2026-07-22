@@ -28,6 +28,9 @@ class LookbookRepositoryTest {
     @Autowired
     private LookbookRepository lookbookRepository;
 
+    @Autowired
+    private LookbookTagRepository lookbookTagRepository;
+
     @Test
     void activeLookbookQueriesExcludeSoftDeletedLookbooks() {
         Member member = Member.create(
@@ -174,6 +177,37 @@ class LookbookRepositoryTest {
         assertThat(updatedRows).isEqualTo(1);
         assertThat(lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(lookbook.getId()))
                 .contains(0);
+    }
+
+    @Test
+    void deleteAllByLookbookIdRemovesAllTagRelations() {
+        Member member = Member.create(
+                "update-member@fitback.com",
+                "update-member",
+                "password",
+                LoginProvider.EMAIL
+        );
+        entityManager.persist(member);
+
+        Tag minimalTag = Tag.create("수정-미니멀", TagType.DETAIL);
+        Tag streetTag = Tag.create("수정-스트릿", TagType.DETAIL);
+        entityManager.persist(minimalTag);
+        entityManager.persist(streetTag);
+
+        Lookbook lookbook = createLookbook(member, "update");
+        entityManager.persist(lookbook);
+        entityManager.persist(LookbookTag.create(lookbook, minimalTag));
+        entityManager.persist(LookbookTag.create(lookbook, streetTag));
+        entityManager.flush();
+        entityManager.clear();
+
+        int deletedCount = lookbookTagRepository.deleteAllByLookbookId(lookbook.getId());
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(deletedCount).isEqualTo(2);
+        assertThat(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(lookbook.getId()))
+                .isEmpty();
     }
 
     private Lookbook createLookbook(Member member, String imageName) {

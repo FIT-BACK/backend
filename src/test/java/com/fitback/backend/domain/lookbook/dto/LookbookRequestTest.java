@@ -100,6 +100,35 @@ class LookbookRequestTest {
                 .contains("올바른 링크 형식을 입력해주세요.");
     }
 
+    @Test
+    void lookbookUpdateNormalizesBlankPurchaseUrlAndAllowsNullComment() {
+        LookbookRequest.LookbookUpdate request = new LookbookRequest.LookbookUpdate(
+                "https://s3.example.com/updated-original.jpg",
+                "https://s3.example.com/updated-matched.jpg",
+                "   ",
+                List.of(10L),
+                null
+        );
+
+        assertThat(request.purchaseUrl()).isNull();
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
+    @Test
+    void lookbookUpdateRejectsTagCountOutsideOneToFive() {
+        LookbookRequest.LookbookUpdate request = new LookbookRequest.LookbookUpdate(
+                "https://s3.example.com/updated-original.jpg",
+                "https://s3.example.com/updated-matched.jpg",
+                null,
+                List.of(),
+                null
+        );
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .contains("스타일 태그는 1개 이상 5개 이하여야 합니다.");
+    }
+
     private LookbookRequest.LookbookCreate createRequest(List<Long> tagIds, String comment) {
         return createRequest(tagIds, null, comment);
     }

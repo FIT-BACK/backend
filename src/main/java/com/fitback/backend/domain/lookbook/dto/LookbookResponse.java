@@ -27,6 +27,20 @@ public final class LookbookResponse {
         }
     }
 
+    // 룩북 수정
+    @Schema(name = "LookbookUpdateResponse")
+    @Builder
+    public record LookbookUpdate(
+            Long lookbookId
+    ) {
+
+        public static LookbookUpdate toLookbookUpdate(Lookbook lookbook) {
+            return LookbookUpdate.builder()
+                    .lookbookId(lookbook.getId())
+                    .build();
+        }
+    }
+
     // 룩북 목록 조회
     @Builder
     public record LookbookList(

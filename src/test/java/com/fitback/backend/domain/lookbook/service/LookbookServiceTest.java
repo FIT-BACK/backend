@@ -122,6 +122,68 @@ class LookbookServiceTest {
     }
 
     @Test
+    void updateLookbookReplacesContentAndTags() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 22, 12, 0));
+        LookbookRequest.LookbookUpdate request = createUpdateRequest(List.of(20L, 10L));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(lookbook));
+        when(tagRepository.findAllById(List.of(20L, 10L)))
+                .thenReturn(List.of(minimalTag, streetTag));
+
+        LookbookResponse.LookbookUpdate response = lookbookService.updateLookbook(
+                100L,
+                member,
+                request
+        );
+
+        assertThat(response.lookbookId()).isEqualTo(100L);
+        assertThat(lookbook.getOriginalImageUrl())
+                .isEqualTo("https://s3.example.com/updated-original.jpg");
+        assertThat(lookbook.getMatchedImageUrl())
+                .isEqualTo("https://s3.example.com/updated-matched.jpg");
+        assertThat(lookbook.getPurchaseUrl()).isNull();
+        assertThat(lookbook.getComment()).isNull();
+        verify(lookbookTagRepository).deleteAllByLookbookId(100L);
+        verify(lookbookTagRepository).saveAll(anyList());
+    }
+
+    @Test
+    void updateLookbookRejectsMemberWhoIsNotOwner() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 22, 12, 0));
+        Member otherMember = Member.create(
+                "other@fitback.com",
+                "other",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(otherMember, "id", 2L);
+        LookbookRequest.LookbookUpdate request = createUpdateRequest(List.of(10L));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(lookbook));
+
+        assertThatThrownBy(() -> lookbookService.updateLookbook(100L, otherMember, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN);
+                    assertThat(exception.getMessage()).isEqualTo("룩북 수정 권한이 없습니다.");
+                });
+        verify(tagRepository, never()).findAllById(anyList());
+        verify(lookbookTagRepository, never()).deleteAllByLookbookId(any());
+        verify(lookbookTagRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    void updateLookbookFailsWhenLookbookIsDeletedOrMissing() {
+        LookbookRequest.LookbookUpdate request = createUpdateRequest(List.of(10L));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> lookbookService.updateLookbook(100L, member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
+                );
+        verify(lookbookTagRepository, never()).deleteAllByLookbookId(any());
+    }
+
+    @Test
     void getLookbookDetailReturnsAuthorTagsLikedAndOwnerStatus() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 7, 16, 12, 0);
         Lookbook lookbook = createPersistedLookbook(createdAt);
@@ -456,6 +518,16 @@ class LookbookServiceTest {
                 "https://shop.example.com/item",
                 tagIds,
                 "합리적인 가격으로 완성한 룩입니다."
+        );
+    }
+
+    private LookbookRequest.LookbookUpdate createUpdateRequest(List<Long> tagIds) {
+        return new LookbookRequest.LookbookUpdate(
+                "https://s3.example.com/updated-original.jpg",
+                "https://s3.example.com/updated-matched.jpg",
+                "   ",
+                tagIds,
+                null
         );
     }
 

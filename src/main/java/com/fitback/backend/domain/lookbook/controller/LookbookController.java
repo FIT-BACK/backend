@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -47,6 +48,28 @@ public class LookbookController {
                 request
         );
         return ApiResponse.onCreated(response);
+    }
+
+    @Operation(
+            summary = "룩북 수정",
+            description = "룩북 작성자가 원본 이미지, 매칭 이미지, 태그, 구매 링크 및 코멘트를 전체 교체."
+    )
+    @PutMapping("/{lookbookId}")
+    public ApiResponse<LookbookResponse.LookbookUpdate> updateLookbook(
+            @PathVariable("lookbookId") Long lookbookId,
+            @AuthenticationPrincipal AuthMember authMember,
+            @Valid @RequestBody LookbookRequest.LookbookUpdate request
+    ) {
+        if (authMember == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+
+        LookbookResponse.LookbookUpdate response = lookbookService.updateLookbook(
+                lookbookId,
+                authMember.getMember(),
+                request
+        );
+        return ApiResponse.onSuccess(response);
     }
 
     @Operation(

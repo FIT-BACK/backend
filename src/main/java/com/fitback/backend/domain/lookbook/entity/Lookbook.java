@@ -74,6 +74,18 @@ public class Lookbook extends BaseTimeEntity {
         return new Lookbook(member, originalImageUrl, matchedImageUrl, purchaseUrl, comment);
     }
 
+    public void update(
+            String originalImageUrl,
+            String matchedImageUrl,
+            String purchaseUrl,
+            String comment
+    ) {
+        this.originalImageUrl = originalImageUrl;
+        this.matchedImageUrl = matchedImageUrl;
+        this.purchaseUrl = purchaseUrl;
+        this.comment = comment;
+    }
+
     public void changePurchaseUrl(String purchaseUrl) {
         this.purchaseUrl = purchaseUrl;
     }
