@@ -20,6 +20,13 @@ logging:
   level:
     org.hibernate.SQL: debug
 
+image:
+  storage:
+    aws-region: ${AWS_REGION:ap-northeast-2}
+    bucket: ${IMAGE_BUCKET:fitback-local-images}
+    cdn-base-url: ${IMAGE_CDN_BASE_URL:https://example.invalid}
+    cloudfront-key-pair-id: ${CLOUDFRONT_KEY_PAIR_ID:local-key-pair}
+    cloudfront-private-key-base64: ${CLOUDFRONT_PRIVATE_KEY_BASE64:bG9jYWwtcHJpdmF0ZS1rZXk=}
 
 jwt:
   token:

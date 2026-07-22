@@ -220,13 +220,25 @@ jobs:
       EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
       PARAMETER_PREFIX: ${{ vars.DEPLOY_PARAMETER_PREFIX || '/fitback/prod' }}
       PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+      IMAGE_BUCKET: ${{ vars.IMAGE_BUCKET }}
+      IMAGE_CDN_BASE_URL: ${{ vars.IMAGE_CDN_BASE_URL }}
+      CLOUDFRONT_KEY_PAIR_ID: ${{ vars.CLOUDFRONT_KEY_PAIR_ID }}
       IMAGE_REFERENCE: ${{ needs.publish-image.outputs.image-reference }}
 
     steps:
       - name: Validate deployment contract
         shell: bash
         run: |
-          required_variables=(AWS_REGION AWS_DEPLOY_ROLE_ARN EC2_INSTANCE_ID IMAGE_REFERENCE PUBLIC_BASE_URL)
+          required_variables=(
+            AWS_REGION
+            AWS_DEPLOY_ROLE_ARN
+            EC2_INSTANCE_ID
+            IMAGE_REFERENCE
+            PUBLIC_BASE_URL
+            IMAGE_BUCKET
+            IMAGE_CDN_BASE_URL
+            CLOUDFRONT_KEY_PAIR_ID
+          )
 
           for variable_name in "${required_variables[@]}"; do
             if [ -z "${!variable_name}" ]; then
@@ -247,6 +259,21 @@ jobs:
 
           if [ "$PUBLIC_BASE_URL" != 'https://d1ra74et9h0ohu.cloudfront.net' ]; then
             echo "PUBLIC_BASE_URL must be the production CloudFront HTTPS origin without a path: $PUBLIC_BASE_URL" >&2
+            exit 1
+          fi
+
+          if [ "$IMAGE_BUCKET" != 'fitback-prod-images-123209654535-ap-northeast-2' ]; then
+            echo "Unexpected production image bucket: $IMAGE_BUCKET" >&2
+            exit 1
+          fi
+
+          if [ "$IMAGE_CDN_BASE_URL" != 'https://d1p2ierkew26r1.cloudfront.net' ]; then
+            echo "IMAGE_CDN_BASE_URL must be the production image CloudFront HTTPS origin: $IMAGE_CDN_BASE_URL" >&2
+            exit 1
+          fi
+
+          if [ "$CLOUDFRONT_KEY_PAIR_ID" != 'K1XNJ3JDEDCVL3' ]; then
+            echo "Unexpected production CloudFront key pair ID: $CLOUDFRONT_KEY_PAIR_ID" >&2
             exit 1
           fi
 
@@ -291,6 +318,9 @@ jobs:
             --arg image_reference "$IMAGE_REFERENCE" \
             --arg aws_region "$AWS_REGION" \
             --arg parameter_prefix "$PARAMETER_PREFIX" \
+            --arg image_bucket "$IMAGE_BUCKET" \
+            --arg image_cdn_base_url "$IMAGE_CDN_BASE_URL" \
+            --arg cloudfront_key_pair_id "$CLOUDFRONT_KEY_PAIR_ID" \
             --arg release_dir "$release_dir" \
             '{
               executionTimeout: ["900"],
@@ -302,6 +332,9 @@ jobs:
                 ("IMAGE_REFERENCE=" + ($image_reference | @sh)
                   + " AWS_REGION=" + ($aws_region | @sh)
                   + " PARAMETER_PREFIX=" + ($parameter_prefix | @sh)
+                  + " IMAGE_BUCKET=" + ($image_bucket | @sh)
+                  + " IMAGE_CDN_BASE_URL=" + ($image_cdn_base_url | @sh)
+                  + " CLOUDFRONT_KEY_PAIR_ID=" + ($cloudfront_key_pair_id | @sh)
                   + " DEPLOY_ROOT=/opt/fitback"
                   + " RELEASE_DIR=" + ($release_dir | @sh)
                   + " " + (($release_dir + "/scripts/deploy/remote_deploy.sh") | @sh))
