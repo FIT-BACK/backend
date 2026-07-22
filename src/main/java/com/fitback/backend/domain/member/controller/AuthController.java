@@ -59,4 +59,3 @@ public class AuthController {
         return ApiResponse.onSuccess(null);
     }
 }
-
