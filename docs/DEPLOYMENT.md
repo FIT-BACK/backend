@@ -294,7 +294,7 @@ ECR 및 S3 저장량, CloudFront 요청·데이터 전송, 소량의 CloudWatch 
 - [x] EC2 HTTP 80 source를 CloudFront origin-facing prefix list로 제한했다.
 - [x] private S3 이미지 버킷, CloudFront OAC, trusted key group을 구성했다.
 - [x] 이미지 저장소 Repository Variable 세 개와 `/fitback/prod/cloudfront-private-key` SecureString을 구성했다.
-- [ ] `/fitback/prod/jwt-secret-key`를 포함한 운영 Parameter Store SecureString을 모두 생성했다.
+- [x] `/fitback/prod/jwt-secret-key`를 포함한 운영 Parameter Store SecureString을 모두 생성했다.
 - [x] GitHub OIDC 역할에 SSM 최소 권한을 추가했다.
 - [x] GitHub Repository Variable `EC2_INSTANCE_ID`를 추가했다.
 - [x] `Backend CD`를 실제 실행해 SSM command와 health check를 확인했다.
