@@ -23,12 +23,14 @@ public class S3ImageUploadUrlAdapter implements ImageUploadUrlPort {
     public ImageUploadUrl create(
             String objectKey,
             String contentType,
+            long fileSize,
             Duration expiration
     ) {
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                 .bucket(properties.bucket())
                 .key(objectKey)
                 .contentType(contentType)
+                .contentLength(fileSize)
                 .build();
         PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
                 .signatureDuration(expiration)

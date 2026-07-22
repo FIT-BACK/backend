@@ -35,6 +35,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Image extends BaseCreateTimeEntity {
 
+    private static final long MAX_FILE_SIZE = 5_242_880L;
+
     @Id
     @Column(name = "image_id", length = 36)
     private String id;
@@ -116,8 +118,8 @@ public class Image extends BaseCreateTimeEntity {
             ImageVisibility visibility,
             Instant presignedExpiresAt
     ) {
-        if (fileSize <= 0) {
-            throw new IllegalArgumentException("fileSize must be positive");
+        if (fileSize <= 0 || fileSize > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException("fileSize must be between 1 and 5242880");
         }
         return new Image(
                 id,

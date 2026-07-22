@@ -34,6 +34,7 @@ class S3ImageUploadUrlAdapterTest {
             ImageUploadUrl result = adapter.create(
                     "prod/images/profile/2026/07/image-id.jpg",
                     "image/jpeg",
+                    1024,
                     Duration.ofMinutes(5)
             );
 
@@ -41,6 +42,7 @@ class S3ImageUploadUrlAdapterTest {
             assertThat(result.uploadUrl())
                     .startsWith("https://fitback-test-images.s3.ap-northeast-2.amazonaws.com/")
                     .contains("X-Amz-Expires=300")
+                    .contains("X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost")
                     .doesNotContain("test-secret-key");
             assertThat(result.requiredHeaders()).containsEntry("Content-Type", "image/jpeg");
             assertThat(result.imageUrl()).isEqualTo(

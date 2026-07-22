@@ -7,6 +7,7 @@ public interface ImageUploadUrlPort {
     ImageUploadUrl create(
             String objectKey,
             String contentType,
+            long fileSize,
             Duration expiration
     );
 }

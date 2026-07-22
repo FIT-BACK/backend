@@ -3,6 +3,9 @@ package com.fitback.backend.domain.image.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -62,7 +65,7 @@ class ImageUploadServiceTest {
                 "IMAGE/JPEG",
                 3_145_728
         );
-        when(imageUploadUrlPort.create(any(), any(), any())).thenAnswer(invocation -> {
+        when(imageUploadUrlPort.create(any(), any(), anyLong(), any())).thenAnswer(invocation -> {
             String objectKey = invocation.getArgument(0);
             return new ImageUploadUrl(
                     "https://s3.example/upload",
@@ -91,6 +94,12 @@ class ImageUploadServiceTest {
         );
         assertThat(savedImage.getStatus()).isEqualTo(ImageStatus.PENDING);
         assertThat(savedImage.getContentType()).isEqualTo("image/jpeg");
+        verify(imageUploadUrlPort).create(
+                any(),
+                eq("image/jpeg"),
+                eq(3_145_728L),
+                eq(Duration.ofMinutes(5))
+        );
     }
 
     @Test
@@ -112,5 +121,6 @@ class ImageUploadServiceTest {
                         assertThat(exception.getErrorCode())
                                 .isEqualTo(ErrorCode.IMAGE_UNSUPPORTED_CONTENT_TYPE)
                 );
+        verify(imageRepository, never()).save(any());
     }
 }

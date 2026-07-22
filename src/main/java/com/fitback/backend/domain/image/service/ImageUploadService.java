@@ -65,6 +65,7 @@ public class ImageUploadService {
         ImageUploadUrl uploadUrl = imageUploadUrlPort.create(
                 objectKey,
                 contentType,
+                request.fileSize(),
                 UPLOAD_URL_EXPIRATION
         );
         imageRepository.save(image);

@@ -158,9 +158,10 @@ class ImageControllerIntegrationTest {
         @Bean
         @Primary
         ImageUploadUrlPort imageUploadUrlPort() {
-            return (objectKey, contentType, expiration) -> testUploadUrl(
+            return (objectKey, contentType, fileSize, expiration) -> testUploadUrl(
                     objectKey,
                     contentType,
+                    fileSize,
                     expiration
             );
         }
@@ -168,8 +169,10 @@ class ImageControllerIntegrationTest {
         private ImageUploadUrl testUploadUrl(
                 String objectKey,
                 String contentType,
+                long fileSize,
                 Duration expiration
         ) {
+            assertThat(fileSize).isEqualTo(3_145_728);
             assertThat(expiration).isEqualTo(Duration.ofMinutes(5));
             return new ImageUploadUrl(
                     "https://s3.example/upload",
