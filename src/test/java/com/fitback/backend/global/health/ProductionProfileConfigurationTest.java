@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.Environment;
+import org.springframework.util.ClassUtils;
 
 class ProductionProfileConfigurationTest {
 
@@ -54,5 +55,13 @@ class ProductionProfileConfigurationTest {
             assertThat(environment.getProperty("image.storage.cloudfront-private-key-base64"))
                     .isEqualTo("dGVzdC1rZXk=");
         });
+    }
+
+    @Test
+    void productionRuntimeIncludesFlywayAutoConfiguration() {
+        assertThat(ClassUtils.isPresent(
+                "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration",
+                getClass().getClassLoader()
+        )).isTrue();
     }
 }
