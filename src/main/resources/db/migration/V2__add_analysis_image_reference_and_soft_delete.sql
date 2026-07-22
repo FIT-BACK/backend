@@ -1,6 +1,7 @@
 ALTER TABLE analysis_report
     MODIFY image_url VARCHAR(2048) NULL,
-    ADD COLUMN original_image_id VARCHAR(36) NULL AFTER member_id,
+    ADD COLUMN original_image_id VARCHAR(36)
+        CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL AFTER member_id,
     ADD COLUMN deleted_at DATETIME(6) NULL,
     ADD COLUMN purge_after DATETIME(6) NULL,
     ADD CONSTRAINT FK_ANALYSIS_REPORT_IMAGE_OWNER

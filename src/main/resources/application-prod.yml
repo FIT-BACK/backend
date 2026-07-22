@@ -1,8 +1,7 @@
 spring:
   sql:
     init:
-      mode: always
-      schema-locations: classpath:schema-prod.sql
+      mode: never
 
   datasource:
     url: ${DB_URL}

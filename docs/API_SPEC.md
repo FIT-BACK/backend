@@ -5,7 +5,7 @@
 | 항목 | 값 |
 | --- | --- |
 | 기준일 | 2026-07-22 |
-| 적용 범위 | 원상품 후보·가격 확인, 상품 검색·상세, 추천 생성·조회, 상품 찜, 사용자 이미지 업로드 URL 발급 |
+| 적용 범위 | 원상품 후보·가격 확인, 상품 검색·상세, 추천 생성·조회, 상품 찜, 사용자 이미지 업로드·완료, 분석 리포트 |
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
 | 연동 참고 | Auth `#20`은 PR `#34`로 병합되어 `AuthMember` principal 계약을 확인함. Analysis `#35`는 실제 연동 전 병합본 재확인 |
@@ -302,6 +302,11 @@ finalScore DESC
 | GET | `/api/v1/members/me/saved-products` | 상품 찜 목록 | 필수 |
 | DELETE | `/api/v1/members/me/saved-products/{productId}` | 상품 찜 해제 | 필수 |
 | POST | `/api/v1/images/presigned-uploads` | 이미지 Presigned PUT URL 발급 | 필수 |
+| POST | `/api/v1/images/{imageId}/complete` | 이미지 업로드 완료 검증 | 필수 |
+| POST | `/api/v1/images/{imageId}/upload-request` | 이미지 업로드 URL 재발급 | 필수 |
+| POST | `/api/v1/analyses` | 이미지 기반 분석 리포트 생성 | 필수 |
+| GET | `/api/v1/analyses` | 내 분석 리포트 목록 | 필수 |
+| DELETE | `/api/v1/analyses/{reportId}` | 분석 리포트 삭제 | 필수 |
 
 ---
 
@@ -1095,10 +1100,10 @@ Presigned PUT 서명에는 요청의 `fileSize`와 동일한 `Content-Length`가
 
 - 발급과 함께 `image.status=PENDING`, `visibility=PRIVATE` 행을 저장한다.
 - 객체 key는 서버가 UUID로 생성하며 클라이언트 파일명은 사용하지 않는다.
-- 이 API가 받은 `fileSize`는 발급 전 요청 검증용이다. 업로드 완료 후 활성화할 때 S3 metadata와
-  실제 MIME/크기를 다시 검증해야 하며, 그 기능은 이 endpoint에 포함하지 않는다.
-- `PENDING` 이미지의 활성화, 조회용 CloudFront signed URL 발급, 만료 객체 정리는 별도 API와
-  작업자로 처리한다.
+- 이 API가 받은 `fileSize`는 발급 전 요청 검증용이다. 업로드 완료 API가 S3 metadata,
+  실제 파일 시그니처와 크기를 다시 검증한다.
+- 분석 리포트가 생성되면 `ANALYSIS_ORIGINAL` 이미지를 `ACTIVE`로 전환한다.
+- 24시간 이상 도메인에 연결되지 않은 이미지는 정리 작업자가 S3 객체와 DB 상태를 정리한다.
 
 ### 오류
 
@@ -1107,3 +1112,68 @@ Presigned PUT 서명에는 요청의 `fileSize`와 동일한 `Content-Length`가
 | 인증 없음 또는 유효하지 않은 토큰 | 401 | `COMMON401_1` |
 | 필수값, enum, 파일 크기 위반 | 400 | `COMMON400_1` 또는 `COMMON400_2` |
 | 지원하지 않는 MIME type | 400 | `IMAGE400_1` |
+
+### `POST /api/v1/images/{imageId}/complete`
+
+인증 회원이 Presigned PUT 업로드를 마친 뒤 호출한다. 서버는 S3 객체의 크기, MIME type과
+파일 시그니처를 검증하고 성공하면 이미지 상태를 `READY`로 전환한다.
+
+```json
+{
+  "success": true,
+  "code": "COMMON200_1",
+  "message": "성공적으로 요청을 처리했습니다.",
+  "data": {
+    "imageId": "5f8ca021-02fe-4fba-982f-8de356789abc",
+    "status": "READY"
+  }
+}
+```
+
+### `POST /api/v1/images/{imageId}/upload-request`
+
+아직 `PENDING`인 본인 이미지의 5분 유효 Presigned PUT URL을 재발급한다. 응답 계약은 최초
+발급 응답과 동일하며 DB의 이미지 ID와 object key는 바꾸지 않는다.
+
+---
+
+## 19. 분석 리포트 생명주기
+
+### `POST /api/v1/analyses`
+
+`Content-Type: application/json` 요청은 인증 회원 본인이 소유하고 `status=READY`인
+`ANALYSIS_ORIGINAL` 이미지 ID를 받는다.
+
+```json
+{
+  "imageId": "5f8ca021-02fe-4fba-982f-8de356789abc"
+}
+```
+
+성공 시 `201 Created`로 `reportId`, signed `imageUrl`, `matchPercentage`, `suggestedTags`를
+반환한다. 기존 `multipart/form-data`의 `image` part 계약은 클라이언트 전환 기간에만 유지한다.
+
+| 조건 | HTTP | code |
+| --- | ---: | --- |
+| 이미지가 없거나 요청 회원 소유가 아님 | 404 | `IMAGE404_1` |
+| 이미지 목적이 `ANALYSIS_ORIGINAL`이 아니거나 상태가 `READY`가 아님 | 409 | `IMAGE409_1` |
+
+### `GET /api/v1/analyses?cursor=&pageSize=20`
+
+인증 회원의 삭제되지 않은 리포트를 `reportId` cursor 기준으로 조회한다. `pageSize`는 1~50이며
+응답은 `items`, `nextCursor`, `hasNext`, `pageSize`를 포함한다.
+
+### `GET /api/v1/analyses/{reportId}`
+
+본인의 삭제되지 않은 리포트 상세와 확정 태그, 추천 그룹을 반환한다. private 이미지 URL은
+10분 유효한 CloudFront signed URL이다.
+
+### `PATCH /api/v1/analyses/{reportId}/recommendations`
+
+`confirmedTagIds` 한 개 이상과 0~100의 `matchPercentage`를 받아 태그를 확정하고 추천 응답을
+갱신한다.
+
+### `DELETE /api/v1/analyses/{reportId}`
+
+리포트를 soft delete 처리한다. 삭제된 리포트는 목록과 상세 조회에서 제외되며 연결된 이미지는
+보존 기간 이후 정리 작업의 대상이 된다.

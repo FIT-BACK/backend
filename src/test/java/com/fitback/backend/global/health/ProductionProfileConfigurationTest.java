@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.Environment;
+import org.springframework.util.ClassUtils;
 
 class ProductionProfileConfigurationTest {
 
@@ -36,9 +37,11 @@ class ProductionProfileConfigurationTest {
             assertThat(environment.getProperty("spring.datasource.password")).isEqualTo("secret");
             assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
             assertThat(environment.getProperty("spring.jpa.open-in-view", Boolean.class)).isFalse();
-            assertThat(environment.getProperty("spring.sql.init.mode")).isEqualTo("always");
-            assertThat(environment.getProperty("spring.sql.init.schema-locations"))
-                    .isEqualTo("classpath:schema-prod.sql");
+            assertThat(environment.getProperty("spring.sql.init.mode")).isEqualTo("never");
+            assertThat(environment.getProperty("spring.flyway.baseline-on-migrate", Boolean.class))
+                    .isTrue();
+            assertThat(environment.getProperty("spring.flyway.baseline-version"))
+                    .isEqualTo("0");
             assertThat(environment.getProperty("jwt.token.secretKey"))
                     .isEqualTo("production-jwt-secret-key-at-least-32-bytes");
             assertThat(environment.getProperty("image.storage.aws-region"))
@@ -52,5 +55,13 @@ class ProductionProfileConfigurationTest {
             assertThat(environment.getProperty("image.storage.cloudfront-private-key-base64"))
                     .isEqualTo("dGVzdC1rZXk=");
         });
+    }
+
+    @Test
+    void productionRuntimeIncludesFlywayAutoConfiguration() {
+        assertThat(ClassUtils.isPresent(
+                "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration",
+                getClass().getClassLoader()
+        )).isTrue();
     }
 }

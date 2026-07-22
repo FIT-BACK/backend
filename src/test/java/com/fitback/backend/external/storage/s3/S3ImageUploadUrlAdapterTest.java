@@ -19,8 +19,8 @@ class S3ImageUploadUrlAdapterTest {
                 "ap-northeast-2",
                 "fitback-test-images",
                 "https://cdn.example/",
-                null,
-                null
+                "TESTKEY",
+                "dGVzdC1wcml2YXRlLWtleQ=="
         );
         try (S3Presigner presigner = S3Presigner.builder()
                 .region(Region.AP_NORTHEAST_2)
