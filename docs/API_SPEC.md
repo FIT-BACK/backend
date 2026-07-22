@@ -1141,7 +1141,8 @@ Presigned PUT 서명에는 요청의 `fileSize`와 동일한 `Content-Length`가
 
 ### `POST /api/v1/analyses`
 
-`Content-Type: application/json` 요청은 업로드 완료된 `ANALYSIS_ORIGINAL` 이미지 ID를 받는다.
+`Content-Type: application/json` 요청은 인증 회원 본인이 소유하고 `status=READY`인
+`ANALYSIS_ORIGINAL` 이미지 ID를 받는다.
 
 ```json
 {
@@ -1151,6 +1152,11 @@ Presigned PUT 서명에는 요청의 `fileSize`와 동일한 `Content-Length`가
 
 성공 시 `201 Created`로 `reportId`, signed `imageUrl`, `matchPercentage`, `suggestedTags`를
 반환한다. 기존 `multipart/form-data`의 `image` part 계약은 클라이언트 전환 기간에만 유지한다.
+
+| 조건 | HTTP | code |
+| --- | ---: | --- |
+| 이미지가 없거나 요청 회원 소유가 아님 | 404 | `IMAGE404_1` |
+| 이미지 목적이 `ANALYSIS_ORIGINAL`이 아니거나 상태가 `READY`가 아님 | 409 | `IMAGE409_1` |
 
 ### `GET /api/v1/analyses?cursor=&pageSize=20`
 

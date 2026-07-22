@@ -199,7 +199,7 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - 이미지 조회는 signed URL 또는 signed cookie만 허용하며 서명 없는 요청은 `403`이다.
 - 운영 EC2 역할은 Presigned PUT 발급, 업로드 완료 검증, 미사용 객체 정리에 필요한
   `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`만 가진다.
-- Presigned PUT CORS는 `PUT`/`HEAD`, `Content-Type`, `ETag`, 300초를 허용한다. 현재 프론트엔드 운영 origin이 확정되지 않아 origin은 `*`이며, 프론트엔드 주소가 확정되면 별도 변경으로 축소한다.
+- Presigned PUT CORS는 `PUT`/`HEAD`, `Content-Type`, `ETag`, 300초를 허용한다. 현재 프론트엔드 운영 origin이 확정되지 않아 origin은 임시로 `*`이다. 프론트엔드 공개 배포 전 이슈 `#83`과 배포 게이트로 정확한 origin 반영을 완료하고 `*`를 제거한다.
 - S3 객체 수명 주기 자동 만료는 `ACTIVE`와 `PENDING`을 구분할 수 없어 적용하지 않는다. 24시간 미사용 `PENDING` 정리는 DB 상태를 기준으로 애플리케이션 작업자가 수행한다.
 - 외부 상품 공급자의 이미지는 이 버킷으로 복사하지 않는다.
 
@@ -252,6 +252,7 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 ```bash
 bash scripts/ci/test_publish_ecr_image.sh
 bash scripts/deploy/test_remote_deploy.sh
+bash scripts/ci/test_mysql_migrations.sh
 GRADLE_USER_HOME=/tmp/fitback-gradle-home ./gradlew clean build
 ```
 
