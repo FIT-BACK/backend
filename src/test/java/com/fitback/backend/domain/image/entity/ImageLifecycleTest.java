@@ -20,6 +20,7 @@ class ImageLifecycleTest {
         image.activateForAnalysis(1L, Instant.parse("2026-07-22T00:01:00Z"));
 
         assertThat(image.getStatus()).isEqualTo(ImageStatus.ACTIVE);
+        assertThat(image.getPresignedExpiresAt()).isNull();
         assertThat(image.getActivatedAt()).isNotNull();
     }
 

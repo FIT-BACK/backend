@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS image (
     file_size BIGINT NOT NULL,
     status VARCHAR(20) NOT NULL,
     visibility VARCHAR(20) NOT NULL,
-    presigned_expires_at DATETIME(6) NOT NULL,
+    presigned_expires_at DATETIME(6) NULL,
     uploaded_at DATETIME(6) NULL,
     activated_at DATETIME(6) NULL,
     delete_requested_at DATETIME(6) NULL,

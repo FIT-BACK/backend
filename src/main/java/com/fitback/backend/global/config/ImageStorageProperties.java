@@ -15,6 +15,14 @@ public record ImageStorageProperties(
         awsRegion = requireText(awsRegion, "image.storage.aws-region");
         bucket = requireText(bucket, "image.storage.bucket");
         cdnBaseUrl = normalizeCdnBaseUrl(cdnBaseUrl);
+        cloudfrontKeyPairId = requireText(
+                cloudfrontKeyPairId,
+                "image.storage.cloudfront-key-pair-id"
+        );
+        cloudfrontPrivateKeyBase64 = requireText(
+                cloudfrontPrivateKeyBase64,
+                "image.storage.cloudfront-private-key-base64"
+        );
     }
 
     @Override

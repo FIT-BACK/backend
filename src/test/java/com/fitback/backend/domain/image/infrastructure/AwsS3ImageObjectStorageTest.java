@@ -38,8 +38,8 @@ class AwsS3ImageObjectStorageTest {
                         "ap-northeast-2",
                         "fitback-test-images",
                         "https://cdn.example.com",
-                        null,
-                        null
+                        "TESTKEY",
+                        "dGVzdC1wcml2YXRlLWtleQ=="
                 )
         );
 
