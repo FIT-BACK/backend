@@ -219,13 +219,14 @@ jobs:
       AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
       EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
       PARAMETER_PREFIX: ${{ vars.DEPLOY_PARAMETER_PREFIX || '/fitback/prod' }}
+      PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
       IMAGE_REFERENCE: ${{ needs.publish-image.outputs.image-reference }}
 
     steps:
       - name: Validate deployment contract
         shell: bash
         run: |
-          required_variables=(AWS_REGION AWS_DEPLOY_ROLE_ARN EC2_INSTANCE_ID IMAGE_REFERENCE)
+          required_variables=(AWS_REGION AWS_DEPLOY_ROLE_ARN EC2_INSTANCE_ID IMAGE_REFERENCE PUBLIC_BASE_URL)
 
           for variable_name in "${required_variables[@]}"; do
             if [ -z "${!variable_name}" ]; then
@@ -241,6 +242,11 @@ jobs:
 
           if [[ ! "$PARAMETER_PREFIX" =~ ^/[A-Za-z0-9_.\/-]+$ ]]; then
             echo "Invalid Parameter Store prefix: $PARAMETER_PREFIX" >&2
+            exit 1
+          fi
+
+          if [ "$PUBLIC_BASE_URL" != 'https://d1ra74et9h0ohu.cloudfront.net' ]; then
+            echo "PUBLIC_BASE_URL must be the production CloudFront HTTPS origin without a path: $PUBLIC_BASE_URL" >&2
             exit 1
           fi
 
@@ -430,4 +436,52 @@ jobs:
             echo "- Instance: \`$EC2_INSTANCE_ID\`"
             echo "- Image: \`$IMAGE_REFERENCE\`"
             echo "- Command: \`$COMMAND_ID\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify public HTTPS endpoint
+        continue-on-error: true
+        shell: bash
+        run: |
+          report_public_failure() {
+            echo "::warning::Public HTTPS verification failed after the SSM deployment. The verified EC2 release remains active. Check CloudFront and origin health, then rerun the same main SHA with workflow_dispatch after recovery."
+            {
+              echo
+              echo '### Public HTTPS verification warning'
+              echo
+              echo '- The SSM deployment succeeded, but the public CloudFront check failed.'
+              echo '- Check CloudFront and origin health, then rerun the same main SHA with `workflow_dispatch` after recovery.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          public_base_url="$PUBLIC_BASE_URL"
+          if ! nginx_health="$(curl --fail --silent --show-error --max-time 10 \
+            "$public_base_url/nginx-health")"; then
+            report_public_failure
+            exit 1
+          fi
+
+          if ! readiness="$(curl --fail --silent --show-error --max-time 10 \
+            "$public_base_url/actuator/health/readiness")"; then
+            report_public_failure
+            exit 1
+          fi
+
+          if [ "$nginx_health" != 'ok' ]; then
+            echo "Unexpected public Nginx health response: $nginx_health" >&2
+            report_public_failure
+            exit 1
+          fi
+
+          if ! jq --exit-status 'type == "object" and .status == "UP"' \
+              <<< "$readiness" > /dev/null; then
+            echo "Unexpected public readiness response: $readiness" >&2
+            report_public_failure
+            exit 1
+          fi
+
+          {
+            echo
+            echo "- Public endpoint: \`$public_base_url\`"
+            echo "- Public Nginx health: \`$nginx_health\`"
+            echo "- Public readiness: \`$readiness\`"
           } >> "$GITHUB_STEP_SUMMARY"
