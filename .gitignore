@@ -56,3 +56,6 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Local planning documents ###
+/docs/RECOMMENDATION_PRODUCT_ROADMAP.md

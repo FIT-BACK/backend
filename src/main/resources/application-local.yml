@@ -2,17 +2,10 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
-  mvc:
-    throw-exception-if-no-handler-found: true
-
-  web:
-    resources:
-      add-mappings: false
-
   datasource:
     url: ${DB_URL:${LOCAL_DB_URL:jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}}
     username: ${DB_USER:${LOCAL_DB_USERNAME:root}}
-    password: ${DB_PW:${LOCAL_DB_PASSWORD:}}
+    password: ${DB_PASSWORD:${LOCAL_DB_PASSWORD:}}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -26,3 +19,18 @@ spring:
 logging:
   level:
     org.hibernate.SQL: debug
+
+image:
+  storage:
+    aws-region: ${AWS_REGION:ap-northeast-2}
+    bucket: ${IMAGE_BUCKET:fitback-local-images}
+    cdn-base-url: ${IMAGE_CDN_BASE_URL:https://example.invalid}
+    cloudfront-key-pair-id: ${CLOUDFRONT_KEY_PAIR_ID:local-key-pair}
+    cloudfront-private-key-base64: ${CLOUDFRONT_PRIVATE_KEY_BASE64:bG9jYWwtcHJpdmF0ZS1rZXk=}
+
+jwt:
+  token:
+    secretKey: ${JWT_SECRET_KEY}
+    expiration:
+      access: 1800000       # 30분 (ms)
+      refresh: 1209600000   # 14일 (ms)

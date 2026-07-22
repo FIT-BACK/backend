@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -43,10 +44,10 @@ public class TrendContent extends BaseTimeEntity {
 
 
     private TrendContent(String title, String imageUrl, String description, Member createdBy) {
-        this.title = title;
-        this.imageUrl = imageUrl;
+        this.title = Objects.requireNonNull(title, "title must not be null");
+        this.imageUrl = Objects.requireNonNull(imageUrl, "imageUrl must not be null");
         this.description = description;
-        this.createdBy = createdBy;
+        this.createdBy = Objects.requireNonNull(createdBy, "createdBy must not be null");
     }
 
     public static TrendContent create(String title, String imageUrl, String description, Member createdBy) {
@@ -54,8 +55,8 @@ public class TrendContent extends BaseTimeEntity {
     }
 
     public void changeContent(String title, String imageUrl, String description) {
-        this.title = title;
-        this.imageUrl = imageUrl;
+        this.title = Objects.requireNonNull(title, "title must not be null");
+        this.imageUrl = Objects.requireNonNull(imageUrl, "imageUrl must not be null");
         this.description = description;
     }
 }

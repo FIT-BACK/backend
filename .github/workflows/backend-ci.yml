@@ -39,6 +39,108 @@ jobs:
       - name: Grant execute permission for Gradle
         run: chmod +x gradlew
 
+      - name: Verify Backend CD output contract
+        shell: bash
+        run: |
+          ruby <<'RUBY'
+          require 'yaml'
+
+          workflow = YAML.safe_load(File.read('.github/workflows/backend-cd.yml'))
+          publish_job = workflow.dig('jobs', 'publish-image')
+          abort 'Backend CD publish-image job is missing.' unless publish_job.is_a?(Hash)
+
+          expression_open = '$' + '{{'
+          step_ids = Array(publish_job['steps'])
+            .select { |step| step.is_a?(Hash) }
+            .map { |step| step['id'] }
+          missing_step_ids = %w[push-image resolve-digest] - step_ids
+          unless missing_step_ids.empty?
+            abort "Backend CD required steps are missing: #{missing_step_ids.join(', ')}"
+          end
+
+          expected_outputs = {
+            'image-uri' => "#{expression_open} steps.push-image.outputs.image-uri }}",
+            'image-digest' => "#{expression_open} steps.resolve-digest.outputs.image-digest }}",
+            'image-reference' => "#{expression_open} steps.resolve-digest.outputs.image-reference }}"
+          }
+          actual_outputs = publish_job['outputs']
+
+          expected_outputs.each do |name, expected_value|
+            actual_value = actual_outputs.is_a?(Hash) ? actual_outputs[name] : nil
+            next if actual_value == expected_value
+
+            abort "Backend CD job output mapping is missing or invalid: #{name}"
+          end
+
+          credentials_step = Array(publish_job['steps']).find do |step|
+            step.is_a?(Hash) && step['uses'].to_s.start_with?('aws-actions/configure-aws-credentials@')
+          end
+          abort 'Backend CD AWS OIDC credentials action is missing.' unless credentials_step
+
+          mask_account_id = credentials_step&.dig('with', 'mask-aws-account-id')
+
+          if mask_account_id.to_s.casecmp('true').zero?
+            abort 'Backend CD cannot mask the AWS account ID while exporting ECR URI job outputs.'
+          end
+
+          publish_steps = Array(publish_job['steps'])
+          push_step = publish_steps.find { |step| step['name'] == 'Push image to Amazon ECR' }
+          push_script = push_step&.fetch('run', '').to_s
+
+          unless push_script.strip == 'bash scripts/ci/publish_ecr_image.sh'
+            abort 'Backend CD must use the tested ECR image publication script.'
+          end
+
+          deploy_job = workflow.dig('jobs', 'deploy-production')
+          abort 'Backend CD deploy-production job is missing.' unless deploy_job.is_a?(Hash)
+
+          unless deploy_job['needs'] == 'publish-image'
+            abort 'Backend CD deploy-production must depend on publish-image.'
+          end
+
+          deploy_condition = deploy_job['if'].to_s
+          unless deploy_condition.include?("vars.EC2_INSTANCE_ID != ''")
+            abort 'Backend CD deploy-production must skip without EC2_INSTANCE_ID.'
+          end
+
+          expected_image_reference = "#{expression_open} needs.publish-image.outputs.image-reference }}"
+          unless deploy_job.dig('env', 'IMAGE_REFERENCE') == expected_image_reference
+            abort 'Backend CD deploy-production must consume the digest-pinned image reference.'
+          end
+
+          deploy_steps = Array(deploy_job['steps'])
+          payload_step = deploy_steps.find { |step| step['name'] == 'Build the SSM deployment payload' }
+          payload_script = payload_step&.fetch('run', '').to_s
+
+          unless payload_script.include?('executionTimeout: ["900"]')
+            abort 'Backend CD SSM payload must set a 900-second execution timeout.'
+          end
+
+          unless payload_script.include?('/opt/fitback/releases/') && payload_script.include?('RELEASE_DIR=')
+            abort 'Backend CD must deploy into an immutable release directory.'
+          end
+
+          send_step = deploy_steps.find { |step| step['name'] == 'Send deployment command' }
+          send_script = send_step&.fetch('run', '').to_s
+          unless send_script.include?('--timeout-seconds 60')
+            abort 'Backend CD must use a bounded SSM delivery timeout.'
+          end
+
+          wait_step = deploy_steps.find { |step| step['name'] == 'Wait for deployment result' }
+          wait_script = wait_step&.fetch('run', '').to_s
+          unless wait_script.include?('for attempt in {1..205}') &&
+              wait_script.include?('cancel-command') &&
+              wait_script.include?('wait_for_terminal_after_cancellation')
+            abort 'Backend CD must monitor the full execution window and cancel on timeout.'
+          end
+          RUBY
+
+      - name: Test ECR image publication script
+        run: bash scripts/ci/test_publish_ecr_image.sh
+
+      - name: Test remote deployment script
+        run: bash scripts/deploy/test_remote_deploy.sh
+
       - name: Build backend
         run: ./gradlew clean build
 

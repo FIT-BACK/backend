@@ -22,7 +22,8 @@ import org.springframework.test.web.servlet.MockMvc;
         "spring.datasource.username=sa",
         "spring.datasource.password=",
         "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "jwt.token.secretKey=test-jwt-secret-key-for-health-endpoint-tests"
 })
 class HealthEndpointIntegrationTest {
 
@@ -63,6 +64,6 @@ class HealthEndpointIntegrationTest {
     @Test
     void healthComponentEndpointIsNotPublic() throws Exception {
         mockMvc.perform(get("/actuator/health/db"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

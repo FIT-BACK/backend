@@ -66,8 +66,11 @@ public class AnalysisReport extends BaseTimeEntity {
     }
 
     public void changeMatchPercentage(Integer matchPercentage) {
-        validateMatchPercentage(matchPercentage);
-        this.matchPercentage = matchPercentage;
+        int nextMatchPercentage = matchPercentage == null
+                ? DEFAULT_MATCH_PERCENTAGE
+                : matchPercentage;
+        validateMatchPercentage(nextMatchPercentage);
+        this.matchPercentage = nextMatchPercentage;
     }
 
     public void addAiSuggestedTag(Tag tag) {
