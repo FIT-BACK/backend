@@ -114,7 +114,7 @@ providerIdentityKey = SHA-256(
 | `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(20)` | `V1` |
 | `ProductTagSource` | `product_tag.source VARCHAR(20)` | `PROVIDER`, `AI`, `RULE`, `MANUAL` |
 | `ImagePurpose` | `image.purpose VARCHAR(30)` | `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `LOOKBOOK_MATCHED`, `PROFILE` |
-| `ImageStatus` | `image.status VARCHAR(20)` | `PENDING`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
+| `ImageStatus` | `image.status VARCHAR(20)` | `PENDING`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
 | `ImageVisibility` | `image.visibility VARCHAR(20)` | `PRIVATE`, `PUBLIC` |
 
 카테고리의 API 노출 순서는 enum 선언 순서와 동일하다. 각 그룹은 최대 5개이며 빈 그룹도
@@ -822,7 +822,7 @@ JPA `ddl-auto=validate`로 Entity mapping을 검증한다.
 | `visibility` | `VARCHAR(20)` | N | 신규 발급은 `PRIVATE` |
 | `presigned_expires_at` | `DATETIME(6)` | Y | 업로드 URL 만료 시각. 완료·거부·삭제 선점 시 NULL |
 | `uploaded_at` | `DATETIME(6)` | Y | S3 객체 검증 완료 또는 거부 처리 시각 |
-| `activated_at` | `DATETIME(6)` | Y | 검증 완료 시각 |
+| `activated_at` | `DATETIME(6)` | Y | 검증된 이미지가 도메인 데이터에 연결되어 `ACTIVE`가 된 시각 |
 | `delete_requested_at` | `DATETIME(6)` | Y | 삭제 요청 시각 |
 | `deleted_at` | `DATETIME(6)` | Y | 객체 삭제 완료 시각 |
 | `retry_count` | `INT` | N | 삭제 재시도 횟수, 기본 0 |

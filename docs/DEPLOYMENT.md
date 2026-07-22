@@ -205,7 +205,7 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - 실제 적용 위치는 IAM role `FitbackProductionEC2Role`의 inline policy
   `FitbackProductionRuntimeAccess`, statement `ManageUserImageObjects`이다.
 - Presigned PUT CORS는 `PUT`/`HEAD`, `Content-Type`, `ETag`, 300초를 허용한다. 현재 프론트엔드 운영 origin이 확정되지 않아 origin은 임시로 `*`이다. 프론트엔드 공개 배포 전 이슈 `#83`과 배포 게이트로 정확한 origin 반영을 완료하고 `*`를 제거한다.
-- S3 객체 수명 주기 자동 만료는 `ACTIVE`와 `PENDING`을 구분할 수 없어 적용하지 않는다. 24시간 미사용 `PENDING` 정리는 DB 상태를 기준으로 애플리케이션 작업자가 수행한다.
+- S3 객체 수명 주기 자동 만료는 도메인 참조와 이미지 상태를 구분할 수 없어 적용하지 않는다. 애플리케이션 작업자는 도메인에서 참조하지 않는 `PENDING`, `READY`, `REJECTED` 이미지를 생성 또는 업로드 완료 후 24시간이 지나면 정리하고, `DELETE_FAILED`는 재시도 시각 이후 다시 처리한다. `ACTIVE` 이미지는 자동 정리 대상에서 제외한다.
 - 외부 상품 공급자의 이미지는 이 버킷으로 복사하지 않는다.
 
 운영 애플리케이션은 시작 시 Flyway를 단일 schema 변경 경로로 사용한다. 기존 운영 schema는
