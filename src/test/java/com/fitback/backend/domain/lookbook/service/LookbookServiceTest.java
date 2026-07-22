@@ -375,8 +375,9 @@ class LookbookServiceTest {
     void getLookbooksUsesTagFilteredCursorForNextPage() {
         LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
         Lookbook cursorLookbook = createListLookbook(100L, cursorCreatedAt);
+        cursorLookbook.softDelete();
         Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
-        when(lookbookRepository.findByIdAndTagName(100L, "미니멀"))
+        when(lookbookRepository.findCursorByIdAndTagName(100L, "미니멀"))
                 .thenReturn(Optional.of(cursorLookbook));
         when(lookbookRepository.findNextPageByTagName(
                 eq("미니멀"),
@@ -397,6 +398,34 @@ class LookbookServiceTest {
         assertThat(response.items())
                 .extracting(LookbookResponse.LookbookItem::lookbookId)
                 .containsExactly(99L);
+    }
+
+    @Test
+    void getLookbooksUsesSoftDeletedCursorForNextPage() {
+        LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        Lookbook cursorLookbook = createListLookbook(100L, cursorCreatedAt);
+        cursorLookbook.softDelete();
+        Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
+        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(cursorLookbook));
+        when(lookbookRepository.findNextPage(
+                eq(cursorCreatedAt),
+                eq(100L),
+                any(Pageable.class)
+        )).thenReturn(List.of(nextLookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(99L)))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                100L,
+                5,
+                null,
+                null
+        );
+
+        assertThat(response.items())
+                .extracting(LookbookResponse.LookbookItem::lookbookId)
+                .containsExactly(99L);
+        verify(lookbookRepository, never()).findByIdAndDeletedAtIsNull(100L);
     }
 
     @Test

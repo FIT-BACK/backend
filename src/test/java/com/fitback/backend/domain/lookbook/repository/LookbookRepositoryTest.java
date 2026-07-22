@@ -56,6 +56,7 @@ class LookbookRepositoryTest {
                 .isPresent();
         assertThat(lookbookRepository.findByIdAndDeletedAtIsNull(deletedLookbook.getId()))
                 .isEmpty();
+        assertThat(lookbookRepository.findById(deletedLookbook.getId())).isPresent();
     }
 
     @Test
@@ -94,14 +95,20 @@ class LookbookRepositoryTest {
         assertThat(lookbooks)
                 .extracting(Lookbook::getId)
                 .containsExactly(minimalLookbook.getId());
-        assertThat(lookbookRepository.findByIdAndTagName(minimalLookbook.getId(), "미니멀"))
+        assertThat(lookbookRepository.findCursorByIdAndTagName(
+                minimalLookbook.getId(),
+                "미니멀"
+        ))
                 .isPresent();
-        assertThat(lookbookRepository.findByIdAndTagName(streetLookbook.getId(), "미니멀"))
+        assertThat(lookbookRepository.findCursorByIdAndTagName(
+                streetLookbook.getId(),
+                "미니멀"
+        ))
                 .isEmpty();
-        assertThat(lookbookRepository.findByIdAndTagName(
+        assertThat(lookbookRepository.findCursorByIdAndTagName(
                 deletedMinimalLookbook.getId(),
                 "미니멀"
-        )).isEmpty();
+        )).isPresent();
     }
 
     @Test

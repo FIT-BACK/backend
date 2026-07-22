@@ -37,12 +37,10 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             Pageable pageable
     );
 
-    @EntityGraph(attributePaths = "member")
     @Query("""
             SELECT lookbook
             FROM Lookbook lookbook
             WHERE lookbook.id = :lookbookId
-              AND lookbook.deletedAt IS NULL
               AND EXISTS (
                   SELECT lookbookTag.id
                   FROM LookbookTag lookbookTag
@@ -50,7 +48,7 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
                     AND lookbookTag.tag.tagName = :tagName
               )
             """)
-    Optional<Lookbook> findByIdAndTagName(
+    Optional<Lookbook> findCursorByIdAndTagName(
             @Param("lookbookId") Long lookbookId,
             @Param("tagName") String tagName
     );

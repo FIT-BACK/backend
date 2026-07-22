@@ -250,13 +250,14 @@ public class LookbookService {
             );
         }
 
-        // cursor 유효성 확인 후 목록 조회
+        // cursor 유효성 확인 후 cursor 에 해당하는 룩북 조회
         Lookbook cursorLookbook = findCursorLookbook(cursor, tag)
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.NOT_FOUND,
                         "커서에 해당하는 룩북을 찾을 수 없습니다."
                 ));
 
+        // 태그가 있을 때 목록 조회
         if (tag != null) {
             return lookbookRepository.findNextPageByTagName(
                     tag,
@@ -266,6 +267,7 @@ public class LookbookService {
             );
         }
 
+        // 태그가 없을 때 목록 조회
         return lookbookRepository.findNextPage(
                 cursorLookbook.getCreatedAt(),
                 cursorLookbook.getId(),
@@ -275,9 +277,9 @@ public class LookbookService {
 
     private Optional<Lookbook> findCursorLookbook(Long cursor, String tag) {
         if (tag != null) {
-            return lookbookRepository.findByIdAndTagName(cursor, tag);
+            return lookbookRepository.findCursorByIdAndTagName(cursor, tag);
         }
-        return lookbookRepository.findByIdAndDeletedAtIsNull(cursor);
+        return lookbookRepository.findById(cursor);
     }
 
     // 입력 받은 태그 공백 제거
