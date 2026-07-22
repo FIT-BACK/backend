@@ -6,13 +6,22 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record ImageStorageProperties(
         String awsRegion,
         String bucket,
-        String cdnBaseUrl
+        String cdnBaseUrl,
+        String cloudfrontKeyPairId,
+        String cloudfrontPrivateKeyBase64
 ) {
 
     public ImageStorageProperties {
         awsRegion = requireText(awsRegion, "image.storage.aws-region");
         bucket = requireText(bucket, "image.storage.bucket");
         cdnBaseUrl = normalizeCdnBaseUrl(cdnBaseUrl);
+    }
+
+    @Override
+    public String toString() {
+        return ("ImageStorageProperties[awsRegion=%s, bucket=%s, cdnBaseUrl=%s, "
+                + "cloudfrontKeyPairId=%s, cloudfrontPrivateKeyBase64=****]")
+                .formatted(awsRegion, bucket, cdnBaseUrl, cloudfrontKeyPairId);
     }
 
     private static String requireText(String value, String propertyName) {

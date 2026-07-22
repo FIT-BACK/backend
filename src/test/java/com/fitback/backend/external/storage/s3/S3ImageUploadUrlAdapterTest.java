@@ -18,7 +18,9 @@ class S3ImageUploadUrlAdapterTest {
         ImageStorageProperties properties = new ImageStorageProperties(
                 "ap-northeast-2",
                 "fitback-test-images",
-                "https://cdn.example/"
+                "https://cdn.example/",
+                null,
+                null
         );
         try (S3Presigner presigner = S3Presigner.builder()
                 .region(Region.AP_NORTHEAST_2)

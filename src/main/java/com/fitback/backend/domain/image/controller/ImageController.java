@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.image.controller;
 
+import com.fitback.backend.domain.image.dto.ImageCompleteResponse;
 import com.fitback.backend.domain.image.dto.ImageUploadRequest;
 import com.fitback.backend.domain.image.dto.ImageUploadResponse;
 import com.fitback.backend.domain.image.service.ImageUploadService;
@@ -11,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,5 +41,27 @@ public class ImageController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.onCreated(response));
+    }
+
+    @Operation(summary = "이미지 업로드 완료 확인")
+    @PostMapping("/{imageId}/complete")
+    public ApiResponse<ImageCompleteResponse> completeUpload(
+            @AuthenticationPrincipal AuthMember authMember,
+            @PathVariable String imageId
+    ) {
+        return ApiResponse.onSuccess(
+                imageUploadService.completeUpload(authMember.getMember(), imageId)
+        );
+    }
+
+    @Operation(summary = "만료 전 이미지 업로드 URL 재발급")
+    @PostMapping("/{imageId}/upload-request")
+    public ApiResponse<ImageUploadResponse> reissueUpload(
+            @AuthenticationPrincipal AuthMember authMember,
+            @PathVariable String imageId
+    ) {
+        return ApiResponse.onSuccess(
+                imageUploadService.reissueUpload(authMember.getMember(), imageId)
+        );
     }
 }
