@@ -2,19 +2,19 @@ package com.fitback.backend.global.exception;
 
 import com.fitback.backend.global.response.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
 @RestControllerAdvice
@@ -27,73 +27,82 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = exception.getErrorCode();
         return ResponseEntity
                 .status(errorCode.getHttpStatus())
-                .body(ApiResponse.onFailure(errorCode.getCode(), exception.getMessage(), null));
+                .body(ApiResponse.onFailure(errorCode.getCode(), exception.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Map<String, String>>> handleMethodArgumentNotValidException(
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValidException(
             MethodArgumentNotValidException exception
     ) {
-        Map<String, String> errors = new LinkedHashMap<>();
-
-        for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
-            errors.putIfAbsent(fieldError.getField(), fieldError.getDefaultMessage());
-        }
-
-        return handleFailure(ErrorCode.VALIDATION_ERROR, errors);
+        return handleFailure(ErrorCode.VALIDATION_ERROR);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiResponse<Map<String, String>>> handleConstraintViolationException(
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolationException(
             ConstraintViolationException exception
     ) {
-        Map<String, String> errors = new LinkedHashMap<>();
-
-        exception.getConstraintViolations().forEach(violation ->
-                errors.putIfAbsent(violation.getPropertyPath().toString(), violation.getMessage())
-        );
-
-        return handleFailure(ErrorCode.VALIDATION_ERROR, errors);
+        return handleFailure(ErrorCode.VALIDATION_ERROR);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ApiResponse<Void>> handleMissingServletRequestParameterException(
             MissingServletRequestParameterException exception
     ) {
-        return handleFailure(ErrorCode.BAD_REQUEST, null);
+        return handleFailure(ErrorCode.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadableException(
+            HttpMessageNotReadableException exception
+    ) {
+        return handleFailure(ErrorCode.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingServletRequestPartException(
+            MissingServletRequestPartException exception
+    ) {
+        return handleFailure(ErrorCode.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceededException(
+            MaxUploadSizeExceededException exception
+    ) {
+        return handleFailure(ErrorCode.INVALID_ANALYSIS_IMAGE);
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ApiResponse<Void>> handleHttpRequestMethodNotSupportedException(
             HttpRequestMethodNotSupportedException exception
     ) {
-        return handleFailure(ErrorCode.METHOD_NOT_ALLOWED, null);
+        return handleFailure(ErrorCode.METHOD_NOT_ALLOWED);
     }
 
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuthenticationException(AuthenticationException exception) {
-        return handleFailure(ErrorCode.UNAUTHORIZED, null);
+        return handleFailure(ErrorCode.UNAUTHORIZED);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(AccessDeniedException exception) {
-        return handleFailure(ErrorCode.FORBIDDEN, null);
+        return handleFailure(ErrorCode.FORBIDDEN);
     }
 
     @ExceptionHandler(NoHandlerFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNoHandlerFoundException(NoHandlerFoundException exception) {
-        return handleFailure(ErrorCode.NOT_FOUND, null);
+        return handleFailure(ErrorCode.NOT_FOUND);
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception exception) {
         log.error("Unhandled exception occurred", exception);
-        return handleFailure(ErrorCode.INTERNAL_SERVER_ERROR, null);
+        return handleFailure(ErrorCode.INTERNAL_SERVER_ERROR);
     }
 
-    private <T> ResponseEntity<ApiResponse<T>> handleFailure(ErrorCode errorCode, T result) {
+    private ResponseEntity<ApiResponse<Void>> handleFailure(ErrorCode errorCode) {
         return ResponseEntity
                 .status(errorCode.getHttpStatus())
-                .body(ApiResponse.onFailure(errorCode.getCode(), errorCode.getMessage(), result));
+                .body(ApiResponse.onFailure(errorCode.getCode(), errorCode.getMessage()));
     }
 }

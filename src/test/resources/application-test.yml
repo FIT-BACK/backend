@@ -12,3 +12,21 @@ spring:
       hibernate:
         format_sql: true
     open-in-view: false
+
+  flyway:
+    enabled: false
+
+image:
+  storage:
+    aws-region: ap-northeast-2
+    bucket: fitback-test-images
+    cdn-base-url: https://example.invalid
+    cloudfront-key-pair-id: test-key-pair
+    cloudfront-private-key-base64: dGVzdC1wcml2YXRlLWtleQ==
+
+jwt:
+  token:
+    secretKey: test-jwt-secret-key-for-test-codes
+    expiration:
+      access: 1800000       # 30분 (ms)
+      refresh: 1209600000   # 14일 (ms)

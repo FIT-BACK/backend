@@ -10,6 +10,8 @@ mock_bin="$test_root/bin"
 mock_log="$test_root/mock.log"
 curl_count_file="$test_root/curl-count"
 special_password="pa\$\$\\'word\\value#=end"
+special_jwt_secret="jwt\$\$\\'secret\\value#=end-for-fitback-test"
+special_cloudfront_private_key="Y2xvdWRmcm9udC1wcml2YXRlLWtleS1mb3ItdGVzdA=="
 
 mkdir -p "$mock_bin"
 : > "$mock_log"
@@ -45,6 +47,12 @@ if [ "${1:-}" = 'ssm' ] && [ "${2:-}" = 'get-parameter' ]; then
       ;;
     */db-password)
       printf '%s\n' "$MOCK_DB_PASSWORD"
+      ;;
+    */jwt-secret-key)
+      printf '%s\n' "$MOCK_JWT_SECRET_KEY"
+      ;;
+    */cloudfront-private-key)
+      printf '%s\n' "$MOCK_CLOUDFRONT_PRIVATE_KEY"
       ;;
     *)
       printf 'Unexpected parameter: %s\n' "$parameter_name" >&2
@@ -174,6 +182,9 @@ run_deploy() {
 
   IMAGE_REFERENCE="$image_reference" \
   AWS_REGION='ap-northeast-2' \
+  IMAGE_BUCKET='fitback-prod-images-123209654535-ap-northeast-2' \
+  IMAGE_CDN_BASE_URL='https://d1p2ierkew26r1.cloudfront.net' \
+  CLOUDFRONT_KEY_PAIR_ID='K1XNJ3JDEDCVL3' \
   PARAMETER_PREFIX='/fitback/prod' \
   DEPLOY_ROOT="$deploy_root" \
   RELEASE_DIR="$release_dir" \
@@ -182,6 +193,8 @@ run_deploy() {
   HTTP_PORT=80 \
   MOCK_LOG="$mock_log" \
   MOCK_DB_PASSWORD="$special_password" \
+  MOCK_JWT_SECRET_KEY="$special_jwt_secret" \
+  MOCK_CLOUDFRONT_PRIVATE_KEY="$special_cloudfront_private_key" \
   MOCK_CURL_FAIL_COUNT="${MOCK_CURL_FAIL_COUNT:-0}" \
   MOCK_DOCKER_FAIL_MATCH="${MOCK_DOCKER_FAIL_MATCH:-}" \
   MOCK_DOCKER_PULL_FAIL_MATCH="${MOCK_DOCKER_PULL_FAIL_MATCH:-}" \
@@ -210,19 +223,61 @@ test "$(readlink "$deploy_root/current")" = "$release_one"
 env_file="$release_one/.env"
 test "$(file_mode "$env_file")" = '600'
 grep -Fxq "BACKEND_IMAGE=$first_image" "$env_file"
+grep -Fxq 'AWS_REGION=ap-northeast-2' "$env_file"
+grep -Fxq 'IMAGE_BUCKET=fitback-prod-images-123209654535-ap-northeast-2' "$env_file"
+grep -Fxq 'IMAGE_CDN_BASE_URL=https://d1p2ierkew26r1.cloudfront.net' "$env_file"
+grep -Fxq 'CLOUDFRONT_KEY_PAIR_ID=K1XNJ3JDEDCVL3' "$env_file"
 
 parsed_password="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
   DB_USER='fitback_app' \
   DB_PASSWORD="$special_password" \
+  JWT_SECRET_KEY="$special_jwt_secret" \
+  CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
   --env-file "$env_file" \
   config --environment | sed -n 's/^DB_PASSWORD=//p')"
 test "$parsed_password" = "$special_password"
-! grep -Eq '^DB_(URL|USER|PASSWORD)=' "$env_file"
+parsed_jwt_secret="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
+  DB_USER='fitback_app' \
+  DB_PASSWORD="$special_password" \
+  JWT_SECRET_KEY="$special_jwt_secret" \
+  CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
+  docker compose \
+  --project-directory "$release_one" \
+  --env-file "$env_file" \
+  config --environment | sed -n 's/^JWT_SECRET_KEY=//p')"
+test "$parsed_jwt_secret" = "$special_jwt_secret"
+parsed_cloudfront_private_key="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
+  DB_USER='fitback_app' \
+  DB_PASSWORD="$special_password" \
+  JWT_SECRET_KEY="$special_jwt_secret" \
+  CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
+  docker compose \
+  --project-directory "$release_one" \
+  --env-file "$env_file" \
+  config --environment | sed -n 's/^CLOUDFRONT_PRIVATE_KEY_BASE64=//p')"
+test "$parsed_cloudfront_private_key" = "$special_cloudfront_private_key"
+grep_status=0
+grep -Eq '^(DB_(URL|USER|PASSWORD)|JWT_SECRET_KEY|CLOUDFRONT_PRIVATE_KEY_BASE64)=' "$env_file" || grep_status=$?
+if [ "$grep_status" -eq 0 ]; then
+  echo 'Secret was written to .env.' >&2
+  exit 1
+elif [ "$grep_status" -ne 1 ]; then
+  echo "Failed to inspect $env_file." >&2
+  exit 1
+fi
 
 if grep -Fq "$special_password" "$mock_log"; then
   echo 'Database password leaked into a command log.' >&2
+  exit 1
+fi
+if grep -Fq "$special_jwt_secret" "$mock_log"; then
+  echo 'JWT secret leaked into a command log.' >&2
+  exit 1
+fi
+if grep -Fq "$special_cloudfront_private_key" "$mock_log"; then
+  echo 'CloudFront private key leaked into a command log.' >&2
   exit 1
 fi
 

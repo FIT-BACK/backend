@@ -28,7 +28,7 @@ class ApiResponseTest {
 
     @Test
     void onFailureCreatesFailureResponse() {
-        ApiResponse<Void> response = ApiResponse.onFailure("COMMON400_1", "잘못된 요청입니다.", null);
+        ApiResponse<Void> response = ApiResponse.onFailure("COMMON400_1", "잘못된 요청입니다.");
 
         assertThat(response.success()).isFalse();
         assertThat(response.code()).isEqualTo("COMMON400_1");

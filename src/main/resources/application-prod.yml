@@ -1,4 +1,8 @@
 spring:
+  sql:
+    init:
+      mode: never
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USER}
@@ -12,3 +16,22 @@ spring:
       hibernate:
         format_sql: false
     open-in-view: false
+
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
+
+jwt:
+  token:
+    secretKey: ${JWT_SECRET_KEY}
+    expiration:
+      access: 1800000       # 30분 (ms)
+      refresh: 1209600000   # 14일 (ms)
+
+image:
+  storage:
+    aws-region: ${AWS_REGION}
+    bucket: ${IMAGE_BUCKET}
+    cdn-base-url: ${IMAGE_CDN_BASE_URL}
+    cloudfront-key-pair-id: ${CLOUDFRONT_KEY_PAIR_ID}
+    cloudfront-private-key-base64: ${CLOUDFRONT_PRIVATE_KEY_BASE64}

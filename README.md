@@ -27,9 +27,9 @@ cp .env.example .env
 `.env` 파일 예시는 다음과 같습니다.
 
 ```env
-DB_URL=jdbc:mysql://localhost:3306/umc_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+DB_URL=jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
 DB_USER=your_mysql_user
-DB_PW=your_mysql_password
+DB_PASSWORD=your_mysql_password
 ```
 
 ### 2. MySQL 데이터베이스 생성
@@ -37,20 +37,16 @@ DB_PW=your_mysql_password
 로컬 MySQL에 사용할 데이터베이스를 생성합니다.
 
 ```sql
-CREATE DATABASE umc_db;
+CREATE DATABASE fitback;
 ```
 
 ### 3. 애플리케이션 실행
 
 ```bash
-./gradlew bootRun
+./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-기본 프로필은 `local`입니다.
-
-```properties
-spring.profiles.default=local
-```
+운영 설정이 실수로 로컬 설정으로 대체되지 않도록 실행 프로필을 명시합니다.
 
 ## 테스트 및 빌드
 
@@ -75,10 +71,28 @@ http://localhost:8080/v3/api-docs
 
 필요한 GitHub 변수, IAM 최소 권한, Parameter Store 경로, EC2 runtime 및 rollback 절차는 [운영 배포 문서](docs/DEPLOYMENT.md)를 참고합니다.
 
+현재 운영 배포는 `main` push 또는 수동 `workflow_dispatch`로 실행됩니다. Git SHA 기반 ECR 태그가 이미 있으면 기존 불변 태그를 재사용하고 digest로 배포하므로 같은 commit을 안전하게 다시 실행할 수 있습니다.
+
+운영 확인 경로는 다음과 같습니다.
+
+```text
+https://d1ra74et9h0ohu.cloudfront.net/nginx-health
+https://d1ra74et9h0ohu.cloudfront.net/actuator/health/readiness
+```
+
+CloudFront 기본 도메인을 운영 HTTPS 주소로 사용합니다. EC2의 HTTP 80은 CloudFront 원본 요청에만 허용하고 Spring Boot의 8080 포트는 외부에 공개하지 않습니다. 운영 비밀값은 GitHub 변수나 저장소가 아니라 EC2 instance role이 Parameter Store SecureString에서 직접 읽습니다.
+
+사용자 업로드 이미지는 비공개 S3 버킷에 저장하며, `https://d1p2ierkew26r1.cloudfront.net`에서 서명된 URL로만 조회합니다. S3 직접 접근과 서명 없는 CloudFront 접근은 허용하지 않습니다.
+
+인증된 사용자는 `POST /api/v1/images/presigned-uploads`에서 5분 유효한 Presigned PUT URL을
+발급받아 JPEG, PNG, WebP 이미지를 최대 5 MiB까지 S3로 직접 업로드할 수 있습니다. 발급 URL의
+요청 헤더와 업로드 후 처리 계약은 [API 명세](docs/API_SPEC.md)를 참고합니다.
+
 ## Security
 
-현재는 JWT 인증 구현 전 단계이므로 `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/**` 경로를 임시로 허용합니다.
-REST API 기준으로 CSRF, Form Login, HTTP Basic, Session은 비활성화되어 있습니다.
+JWT 기반 인증을 사용합니다. `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/auth/sign`, `/api/v1/auth/login`, `/api/v1/auth/token/refresh` 경로만 인증 없이 허용하며, 그 외 모든 API는 인증이 필요합니다.
+요청의 `Authorization: Bearer {accessToken}` 헤더는 `JwtAuthFilter`가 검증하여 인증 정보를 설정합니다.
+REST API 기준으로 CSRF, Form Login, HTTP Basic은 비활성화되어 있으며, 세션은 `STATELESS`로 사용합니다.
 
 ## 브랜치 컨벤션
 

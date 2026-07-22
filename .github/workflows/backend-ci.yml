@@ -50,6 +50,14 @@ jobs:
           abort 'Backend CD publish-image job is missing.' unless publish_job.is_a?(Hash)
 
           expression_open = '$' + '{{'
+          step_ids = Array(publish_job['steps'])
+            .select { |step| step.is_a?(Hash) }
+            .map { |step| step['id'] }
+          missing_step_ids = %w[push-image resolve-digest] - step_ids
+          unless missing_step_ids.empty?
+            abort "Backend CD required steps are missing: #{missing_step_ids.join(', ')}"
+          end
+
           expected_outputs = {
             'image-uri' => "#{expression_open} steps.push-image.outputs.image-uri }}",
             'image-digest' => "#{expression_open} steps.resolve-digest.outputs.image-digest }}",
@@ -65,11 +73,13 @@ jobs:
           end
 
           credentials_step = Array(publish_job['steps']).find do |step|
-            step['name'] == 'Configure AWS credentials with OIDC'
+            step.is_a?(Hash) && step['uses'].to_s.start_with?('aws-actions/configure-aws-credentials@')
           end
+          abort 'Backend CD AWS OIDC credentials action is missing.' unless credentials_step
+
           mask_account_id = credentials_step&.dig('with', 'mask-aws-account-id')
 
-          if mask_account_id == true
+          if mask_account_id.to_s.casecmp('true').zero?
             abort 'Backend CD cannot mask the AWS account ID while exporting ECR URI job outputs.'
           end
 
@@ -79,6 +89,25 @@ jobs:
 
           unless push_script.strip == 'bash scripts/ci/publish_ecr_image.sh'
             abort 'Backend CD must use the tested ECR image publication script.'
+          end
+
+          validation_step = publish_steps.find do |step|
+            step['name'] == 'Start image validation container'
+          end
+          validation_script = validation_step&.fetch('run', '').to_s
+          required_validation_env = %w[
+            AWS_REGION
+            IMAGE_BUCKET
+            IMAGE_CDN_BASE_URL
+            CLOUDFRONT_KEY_PAIR_ID
+            CLOUDFRONT_PRIVATE_KEY_BASE64
+            SPRING_FLYWAY_ENABLED
+          ]
+          missing_validation_env = required_validation_env.reject do |name|
+            validation_script.include?("--env #{name}=")
+          end
+          unless missing_validation_env.empty?
+            abort "Backend CD validation container is missing: #{missing_validation_env.join(', ')}"
           end
 
           deploy_job = workflow.dig('jobs', 'deploy-production')
@@ -130,6 +159,9 @@ jobs:
 
       - name: Test remote deployment script
         run: bash scripts/deploy/test_remote_deploy.sh
+
+      - name: Verify MySQL migrations
+        run: bash scripts/ci/test_mysql_migrations.sh
 
       - name: Build backend
         run: ./gradlew clean build
