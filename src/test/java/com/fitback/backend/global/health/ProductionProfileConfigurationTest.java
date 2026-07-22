@@ -15,7 +15,8 @@ class ProductionProfileConfigurationTest {
                     "spring.profiles.active=prod",
                     "DB_URL=jdbc:mysql://production-db:3306/fitback",
                     "DB_USER=fitback",
-                    "DB_PASSWORD=secret"
+                    "DB_PASSWORD=secret",
+                    "JWT_SECRET_KEY=production-jwt-secret-key-at-least-32-bytes"
             );
 
     @Test
@@ -30,6 +31,8 @@ class ProductionProfileConfigurationTest {
             assertThat(environment.getProperty("spring.datasource.password")).isEqualTo("secret");
             assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
             assertThat(environment.getProperty("spring.jpa.open-in-view", Boolean.class)).isFalse();
+            assertThat(environment.getProperty("jwt.token.secretKey"))
+                    .isEqualTo("production-jwt-secret-key-at-least-32-bytes");
         });
     }
 }

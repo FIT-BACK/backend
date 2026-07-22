@@ -151,6 +151,7 @@ compose_in() {
   DB_URL="$db_url" \
   DB_USER="$db_user" \
   DB_PASSWORD="$db_password" \
+  JWT_SECRET_KEY="$jwt_secret_key" \
     docker compose \
     --project-directory "$release_dir" \
     --env-file "$release_dir/.env" \
@@ -251,10 +252,12 @@ rollback() {
 db_url="$(get_parameter 'db-url')"
 db_user="$(get_parameter 'db-user')"
 db_password="$(get_parameter 'db-password')"
+jwt_secret_key="$(get_parameter 'jwt-secret-key')"
 
 require_single_line 'db-url' "$db_url"
 require_single_line 'db-user' "$db_user"
 require_single_line 'db-password' "$db_password"
+require_single_line 'jwt-secret-key' "$jwt_secret_key"
 
 write_environment "$RELEASE_DIR" "$IMAGE_REFERENCE"
 
