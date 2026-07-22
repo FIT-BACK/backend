@@ -234,7 +234,15 @@ parsed_jwt_secret="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
   --env-file "$env_file" \
   config --environment | sed -n 's/^JWT_SECRET_KEY=//p')"
 test "$parsed_jwt_secret" = "$special_jwt_secret"
-! grep -Eq '^(DB_(URL|USER|PASSWORD)|JWT_SECRET_KEY)=' "$env_file"
+grep_status=0
+grep -Eq '^(DB_(URL|USER|PASSWORD)|JWT_SECRET_KEY)=' "$env_file" || grep_status=$?
+if [ "$grep_status" -eq 0 ]; then
+  echo 'Secret was written to .env.' >&2
+  exit 1
+elif [ "$grep_status" -ne 1 ]; then
+  echo "Failed to inspect $env_file." >&2
+  exit 1
+fi
 
 if grep -Fq "$special_password" "$mock_log"; then
   echo 'Database password leaked into a command log.' >&2
