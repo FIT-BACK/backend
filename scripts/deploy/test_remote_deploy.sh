@@ -10,6 +10,7 @@ mock_bin="$test_root/bin"
 mock_log="$test_root/mock.log"
 curl_count_file="$test_root/curl-count"
 special_password="pa\$\$\\'word\\value#=end"
+special_jwt_secret="jwt\$\$\\'secret\\value#=end-for-fitback-test"
 
 mkdir -p "$mock_bin"
 : > "$mock_log"
@@ -45,6 +46,9 @@ if [ "${1:-}" = 'ssm' ] && [ "${2:-}" = 'get-parameter' ]; then
       ;;
     */db-password)
       printf '%s\n' "$MOCK_DB_PASSWORD"
+      ;;
+    */jwt-secret-key)
+      printf '%s\n' "$MOCK_JWT_SECRET_KEY"
       ;;
     *)
       printf 'Unexpected parameter: %s\n' "$parameter_name" >&2
@@ -182,6 +186,7 @@ run_deploy() {
   HTTP_PORT=80 \
   MOCK_LOG="$mock_log" \
   MOCK_DB_PASSWORD="$special_password" \
+  MOCK_JWT_SECRET_KEY="$special_jwt_secret" \
   MOCK_CURL_FAIL_COUNT="${MOCK_CURL_FAIL_COUNT:-0}" \
   MOCK_DOCKER_FAIL_MATCH="${MOCK_DOCKER_FAIL_MATCH:-}" \
   MOCK_DOCKER_PULL_FAIL_MATCH="${MOCK_DOCKER_PULL_FAIL_MATCH:-}" \
@@ -214,15 +219,29 @@ grep -Fxq "BACKEND_IMAGE=$first_image" "$env_file"
 parsed_password="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
   DB_USER='fitback_app' \
   DB_PASSWORD="$special_password" \
+  JWT_SECRET_KEY="$special_jwt_secret" \
   docker compose \
   --project-directory "$release_one" \
   --env-file "$env_file" \
   config --environment | sed -n 's/^DB_PASSWORD=//p')"
 test "$parsed_password" = "$special_password"
-! grep -Eq '^DB_(URL|USER|PASSWORD)=' "$env_file"
+parsed_jwt_secret="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
+  DB_USER='fitback_app' \
+  DB_PASSWORD="$special_password" \
+  JWT_SECRET_KEY="$special_jwt_secret" \
+  docker compose \
+  --project-directory "$release_one" \
+  --env-file "$env_file" \
+  config --environment | sed -n 's/^JWT_SECRET_KEY=//p')"
+test "$parsed_jwt_secret" = "$special_jwt_secret"
+! grep -Eq '^(DB_(URL|USER|PASSWORD)|JWT_SECRET_KEY)=' "$env_file"
 
 if grep -Fq "$special_password" "$mock_log"; then
   echo 'Database password leaked into a command log.' >&2
+  exit 1
+fi
+if grep -Fq "$special_jwt_secret" "$mock_log"; then
+  echo 'JWT secret leaked into a command log.' >&2
   exit 1
 fi
 
