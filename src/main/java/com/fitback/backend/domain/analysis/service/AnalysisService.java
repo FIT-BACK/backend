@@ -10,8 +10,8 @@ import com.fitback.backend.domain.analysis.dto.RecommendationGroupResponse;
 import com.fitback.backend.domain.analysis.dto.SuggestedTagResponse;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
-import com.fitback.backend.domain.image.entity.ImageAsset;
-import com.fitback.backend.domain.image.service.ImageAssetService;
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.tag.entity.Tag;
@@ -45,7 +45,7 @@ public class AnalysisService {
     private final ImageStorage imageStorage;
     private final AiTagAnalyzer aiTagAnalyzer;
     private final RecommendationResultProvider recommendationResultProvider;
-    private final ImageAssetService imageAssetService;
+    private final ImageUploadService imageUploadService;
     private final Clock clock;
 
     @Transactional
@@ -78,15 +78,15 @@ public class AnalysisService {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
         // READY 이미지의 소유권과 목적을 검증하고 ACTIVE로 바꾼 뒤 리포트에 연결한다.
-        ImageAsset imageAsset = imageAssetService.activateAnalysisImage(
+        Image image = imageUploadService.activateAnalysisImage(
                 memberId,
                 request.imageId()
         );
-        List<Tag> suggestedTags = aiTagAnalyzer.analyze(imageAsset);
+        List<Tag> suggestedTags = aiTagAnalyzer.analyze(image);
 
         AnalysisReport report = AnalysisReport.create(
                 member,
-                imageAsset,
+                image,
                 DEFAULT_MATCH_PERCENTAGE
         );
         suggestedTags.forEach(report::addAiSuggestedTag);
@@ -208,7 +208,7 @@ public class AnalysisService {
     private String resolveImageUrl(AnalysisReport report) {
         return report.getOriginalImage() == null
                 ? report.getImageUrl()
-                : imageAssetService.createReadUrl(report.getOriginalImage());
+                : imageUploadService.createReadUrl(report.getOriginalImage());
     }
 
     private int validatePageSize(Integer requestedPageSize) {

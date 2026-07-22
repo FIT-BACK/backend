@@ -7,7 +7,8 @@ public record ImageUploadResponse(
         String imageId,
         String uploadUrl,
         String uploadMethod,
-        Map<String, String> uploadFields,
-        Instant expiresAt
+        Map<String, String> requiredHeaders,
+        Instant expiresAt,
+        String imageUrl
 ) {
 }

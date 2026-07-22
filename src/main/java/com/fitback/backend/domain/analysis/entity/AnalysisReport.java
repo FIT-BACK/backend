@@ -1,6 +1,6 @@
 package com.fitback.backend.domain.analysis.entity;
 
-import com.fitback.backend.domain.image.entity.ImageAsset;
+import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.entity.BaseTimeEntity;
@@ -50,7 +50,7 @@ public class AnalysisReport extends BaseTimeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "original_image_id")
-    private ImageAsset originalImage;
+    private Image originalImage;
 
     @Column(name = "match_percentage", nullable = false)
     private Integer matchPercentage;
@@ -73,7 +73,7 @@ public class AnalysisReport extends BaseTimeEntity {
         validateMatchPercentage(this.matchPercentage);
     }
 
-    private AnalysisReport(Member member, ImageAsset originalImage, Integer matchPercentage) {
+    private AnalysisReport(Member member, Image originalImage, Integer matchPercentage) {
         this.member = Objects.requireNonNull(member, "member must not be null");
         this.originalImage = Objects.requireNonNull(
                 originalImage,
@@ -89,7 +89,7 @@ public class AnalysisReport extends BaseTimeEntity {
 
     public static AnalysisReport create(
             Member member,
-            ImageAsset originalImage,
+            Image originalImage,
             Integer matchPercentage
     ) {
         return new AnalysisReport(member, originalImage, matchPercentage);

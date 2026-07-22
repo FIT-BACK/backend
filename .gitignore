@@ -4,6 +4,7 @@ BACKEND_CONVENTION.md
 build/
 target/
 uploads/
+/checkpoint/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/

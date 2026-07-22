@@ -12,7 +12,7 @@ public class AnalysisImageReferenceProbe implements ImageReferenceProbe {
     private final AnalysisReportRepository analysisReportRepository;
 
     @Override
-    public boolean exists(Long imageId) {
+    public boolean exists(String imageId) {
         return analysisReportRepository.existsByOriginalImageId(imageId);
     }
 }

@@ -8,19 +8,26 @@ import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
-@Configuration
+@Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(ImageStorageProperties.class)
 public class ImageStorageConfig {
 
     @Bean
-    public Clock clock() {
-        return Clock.systemDefaultZone();
+    public AwsCredentialsProvider awsCredentialsProvider() {
+        return DefaultCredentialsProvider.builder().build();
     }
 
     @Bean
-    public AwsCredentialsProvider awsCredentialsProvider() {
-        return DefaultCredentialsProvider.create();
+    public S3Presigner s3Presigner(
+            ImageStorageProperties properties,
+            AwsCredentialsProvider credentialsProvider
+    ) {
+        return S3Presigner.builder()
+                .region(Region.of(properties.awsRegion()))
+                .credentialsProvider(credentialsProvider)
+                .build();
     }
 
     @Bean
@@ -32,5 +39,10 @@ public class ImageStorageConfig {
                 .region(Region.of(properties.awsRegion()))
                 .credentialsProvider(credentialsProvider)
                 .build();
+    }
+
+    @Bean
+    public Clock systemClock() {
+        return Clock.systemUTC();
     }
 }

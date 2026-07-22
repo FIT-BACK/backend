@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AnalysisReportRepository extends JpaRepository<AnalysisReport, Long> {
 
-    boolean existsByOriginalImageId(Long imageId);
+    boolean existsByOriginalImageId(String imageId);
 
     @EntityGraph(attributePaths = {"reportTags", "reportTags.tag"})
     Optional<AnalysisReport> findByIdAndMemberIdAndDeletedAtIsNull(Long reportId, Long memberId);

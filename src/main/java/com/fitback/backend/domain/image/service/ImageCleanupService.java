@@ -1,9 +1,10 @@
 package com.fitback.backend.domain.image.service;
 
-import com.fitback.backend.domain.image.entity.ImageAsset;
-import com.fitback.backend.domain.image.entity.ImageAssetStatus;
-import com.fitback.backend.domain.image.repository.ImageAssetRepository;
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.entity.ImageStatus;
+import com.fitback.backend.domain.image.repository.ImageRepository;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,32 +21,34 @@ public class ImageCleanupService {
 
     private static final Logger log = LoggerFactory.getLogger(ImageCleanupService.class);
     private static final int CLEANUP_BATCH_SIZE = 50;
+    private static final Duration RETRY_DELAY = Duration.ofHours(1);
 
-    private final ImageAssetRepository imageAssetRepository;
+    private final ImageRepository imageRepository;
     private final ImageObjectStorage imageObjectStorage;
     private final List<ImageReferenceProbe> imageReferenceProbes;
     private final Clock clock;
 
     @Transactional
-    public List<Long> claimExpiredImages() {
+    public List<String> claimExpiredImages() {
         LocalDateTime createdBefore = LocalDateTime.now(clock).minusHours(24);
-        List<ImageAsset> candidates = imageAssetRepository.findCleanupCandidates(
+        List<Image> candidates = imageRepository.findCleanupCandidates(
                 List.of(
-                        ImageAssetStatus.PENDING_UPLOAD,
-                        ImageAssetStatus.READY,
-                        ImageAssetStatus.REJECTED,
-                        ImageAssetStatus.DELETE_FAILED
+                        ImageStatus.PENDING,
+                        ImageStatus.READY,
+                        ImageStatus.REJECTED,
+                        ImageStatus.DELETE_FAILED
                 ),
                 createdBefore,
+                clock.instant(),
                 PageRequest.of(0, CLEANUP_BATCH_SIZE)
         );
-        // 실제 도메인 참조를 다시 확인한 뒤 DB 잠금 안에서 DELETING으로 선점한다.
-        List<Long> claimedImageIds = new ArrayList<>();
-        for (ImageAsset image : candidates) {
-            boolean isReferenced = imageReferenceProbes.stream()
+        // 도메인 참조를 확인한 뒤 잠금 트랜잭션 안에서 DELETING 상태로 선점한다.
+        List<String> claimedImageIds = new ArrayList<>();
+        for (Image image : candidates) {
+            boolean referenced = imageReferenceProbes.stream()
                     .anyMatch(probe -> probe.exists(image.getId()));
-            if (!isReferenced) {
-                image.claimForDeletion();
+            if (!referenced) {
+                image.claimForDeletion(clock.instant());
                 claimedImageIds.add(image.getId());
             }
         }
@@ -53,16 +56,16 @@ public class ImageCleanupService {
     }
 
     @Transactional
-    public void deleteClaimedImage(Long imageId) {
-        ImageAsset imageAsset = imageAssetRepository.findById(imageId).orElse(null);
-        if (imageAsset == null || imageAsset.getAssetStatus() != ImageAssetStatus.DELETING) {
+    public void deleteClaimedImage(String imageId) {
+        Image image = imageRepository.findById(imageId).orElse(null);
+        if (image == null || image.getStatus() != ImageStatus.DELETING) {
             return;
         }
         try {
-            imageObjectStorage.delete(imageAsset.getStorageKey());
-            imageAsset.markDeleted(clock.instant());
+            imageObjectStorage.delete(image.getObjectKey());
+            image.markDeleted(clock.instant());
         } catch (RuntimeException exception) {
-            imageAsset.markDeleteFailed();
+            image.markDeleteFailed(clock.instant().plus(RETRY_DELAY));
             log.warn("Temporary image cleanup failed. imageId={}", imageId, exception);
         }
     }

@@ -6,5 +6,5 @@ package com.fitback.backend.domain.image.service;
  */
 public interface ImageReferenceProbe {
 
-    boolean exists(Long imageId);
+    boolean exists(String imageId);
 }

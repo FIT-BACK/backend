@@ -18,9 +18,10 @@ import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.entity.ReportTag;
 import com.fitback.backend.domain.analysis.entity.ReportTagSource;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
-import com.fitback.backend.domain.image.entity.ImageAsset;
+import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImagePurpose;
-import com.fitback.backend.domain.image.service.ImageAssetService;
+import com.fitback.backend.domain.image.entity.ImageVisibility;
+import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
@@ -66,7 +67,7 @@ class AnalysisServiceTest {
     private RecommendationResultProvider recommendationResultProvider;
 
     @Mock
-    private ImageAssetService imageAssetService;
+    private ImageUploadService imageUploadService;
 
     private final Clock clock = Clock.fixed(
             Instant.parse("2026-07-22T00:00:00Z"),
@@ -84,7 +85,7 @@ class AnalysisServiceTest {
                 imageStorage,
                 aiTagAnalyzer,
                 recommendationResultProvider,
-                imageAssetService,
+                imageUploadService,
                 clock
         );
     }
@@ -93,19 +94,21 @@ class AnalysisServiceTest {
     void createsReportFromCompletedImageAsset() {
         Member member = member(1L);
         Tag minimal = tag(10L, "미니멀");
-        ImageAsset imageAsset = ImageAsset.create(
+        Image image = Image.createPending(
+                "image-public-id",
                 member,
-                ImagePurpose.ANALYSIS,
-                "images/analysis/1/2026/07/image.jpg",
+                "prod/images/analysis_original/2026/07/image.jpg",
+                ImagePurpose.ANALYSIS_ORIGINAL,
                 "image/jpeg",
                 3,
+                ImageVisibility.PRIVATE,
                 clock.instant().plusSeconds(300)
         );
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
-        when(imageAssetService.activateAnalysisImage(1L, "image-public-id"))
-                .thenReturn(imageAsset);
-        when(aiTagAnalyzer.analyze(imageAsset)).thenReturn(List.of(minimal));
-        when(imageAssetService.createReadUrl(imageAsset))
+        when(imageUploadService.activateAnalysisImage(1L, "image-public-id"))
+                .thenReturn(image);
+        when(aiTagAnalyzer.analyze(image)).thenReturn(List.of(minimal));
+        when(imageUploadService.createReadUrl(image))
                 .thenReturn("https://cdn.example.com/signed-image");
         when(analysisReportRepository.save(any(AnalysisReport.class))).thenAnswer(invocation -> {
             AnalysisReport report = invocation.getArgument(0);

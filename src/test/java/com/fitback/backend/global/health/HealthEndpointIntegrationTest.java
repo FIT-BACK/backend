@@ -22,10 +22,12 @@ import org.springframework.test.web.servlet.MockMvc;
         "spring.datasource.username=sa",
         "spring.datasource.password=",
         "spring.datasource.driver-class-name=org.h2.Driver",
+        "spring.sql.init.mode=never",
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.flyway.enabled=false",
+        "jwt.token.secretKey=test-jwt-secret-key-for-health-endpoint-tests",
         "image.storage.aws-region=ap-northeast-2",
-        "jwt.token.secretKey=test-jwt-secret-key-for-health-endpoint-tests"
+        "image.storage.bucket=fitback-health-test-images",
+        "image.storage.cdn-base-url=https://example.invalid"
 })
 class HealthEndpointIntegrationTest {
 

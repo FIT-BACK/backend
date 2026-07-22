@@ -1,6 +1,6 @@
 package com.fitback.backend.domain.image.infrastructure;
 
-import com.fitback.backend.domain.image.entity.ImageAsset;
+import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImageVisibility;
 import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
 import com.fitback.backend.global.config.ImageStorageProperties;
@@ -28,12 +28,12 @@ public class CloudFrontImageAccessUrlProvider implements ImageAccessUrlProvider 
     private final Clock clock;
 
     @Override
-    public String createReadUrl(ImageAsset imageAsset) {
+    public String createReadUrl(Image image) {
         String resourceUrl = "%s/%s".formatted(
                 properties.cdnBaseUrl().replaceAll("/$", ""),
-                imageAsset.getStorageKey()
+                image.getObjectKey()
         );
-        if (imageAsset.getVisibility() == ImageVisibility.PUBLIC) {
+        if (image.getVisibility() == ImageVisibility.PUBLIC) {
             return resourceUrl;
         }
         try {
