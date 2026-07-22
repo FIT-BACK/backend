@@ -73,8 +73,14 @@ jobs:
             --env DB_USER=sa \
             --env DB_PASSWORD=validation \
             --env JWT_SECRET_KEY=fitback-cd-validation-secret-key-32bytes \
+            --env AWS_REGION=ap-northeast-2 \
+            --env IMAGE_BUCKET=fitback-cd-validation-images \
+            --env IMAGE_CDN_BASE_URL=https://images.example.invalid \
+            --env CLOUDFRONT_KEY_PAIR_ID=TESTKEY \
+            --env CLOUDFRONT_PRIVATE_KEY_BASE64=dGVzdC1wcml2YXRlLWtleQ== \
             --env SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.h2.Driver \
             --env SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop \
+            --env SPRING_FLYWAY_ENABLED=false \
             "$LOCAL_IMAGE"
 
       - name: Verify image readiness and metadata

@@ -91,6 +91,25 @@ jobs:
             abort 'Backend CD must use the tested ECR image publication script.'
           end
 
+          validation_step = publish_steps.find do |step|
+            step['name'] == 'Start image validation container'
+          end
+          validation_script = validation_step&.fetch('run', '').to_s
+          required_validation_env = %w[
+            AWS_REGION
+            IMAGE_BUCKET
+            IMAGE_CDN_BASE_URL
+            CLOUDFRONT_KEY_PAIR_ID
+            CLOUDFRONT_PRIVATE_KEY_BASE64
+            SPRING_FLYWAY_ENABLED
+          ]
+          missing_validation_env = required_validation_env.reject do |name|
+            validation_script.include?("--env #{name}=")
+          end
+          unless missing_validation_env.empty?
+            abort "Backend CD validation container is missing: #{missing_validation_env.join(', ')}"
+          end
+
           deploy_job = workflow.dig('jobs', 'deploy-production')
           abort 'Backend CD deploy-production job is missing.' unless deploy_job.is_a?(Hash)
 
@@ -140,6 +159,9 @@ jobs:
 
       - name: Test remote deployment script
         run: bash scripts/deploy/test_remote_deploy.sh
+
+      - name: Verify MySQL migrations
+        run: bash scripts/ci/test_mysql_migrations.sh
 
       - name: Build backend
         run: ./gradlew clean build
