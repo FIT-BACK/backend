@@ -143,6 +143,116 @@ class MemberControllerIntegrationTest {
                 .andExpect(jsonPath("$.code").value("COMMON401_1"));
     }
 
+    //토큰 없이 닉네임 사용 가능 여부 확인 시 401
+    @Test
+    void checkNicknameAvailabilityWithoutTokenTest() throws Exception {
+        mockMvc.perform(get("/api/v1/members/me/nickname-availability")
+                        .queryParam("nickname", "newNick"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("COMMON401_1"));
+    }
+
+    // ---------- nickname availability ----------
+
+    //닉네임 사용 가능 여부 확인 - 사용 중인 회원이 없으면 true
+    @Test
+    void checkNicknameAvailabilityAvailableTest() throws Exception {
+        String token = signUpAndGetAccessToken("nickcheck@fitback.com", "password123");
+
+        mockMvc.perform(get("/api/v1/members/me/nickname-availability")
+                        .header("Authorization", bearer(token))
+                        .queryParam("nickname", "newNick"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("COMMON200_1"))
+                .andExpect(jsonPath("$.data.nickname").value("newNick"))
+                .andExpect(jsonPath("$.data.available").value(true));
+    }
+
+    //닉네임 사용 가능 여부 확인 - 다른 회원이 사용 중이면 false
+    @Test
+    void checkNicknameAvailabilityDuplicateTest() throws Exception {
+        String tokenA = signUpAndGetAccessToken("nickdupA@fitback.com", "password123");
+        mockMvc.perform(patch("/api/v1/members/me")
+                        .header("Authorization", bearer(tokenA))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("nickname", "takenNick"))))
+                .andExpect(status().isOk());
+
+        String tokenB = signUpAndGetAccessToken("nickdupB@fitback.com", "password123");
+
+        mockMvc.perform(get("/api/v1/members/me/nickname-availability")
+                        .header("Authorization", bearer(tokenB))
+                        .queryParam("nickname", "takenNick"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("takenNick"))
+                .andExpect(jsonPath("$.data.available").value(false));
+    }
+
+    //닉네임 사용 가능 여부 확인 - 현재 내 닉네임은 true
+    @Test
+    void checkNicknameAvailabilityOwnNicknameTest() throws Exception {
+        String token = signUpAndGetAccessToken("nickown@fitback.com", "password123");
+        mockMvc.perform(patch("/api/v1/members/me")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("nickname", "ownNick"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/members/me/nickname-availability")
+                        .header("Authorization", bearer(token))
+                        .queryParam("nickname", "ownNick"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("ownNick"))
+                .andExpect(jsonPath("$.data.available").value(true));
+    }
+
+    //닉네임 사용 가능 여부 확인 - nickname 누락 시 400
+    @Test
+    void checkNicknameAvailabilityMissingNicknameTest() throws Exception {
+        String token = signUpAndGetAccessToken("nickmissing@fitback.com", "password123");
+
+        mockMvc.perform(get("/api/v1/members/me/nickname-availability")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+    }
+
+    //닉네임 사용 가능 여부 확인 - 공백 닉네임이면 400
+    @Test
+    void checkNicknameAvailabilityBlankNicknameTest() throws Exception {
+        String token = signUpAndGetAccessToken("nickblank@fitback.com", "password123");
+
+        mockMvc.perform(get("/api/v1/members/me/nickname-availability")
+                        .header("Authorization", bearer(token))
+                        .queryParam("nickname", "  "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+    }
+
+    //닉네임 사용 가능 여부 확인 - 1자 닉네임이면 400
+    @Test
+    void checkNicknameAvailabilityTooShortTest() throws Exception {
+        String token = signUpAndGetAccessToken("nickshort@fitback.com", "password123");
+
+        mockMvc.perform(get("/api/v1/members/me/nickname-availability")
+                        .header("Authorization", bearer(token))
+                        .queryParam("nickname", "a"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+    }
+
+    //닉네임 사용 가능 여부 확인 - 17자 닉네임이면 400
+    @Test
+    void checkNicknameAvailabilityTooLongTest() throws Exception {
+        String token = signUpAndGetAccessToken("nicklong@fitback.com", "password123");
+
+        mockMvc.perform(get("/api/v1/members/me/nickname-availability")
+                        .header("Authorization", bearer(token))
+                        .queryParam("nickname", "n".repeat(17)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+    }
+
     // ---------- myPage ----------
 
     //마이페이지 성공 - 명세 필드 전부 반환, 신규 회원은 count 0·태그 빈 배열

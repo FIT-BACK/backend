@@ -7,11 +7,15 @@ import com.fitback.backend.global.response.ApiResponse;
 import com.fitback.backend.global.security.entity.AuthMember;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+@Validated
 @RequiredArgsConstructor
 @RequestMapping("/api")
 public class MemberController {
@@ -25,6 +29,19 @@ public class MemberController {
             @Valid @RequestBody MemberRequest.UpdateMemberRequest updateMemberDto)
     {
         return ApiResponse.onSuccess(memberService.updateMember(authMember, updateMemberDto));
+    }
+
+    @Operation(summary = "닉네임 사용 가능 여부 확인", description = "(인증필요) 온보딩 또는 회원정보 수정 화면에서 닉네임 사용 가능 여부를 확인")
+    @GetMapping("/v1/members/me/nickname-availability")
+    public ApiResponse<MemberResponse.NicknameAvailabilityResponse> checkNicknameAvailability(
+            @AuthenticationPrincipal AuthMember authMember,
+            @RequestParam(required = false)
+            @NotBlank(message = "닉네임은 필수 입력값입니다.")
+            @Size(min = 2, max = 16, message = "닉네임은 2~16자여야 합니다.")
+            String nickname
+    )
+    {
+        return ApiResponse.onSuccess(memberService.checkNicknameAvailability(authMember, nickname));
     }
 
     @Operation(summary = "비밀번호 변경", description = "(인증필요) 현재 로그인한 이메일 회원의 비밀번호를 변경")

@@ -583,6 +583,70 @@ class MemberServiceTest {
                                 .isEqualTo(ErrorCode.NOT_FOUND));
     }
 
+    // ---------- checkNicknameAvailability ----------
+
+    //닉네임 사용 가능 여부 확인 - 사용 중인 회원이 없으면 사용 가능
+    @Test
+    void checkNicknameAvailabilityAvailableTest(){
+        Member member = createTestMember(1L, "test@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
+        AuthMember authMember = new AuthMember(member);
+
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(memberRepository.existsByNickname("newNick")).thenReturn(false);
+
+        MemberResponse.NicknameAvailabilityResponse response =
+                memberService.checkNicknameAvailability(authMember, "newNick");
+
+        assertThat(response.nickname()).isEqualTo("newNick");
+        assertThat(response.available()).isTrue();
+    }
+
+    //닉네임 사용 가능 여부 확인 - 다른 회원이 사용 중이면 사용 불가
+    @Test
+    void checkNicknameAvailabilityDuplicateTest(){
+        Member member = createTestMember(1L, "test@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
+        AuthMember authMember = new AuthMember(member);
+
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(memberRepository.existsByNickname("takenNick")).thenReturn(true);
+
+        MemberResponse.NicknameAvailabilityResponse response =
+                memberService.checkNicknameAvailability(authMember, "takenNick");
+
+        assertThat(response.nickname()).isEqualTo("takenNick");
+        assertThat(response.available()).isFalse();
+    }
+
+    //닉네임 사용 가능 여부 확인 - 현재 내 닉네임은 중복 검사 없이 사용 가능
+    @Test
+    void checkNicknameAvailabilityOwnNicknameTest(){
+        Member member = createTestMember(1L, "test@fitback.com", "sameNick", "encodedPw", LoginProvider.EMAIL);
+        AuthMember authMember = new AuthMember(member);
+
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+
+        MemberResponse.NicknameAvailabilityResponse response =
+                memberService.checkNicknameAvailability(authMember, "sameNick");
+
+        assertThat(response.available()).isTrue();
+        verify(memberRepository, never()).existsByNickname(anyString());
+    }
+
+    //닉네임 사용 가능 여부 확인 - 탈퇴 회원 예약 닉네임은 사용 불가
+    @Test
+    void checkNicknameAvailabilityReservedNicknameTest(){
+        Member member = createTestMember(1L, "test@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
+        AuthMember authMember = new AuthMember(member);
+
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+
+        MemberResponse.NicknameAvailabilityResponse response =
+                memberService.checkNicknameAvailability(authMember, WithdrawnMember.NICKNAME);
+
+        assertThat(response.available()).isFalse();
+        verify(memberRepository, never()).existsByNickname(anyString());
+    }
+
     // ---------- deleteAccount ----------
 
     //회원 탈퇴 - 신규 이메일 HMAC 차단 기록 생성, blockedUntil은 약 30일 뒤

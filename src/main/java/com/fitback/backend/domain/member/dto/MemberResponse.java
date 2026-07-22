@@ -197,4 +197,21 @@ public class MemberResponse {
                 .tags(memberTagList.stream().map(MemberResponse::toTagInfo).toList())
                 .build();
     }
+
+    //닉네임 사용 가능 여부 응답 dto
+    @Builder
+    public record NicknameAvailabilityResponse(
+            String nickname,
+            boolean available
+    ) {}
+
+    public static NicknameAvailabilityResponse toNicknameAvailabilityResponse(
+            String nickname,
+            boolean available
+    ) {
+        return NicknameAvailabilityResponse.builder()
+                .nickname(nickname)
+                .available(available)
+                .build();
+    }
 }

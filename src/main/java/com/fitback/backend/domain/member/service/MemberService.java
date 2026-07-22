@@ -179,6 +179,19 @@ public class MemberService {
         return MemberResponse.toUpdateTagsResponse(memberTagList);
     }
 
+    //닉네임 사용 가능 여부 확인
+    @Transactional(readOnly = true)
+    public MemberResponse.NicknameAvailabilityResponse checkNicknameAvailability(
+            AuthMember authMember,
+            String nickname
+    ) {
+        Member member = memberRepository.findById(authMember.getMember().getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+
+        boolean available = isNicknameAvailableFor(member, nickname);
+        return MemberResponse.toNicknameAvailabilityResponse(nickname, available);
+    }
+
 
     //닉네임의 중복을 확인한 후 닉네임을 설정하는 함수
     private void applyNickname(Member member, String newNickname){
@@ -199,6 +212,17 @@ public class MemberService {
         }
 
         member.changeNickname(newNickname);
+    }
+
+    private boolean isNicknameAvailableFor(Member member, String nickname) {
+        if (WithdrawnMember.NICKNAME.equals(nickname)) {
+            return false;
+        }
+        //현재 닉네임은 회원정보 수정 화면에서 그대로 유지할 수 있도록 사용 가능 처리
+        if (nickname.equals(member.getNickname())) {
+            return true;
+        }
+        return !memberRepository.existsByNickname(nickname);
     }
 
     //회원의 태그 설정 함수
