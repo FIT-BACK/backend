@@ -1,14 +1,20 @@
 package com.fitback.backend.domain.lookbook.service;
 
+import static com.fitback.backend.domain.lookbook.LookbookImageFixtures.readyImage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.entity.ImagePurpose;
+import com.fitback.backend.domain.image.entity.ImageStatus;
+import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
 import com.fitback.backend.domain.lookbook.dto.LookbookRequest;
 import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
@@ -16,6 +22,7 @@ import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
 import com.fitback.backend.domain.lookbook.entity.LookbookReport;
 import com.fitback.backend.domain.lookbook.entity.LookbookReportReason;
 import com.fitback.backend.domain.lookbook.entity.LookbookTag;
+import com.fitback.backend.domain.lookbook.repository.LookbookImageRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookReportRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
@@ -25,9 +32,10 @@ import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
+import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
-import com.fitback.backend.global.mock.TagRepository;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -36,6 +44,8 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -49,6 +59,9 @@ class LookbookServiceTest {
 
     @Mock
     private LookbookRepository lookbookRepository;
+
+    @Mock
+    private LookbookImageRepository lookbookImageRepository;
 
     @Mock
     private LookbookTagRepository lookbookTagRepository;
@@ -68,12 +81,19 @@ class LookbookServiceTest {
     @Mock
     private LookbookReportRepository lookbookReportRepository;
 
+    @Mock
+    private ImageAccessUrlProvider imageAccessUrlProvider;
+
     @InjectMocks
     private LookbookService lookbookService;
 
     private Member member;
     private Tag minimalTag;
     private Tag streetTag;
+    private Image originalImage;
+    private Image matchedImage;
+    private Image updatedOriginalImage;
+    private Image updatedMatchedImage;
 
     @BeforeEach
     void setUp() {
@@ -84,6 +104,32 @@ class LookbookServiceTest {
         ReflectionTestUtils.setField(minimalTag, "id", 10L);
         streetTag = Tag.create("스트릿", TagType.DETAIL);
         ReflectionTestUtils.setField(streetTag, "id", 20L);
+
+        originalImage = readyImage("original", member, ImagePurpose.LOOKBOOK_ORIGINAL);
+        matchedImage = readyImage("matched", member, ImagePurpose.LOOKBOOK_MATCHED);
+        updatedOriginalImage = readyImage(
+                "updated-original",
+                member,
+                ImagePurpose.LOOKBOOK_ORIGINAL
+        );
+        updatedMatchedImage = readyImage(
+                "updated-matched",
+                member,
+                ImagePurpose.LOOKBOOK_MATCHED
+        );
+        lenient().when(lookbookImageRepository.findAllOwnedImages(
+                List.of("original", "matched"),
+                1L
+        )).thenReturn(List.of(originalImage, matchedImage));
+        lenient().when(lookbookImageRepository.findAllOwnedImages(
+                List.of("updated-original", "updated-matched"),
+                1L
+        )).thenReturn(List.of(updatedOriginalImage, updatedMatchedImage));
+        lenient().when(imageAccessUrlProvider.createReadUrl(any(Image.class)))
+                .thenAnswer(invocation -> {
+                    Image image = invocation.getArgument(0);
+                    return "https://s3.example.com/" + image.getId() + ".jpg";
+                });
     }
 
     @Test
@@ -101,6 +147,12 @@ class LookbookServiceTest {
 
         assertThat(response.lookbookId()).isEqualTo(100L);
         verify(lookbookTagRepository).saveAll(anyList());
+        verify(lookbookImageRepository).activateReadyImages(
+                eq(List.of("original", "matched")),
+                eq(ImageStatus.READY),
+                eq(ImageStatus.ACTIVE),
+                any(Instant.class)
+        );
     }
 
     @Test
@@ -132,6 +184,85 @@ class LookbookServiceTest {
     }
 
     @Test
+    void createLookbookRejectsImageNotOwnedByMember() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L));
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("original", "matched"),
+                1L
+        )).thenReturn(List.of(originalImage));
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.IMAGE_NOT_FOUND)
+                );
+        verify(lookbookRepository, never()).save(any());
+    }
+
+    @Test
+    void createLookbookRejectsImageWithWrongPurpose() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L));
+        Image invalidMatchedImage = readyImage(
+                "matched",
+                member,
+                ImagePurpose.LOOKBOOK_ORIGINAL
+        );
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("original", "matched"),
+                1L
+        )).thenReturn(List.of(originalImage, invalidMatchedImage));
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.IMAGE_INVALID_STATE)
+                );
+        verify(lookbookRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = ImageStatus.class,
+            names = {"PENDING", "DELETING", "DELETE_FAILED", "DELETED", "REJECTED"}
+    )
+    void createLookbookRejectsUnavailableImageStatus(ImageStatus unavailableStatus) {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L));
+        ReflectionTestUtils.setField(matchedImage, "status", unavailableStatus);
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.IMAGE_INVALID_STATE)
+                );
+        verify(lookbookRepository, never()).save(any());
+    }
+
+    @Test
+    void createLookbookAllowsActiveImages() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L));
+        ReflectionTestUtils.setField(originalImage, "status", ImageStatus.ACTIVE);
+        ReflectionTestUtils.setField(matchedImage, "status", ImageStatus.ACTIVE);
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookRepository.save(any(Lookbook.class))).thenAnswer(invocation -> {
+            Lookbook lookbook = invocation.getArgument(0);
+            ReflectionTestUtils.setField(lookbook, "id", 100L);
+            return lookbook;
+        });
+
+        LookbookResponse.LookbookCreate response = lookbookService.createLookbook(member, request);
+
+        assertThat(response.lookbookId()).isEqualTo(100L);
+        verify(lookbookImageRepository).activateReadyImages(
+                eq(List.of("original", "matched")),
+                eq(ImageStatus.READY),
+                eq(ImageStatus.ACTIVE),
+                any(Instant.class)
+        );
+    }
+
+    @Test
     void updateLookbookReplacesContentAndTags() {
         Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 22, 12, 0));
         LookbookRequest.LookbookUpdate request = createUpdateRequest(List.of(20L, 10L));
@@ -147,14 +278,18 @@ class LookbookServiceTest {
         );
 
         assertThat(response.lookbookId()).isEqualTo(100L);
-        assertThat(lookbook.getOriginalImageUrl())
-                .isEqualTo("https://s3.example.com/updated-original.jpg");
-        assertThat(lookbook.getMatchedImageUrl())
-                .isEqualTo("https://s3.example.com/updated-matched.jpg");
+        assertThat(lookbook.getOriginalImage()).isEqualTo(updatedOriginalImage);
+        assertThat(lookbook.getMatchedImage()).isEqualTo(updatedMatchedImage);
         assertThat(lookbook.getPurchaseUrl()).isNull();
         assertThat(lookbook.getComment()).isNull();
         verify(lookbookTagRepository).deleteAllByLookbookId(100L);
         verify(lookbookTagRepository).saveAll(anyList());
+        verify(lookbookImageRepository).activateReadyImages(
+                eq(List.of("updated-original", "updated-matched")),
+                eq(ImageStatus.READY),
+                eq(ImageStatus.ACTIVE),
+                any(Instant.class)
+        );
     }
 
     @Test
@@ -595,8 +730,8 @@ class LookbookServiceTest {
 
     private LookbookRequest.LookbookCreate createRequest(List<Long> tagIds) {
         return new LookbookRequest.LookbookCreate(
-                "https://s3.example.com/original.jpg",
-                "https://s3.example.com/matched.jpg",
+                "original",
+                "matched",
                 "https://shop.example.com/item",
                 tagIds,
                 "합리적인 가격으로 완성한 룩입니다."
@@ -605,8 +740,8 @@ class LookbookServiceTest {
 
     private LookbookRequest.LookbookUpdate createUpdateRequest(List<Long> tagIds) {
         return new LookbookRequest.LookbookUpdate(
-                "https://s3.example.com/updated-original.jpg",
-                "https://s3.example.com/updated-matched.jpg",
+                "updated-original",
+                "updated-matched",
                 "   ",
                 tagIds,
                 null
@@ -617,8 +752,8 @@ class LookbookServiceTest {
         member.changeProfileImageUrl("https://s3.example.com/profile.jpg");
         Lookbook lookbook = Lookbook.create(
                 member,
-                "https://s3.example.com/original.jpg",
-                "https://s3.example.com/matched.jpg",
+                originalImage,
+                matchedImage,
                 "https://shop.example.com/item",
                 "합리적인 가격으로 완성한 룩입니다."
         );
@@ -632,8 +767,16 @@ class LookbookServiceTest {
         member.changeProfileImageUrl("https://s3.example.com/profile.jpg");
         Lookbook lookbook = Lookbook.create(
                 member,
-                "https://s3.example.com/original-" + lookbookId + ".jpg",
-                "https://s3.example.com/matched-" + lookbookId + ".jpg",
+                readyImage(
+                        "original-" + lookbookId,
+                        member,
+                        ImagePurpose.LOOKBOOK_ORIGINAL
+                ),
+                readyImage(
+                        "matched-" + lookbookId,
+                        member,
+                        ImagePurpose.LOOKBOOK_MATCHED
+                ),
                 null,
                 null
         );

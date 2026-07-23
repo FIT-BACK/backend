@@ -1,7 +1,11 @@
 package com.fitback.backend.domain.lookbook.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.fitback.backend.domain.lookbook.LookbookImageFixtures.readyImage;
 
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.entity.ImagePurpose;
+import com.fitback.backend.domain.image.entity.ImageStatus;
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
 import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
 import com.fitback.backend.domain.lookbook.entity.LookbookTag;
@@ -10,6 +14,7 @@ import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import jakarta.persistence.EntityManager;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +36,65 @@ class LookbookRepositoryTest {
 
     @Autowired
     private LookbookTagRepository lookbookTagRepository;
+
+    @Autowired
+    private LookbookImageRepository lookbookImageRepository;
+
+    @Test
+    void findsOwnedImagesAndActivatesOnlyReadyImages() {
+        Member member = Member.create(
+                "image-owner@fitback.com",
+                "image-owner",
+                "password",
+                LoginProvider.EMAIL
+        );
+        entityManager.persist(member);
+        Image originalImage = readyImage(
+                "repository-original",
+                member,
+                ImagePurpose.LOOKBOOK_ORIGINAL
+        );
+        Image matchedImage = readyImage(
+                "repository-matched",
+                member,
+                ImagePurpose.LOOKBOOK_MATCHED
+        );
+        entityManager.persist(originalImage);
+        entityManager.persist(matchedImage);
+        entityManager.flush();
+
+        assertThat(lookbookImageRepository.findAllOwnedImages(
+                List.of(originalImage.getId(), matchedImage.getId()),
+                member.getId()
+        )).extracting(Image::getId)
+                .containsExactlyInAnyOrder(originalImage.getId(), matchedImage.getId());
+
+        Instant activatedAt = Instant.parse("2026-07-23T10:00:00Z");
+        int activatedCount = lookbookImageRepository.activateReadyImages(
+                List.of(originalImage.getId(), matchedImage.getId()),
+                ImageStatus.READY,
+                ImageStatus.ACTIVE,
+                activatedAt
+        );
+        entityManager.clear();
+
+        assertThat(activatedCount).isEqualTo(2);
+        Image activatedOriginal = entityManager.find(Image.class, originalImage.getId());
+        assertThat(activatedOriginal.getStatus()).isEqualTo(ImageStatus.ACTIVE);
+        assertThat(activatedOriginal.getActivatedAt()).isEqualTo(activatedAt);
+
+        int reactivatedCount = lookbookImageRepository.activateReadyImages(
+                List.of(originalImage.getId(), matchedImage.getId()),
+                ImageStatus.READY,
+                ImageStatus.ACTIVE,
+                activatedAt.plusSeconds(60)
+        );
+        entityManager.clear();
+
+        assertThat(reactivatedCount).isZero();
+        assertThat(entityManager.find(Image.class, originalImage.getId()).getActivatedAt())
+                .isEqualTo(activatedAt);
+    }
 
     @Test
     void activeLookbookQueriesExcludeSoftDeletedLookbooks() {
@@ -216,10 +280,22 @@ class LookbookRepositoryTest {
     }
 
     private Lookbook createLookbook(Member member, String imageName) {
+        Image originalImage = readyImage(
+                imageName + "-original",
+                member,
+                ImagePurpose.LOOKBOOK_ORIGINAL
+        );
+        Image matchedImage = readyImage(
+                imageName + "-matched",
+                member,
+                ImagePurpose.LOOKBOOK_MATCHED
+        );
+        entityManager.persist(originalImage);
+        entityManager.persist(matchedImage);
         return Lookbook.create(
                 member,
-                "https://s3.example.com/" + imageName + "-original.jpg",
-                "https://s3.example.com/" + imageName + "-matched.jpg",
+                originalImage,
+                matchedImage,
                 null,
                 null
         );

@@ -96,13 +96,15 @@ public final class LookbookResponse {
 
         public static LookbookItem toLookbookItem(
                 Lookbook lookbook,
+                String originalImageUrl,
+                String matchedImageUrl,
                 List<String> tags,
                 boolean isLiked
         ) {
             return LookbookItem.builder()
                     .lookbookId(lookbook.getId())
-                    .originalImageUrl(lookbook.getOriginalImageUrl())
-                    .matchedImageUrl(lookbook.getMatchedImageUrl())
+                    .originalImageUrl(originalImageUrl)
+                    .matchedImageUrl(matchedImageUrl)
                     .authorNickname(lookbook.getMember().getNickname())
                     .authorProfileImageUrl(lookbook.getMember().getProfileImageUrl())
                     .tags(List.copyOf(tags))
@@ -130,13 +132,15 @@ public final class LookbookResponse {
 
         public static LookbookDetail toLookbookDetail(
                 Lookbook lookbook,
+                String originalImageUrl,
+                String matchedImageUrl,
                 List<TagItem> tags,
                 boolean isLiked,
                 boolean isOwner
         ) {
             return LookbookDetail.builder()
-                    .originalImageUrl(lookbook.getOriginalImageUrl())
-                    .matchedImageUrl(lookbook.getMatchedImageUrl())
+                    .originalImageUrl(originalImageUrl)
+                    .matchedImageUrl(matchedImageUrl)
                     .authorNickname(lookbook.getMember().getNickname())
                     .authorProfileImageUrl(lookbook.getMember().getProfileImageUrl())
                     .createdAt(lookbook.getCreatedAt())

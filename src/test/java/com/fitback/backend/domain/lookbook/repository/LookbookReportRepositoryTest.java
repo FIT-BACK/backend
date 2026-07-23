@@ -2,7 +2,10 @@ package com.fitback.backend.domain.lookbook.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static com.fitback.backend.domain.lookbook.LookbookImageFixtures.readyImage;
 
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.entity.ImagePurpose;
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
 import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
 import com.fitback.backend.domain.lookbook.entity.LookbookReport;
@@ -37,9 +40,9 @@ class LookbookReportRepositoryTest {
     void savesLookbookReportWithRequiredFields() {
         Member owner = createMember("report-owner@fitback.com", "report-owner");
         Member reporter = createMember("reporter@fitback.com", "reporter");
-        Lookbook lookbook = createLookbook(owner);
         entityManager.persist(owner);
         entityManager.persist(reporter);
+        Lookbook lookbook = createLookbook(owner);
         entityManager.persist(lookbook);
 
         LookbookReport report = lookbookReportRepository.saveAndFlush(LookbookReport.create(
@@ -62,9 +65,9 @@ class LookbookReportRepositoryTest {
     void rejectsDuplicateReportBySameMemberAndLookbook() {
         Member owner = createMember("duplicate-owner@fitback.com", "duplicate-owner");
         Member reporter = createMember("duplicate-reporter@fitback.com", "duplicate-reporter");
-        Lookbook lookbook = createLookbook(owner);
         entityManager.persist(owner);
         entityManager.persist(reporter);
+        Lookbook lookbook = createLookbook(owner);
         entityManager.persist(lookbook);
         lookbookReportRepository.saveAndFlush(LookbookReport.create(
                 lookbook,
@@ -82,8 +85,8 @@ class LookbookReportRepositoryTest {
     @Test
     void thirdReportAutoHidesLookbookFromFeedButKeepsDetailAccessible() {
         Member owner = createMember("hidden-owner@fitback.com", "hidden-owner");
-        Lookbook lookbook = createLookbook(owner);
         entityManager.persist(owner);
+        Lookbook lookbook = createLookbook(owner);
         entityManager.persist(lookbook);
         entityManager.flush();
 
@@ -128,10 +131,22 @@ class LookbookReportRepositoryTest {
     }
 
     private Lookbook createLookbook(Member owner) {
+        Image originalImage = readyImage(
+                "report-original-" + owner.getNickname(),
+                owner,
+                ImagePurpose.LOOKBOOK_ORIGINAL
+        );
+        Image matchedImage = readyImage(
+                "report-matched-" + owner.getNickname(),
+                owner,
+                ImagePurpose.LOOKBOOK_MATCHED
+        );
+        entityManager.persist(originalImage);
+        entityManager.persist(matchedImage);
         return Lookbook.create(
                 owner,
-                "https://s3.example.com/report-original.jpg",
-                "https://s3.example.com/report-matched.jpg",
+                originalImage,
+                matchedImage,
                 null,
                 null
         );

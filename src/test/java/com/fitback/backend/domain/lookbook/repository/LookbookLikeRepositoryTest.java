@@ -1,7 +1,10 @@
 package com.fitback.backend.domain.lookbook.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.fitback.backend.domain.lookbook.LookbookImageFixtures.readyImage;
 
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.entity.ImagePurpose;
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
 import com.fitback.backend.domain.lookbook.entity.LookbookLike;
 import com.fitback.backend.domain.member.entity.LoginProvider;
@@ -33,11 +36,23 @@ class LookbookLikeRepositoryTest {
                 LoginProvider.EMAIL
         );
         entityManager.persist(member);
+        Image originalImage = readyImage(
+                "like-original",
+                member,
+                ImagePurpose.LOOKBOOK_ORIGINAL
+        );
+        Image matchedImage = readyImage(
+                "like-matched",
+                member,
+                ImagePurpose.LOOKBOOK_MATCHED
+        );
+        entityManager.persist(originalImage);
+        entityManager.persist(matchedImage);
 
         Lookbook lookbook = Lookbook.create(
                 member,
-                "https://s3.example.com/original.jpg",
-                "https://s3.example.com/matched.jpg",
+                originalImage,
+                matchedImage,
                 null,
                 null
         );

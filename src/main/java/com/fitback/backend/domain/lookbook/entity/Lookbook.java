@@ -1,7 +1,8 @@
 package com.fitback.backend.domain.lookbook.entity;
 
-import com.fitback.backend.global.entity.BaseTimeEntity;
+import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -33,11 +34,13 @@ public class Lookbook extends BaseTimeEntity {
     @JoinColumn(name = "member_id", nullable = false)
     private Member member;
 
-    @Column(name = "original_image_url", nullable = false, length = 2048)
-    private String originalImageUrl;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "original_image_id", nullable = false)
+    private Image originalImage;
 
-    @Column(name = "matched_image_url", nullable = false, length = 2048)
-    private String matchedImageUrl;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "matched_image_id", nullable = false)
+    private Image matchedImage;
 
     @Column(name = "purchase_url", length = 2048)
     private String purchaseUrl;
@@ -63,36 +66,36 @@ public class Lookbook extends BaseTimeEntity {
 
     private Lookbook(
             Member member,
-            String originalImageUrl,
-            String matchedImageUrl,
+            Image originalImage,
+            Image matchedImage,
             String purchaseUrl,
             String comment
     ) {
         this.member = member;
-        this.originalImageUrl = originalImageUrl;
-        this.matchedImageUrl = matchedImageUrl;
+        this.originalImage = originalImage;
+        this.matchedImage = matchedImage;
         this.purchaseUrl = purchaseUrl;
         this.comment = comment;
     }
 
     public static Lookbook create(
             Member member,
-            String originalImageUrl,
-            String matchedImageUrl,
+            Image originalImage,
+            Image matchedImage,
             String purchaseUrl,
             String comment
     ) {
-        return new Lookbook(member, originalImageUrl, matchedImageUrl, purchaseUrl, comment);
+        return new Lookbook(member, originalImage, matchedImage, purchaseUrl, comment);
     }
 
     public void update(
-            String originalImageUrl,
-            String matchedImageUrl,
+            Image originalImage,
+            Image matchedImage,
             String purchaseUrl,
             String comment
     ) {
-        this.originalImageUrl = originalImageUrl;
-        this.matchedImageUrl = matchedImageUrl;
+        this.originalImage = originalImage;
+        this.matchedImage = matchedImage;
         this.purchaseUrl = purchaseUrl;
         this.comment = comment;
     }

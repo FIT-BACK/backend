@@ -1,11 +1,16 @@
 package com.fitback.backend.domain.lookbook.service;
 
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.entity.ImagePurpose;
+import com.fitback.backend.domain.image.entity.ImageStatus;
+import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
 import com.fitback.backend.domain.lookbook.dto.LookbookRequest;
 import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
 import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
 import com.fitback.backend.domain.lookbook.entity.LookbookReport;
 import com.fitback.backend.domain.lookbook.entity.LookbookTag;
+import com.fitback.backend.domain.lookbook.repository.LookbookImageRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookReportRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
@@ -13,9 +18,10 @@ import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
 import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
-import com.fitback.backend.global.mock.TagRepository;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -38,12 +44,14 @@ public class LookbookService {
     private static final int DEFAULT_LOOKBOOK_PAGE_SIZE = 20;
 
     private final LookbookRepository lookbookRepository;
+    private final LookbookImageRepository lookbookImageRepository;
     private final LookbookTagRepository lookbookTagRepository;
     private final LookbookLikeRepository lookbookLikeRepository;
     private final TagRepository tagRepository;
     private final LookbookLikeCommandService lookbookLikeCommandService;
     private final LookbookReportCommandService lookbookReportCommandService;
     private final LookbookReportRepository lookbookReportRepository;
+    private final ImageAccessUrlProvider imageAccessUrlProvider;
 
     // 룩북 업로드
     @Transactional
@@ -59,12 +67,17 @@ public class LookbookService {
 
         // 룩북 객체 생성 전 태그 유효성 검사
         validateAllTagsExist(tagIds, tags);
+        LookbookImages images = findAvailableOwnedImages(
+                member,
+                request.originalImageId(),
+                request.matchedImageId()
+        );
 
         // 룩북 객체 생성 후 저장
         Lookbook lookbook = Lookbook.create(
                 member,
-                request.originalImageUrl(),
-                request.matchedImageUrl(),
+                images.originalImage(),
+                images.matchedImage(),
                 request.purchaseUrl(),
                 request.comment()
         );
@@ -77,6 +90,7 @@ public class LookbookService {
                 .map(tagId -> LookbookTag.create(savedLookbook, tagsById.get(tagId)))
                 .toList();
         lookbookTagRepository.saveAll(lookbookTags);
+        activateReadyImages(images);
 
         return LookbookResponse.LookbookCreate.toLookbookCreate(savedLookbook);
     }
@@ -106,10 +120,15 @@ public class LookbookService {
         validateNoDuplicateTagIds(tagIds);
         List<Tag> tags = tagRepository.findAllById(tagIds);
         validateAllTagsExist(tagIds, tags);
+        LookbookImages images = findAvailableOwnedImages(
+                member,
+                request.originalImageId(),
+                request.matchedImageId()
+        );
 
         lookbook.update(
-                request.originalImageUrl(),
-                request.matchedImageUrl(),
+                images.originalImage(),
+                images.matchedImage(),
                 request.purchaseUrl(),
                 request.comment()
         );
@@ -122,6 +141,7 @@ public class LookbookService {
                 .map(tagId -> LookbookTag.create(lookbook, tagsById.get(tagId)))
                 .toList();
         lookbookTagRepository.saveAll(lookbookTags);
+        activateReadyImages(images);
 
         return LookbookResponse.LookbookUpdate.toLookbookUpdate(lookbook);
     }
@@ -200,6 +220,8 @@ public class LookbookService {
         List<LookbookResponse.LookbookItem> items = lookbooks.stream()
                 .map(lookbook -> LookbookResponse.LookbookItem.toLookbookItem(
                         lookbook,
+                        imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
+                        imageAccessUrlProvider.createReadUrl(lookbook.getMatchedImage()),
                         tagNamesByLookbookId.getOrDefault(lookbook.getId(), List.of()),
                         likedLookbookIds.contains(lookbook.getId())
                 ))
@@ -247,6 +269,8 @@ public class LookbookService {
 
         return LookbookResponse.LookbookDetail.toLookbookDetail(
                 lookbook,
+                imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
+                imageAccessUrlProvider.createReadUrl(lookbook.getMatchedImage()),
                 tags,
                 isLiked,
                 isOwner
@@ -427,5 +451,54 @@ public class LookbookService {
         if (new HashSet<>(tagIds).size() != tagIds.size()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "태그 ID는 중복될 수 없습니다.");
         }
+    }
+
+    private LookbookImages findAvailableOwnedImages(
+            Member member,
+            String originalImageId,
+            String matchedImageId
+    ) {
+        List<String> imageIds = List.of(originalImageId, matchedImageId);
+        Map<String, Image> imagesById = lookbookImageRepository
+                .findAllOwnedImages(imageIds, member.getId())
+                .stream()
+                .collect(Collectors.toMap(Image::getId, Function.identity()));
+
+        Image originalImage = findImage(imagesById, originalImageId);
+        Image matchedImage = findImage(imagesById, matchedImageId);
+        validateImage(originalImage, ImagePurpose.LOOKBOOK_ORIGINAL);
+        validateImage(matchedImage, ImagePurpose.LOOKBOOK_MATCHED);
+        return new LookbookImages(originalImage, matchedImage);
+    }
+
+    private Image findImage(Map<String, Image> imagesById, String imageId) {
+        Image image = imagesById.get(imageId);
+        if (image == null) {
+            throw new BusinessException(ErrorCode.IMAGE_NOT_FOUND);
+        }
+        return image;
+    }
+
+    private void validateImage(Image image, ImagePurpose expectedPurpose) {
+        boolean availableStatus = image.getStatus() == ImageStatus.READY
+                || image.getStatus() == ImageStatus.ACTIVE;
+        if (image.getPurpose() != expectedPurpose || !availableStatus) {
+            throw new BusinessException(ErrorCode.IMAGE_INVALID_STATE);
+        }
+    }
+
+    private void activateReadyImages(LookbookImages images) {
+        lookbookImageRepository.activateReadyImages(
+                List.of(images.originalImage().getId(), images.matchedImage().getId()),
+                ImageStatus.READY,
+                ImageStatus.ACTIVE,
+                Instant.now()
+        );
+    }
+
+    private record LookbookImages(
+            Image originalImage,
+            Image matchedImage
+    ) {
     }
 }

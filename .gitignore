@@ -2,6 +2,9 @@ HELP.md
 BACKEND_CONVENTION.md
 .gradle
 build/
+target/
+uploads/
+/checkpoint/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
@@ -54,3 +57,6 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Local planning documents ###
+/docs/RECOMMENDATION_PRODUCT_ROADMAP.md

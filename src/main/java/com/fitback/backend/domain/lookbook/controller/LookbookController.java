@@ -6,7 +6,7 @@ import com.fitback.backend.domain.lookbook.service.LookbookService;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
-import com.fitback.backend.global.mock.AuthMember;
+import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -31,7 +31,7 @@ public class LookbookController {
 
     @Operation(
             summary = "룩북 업로드",
-            description = "로그인한 회원이 S3에 선 업로드한 원본 룩 이미지와 가성비 매칭 이미지 URL, "
+            description = "로그인한 회원이 S3에 선 업로드한 원본 룩 이미지와 가성비 매칭 이미지 ID, "
                     + "1개 이상 5개 이하의 중복되지 않는 태그 ID, 선택 구매 링크 및 코멘트를 전달하여 룩북을 생성."
     )
     @PostMapping
@@ -52,7 +52,7 @@ public class LookbookController {
 
     @Operation(
             summary = "룩북 수정",
-            description = "룩북 작성자가 원본 이미지, 매칭 이미지, 태그, 구매 링크 및 코멘트를 전체 교체."
+            description = "룩북 작성자가 원본 이미지 ID, 매칭 이미지 ID, 태그, 구매 링크 및 코멘트를 전체 교체."
     )
     @PutMapping("/{lookbookId}")
     public ApiResponse<LookbookResponse.LookbookUpdate> updateLookbook(

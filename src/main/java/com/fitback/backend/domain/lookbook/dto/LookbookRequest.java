@@ -18,13 +18,11 @@ public final class LookbookRequest {
     // 룩북 업로드
     @Schema(name = "LookbookCreateRequest")
     public record LookbookCreate(
-            @NotBlank(message = "원본 룩 이미지 URL은 필수입니다.")
-            @Size(max = 2048, message = "원본 룩 이미지 URL은 2048자 이하여야 합니다.")
-            String originalImageUrl,
+            @NotBlank(message = "원본 룩 이미지 ID는 필수입니다.")
+            String originalImageId,
 
-            @NotBlank(message = "가성비 매칭 이미지 URL은 필수입니다.")
-            @Size(max = 2048, message = "가성비 매칭 이미지 URL은 2048자 이하여야 합니다.")
-            String matchedImageUrl,
+            @NotBlank(message = "가성비 매칭 이미지 ID는 필수입니다.")
+            String matchedImageId,
 
             @Size(max = 2048, message = "구매 URL은 2048자 이하여야 합니다.")
             @URL(
@@ -58,13 +56,11 @@ public final class LookbookRequest {
     // 룩북 수정
     @Schema(name = "LookbookUpdateRequest")
     public record LookbookUpdate(
-            @NotBlank(message = "원본 룩 이미지 URL은 필수입니다.")
-            @Size(max = 2048, message = "원본 룩 이미지 URL은 2048자 이하여야 합니다.")
-            String originalImageUrl,
+            @NotBlank(message = "원본 룩 이미지 ID는 필수입니다.")
+            String originalImageId,
 
-            @NotBlank(message = "가성비 매칭 이미지 URL은 필수입니다.")
-            @Size(max = 2048, message = "가성비 매칭 이미지 URL은 2048자 이하여야 합니다.")
-            String matchedImageUrl,
+            @NotBlank(message = "가성비 매칭 이미지 ID는 필수입니다.")
+            String matchedImageId,
 
             @Size(max = 2048, message = "구매 URL은 2048자 이하여야 합니다.")
             @URL(

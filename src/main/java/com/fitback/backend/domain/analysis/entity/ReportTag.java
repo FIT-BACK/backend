@@ -1,7 +1,7 @@
 package com.fitback.backend.domain.analysis.entity;
 
-import com.fitback.backend.global.entity.BaseCreateTimeEntity;
 import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.global.entity.BaseCreateTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -41,20 +41,28 @@ public class ReportTag extends BaseCreateTimeEntity {
     private ReportTagSource source;
 
     @Column(name = "is_confirmed", nullable = false)
-    private Boolean confirmed = false;
+    private Boolean confirmed;
 
-
-    private ReportTag(AnalysisReport report, Tag tag, ReportTagSource source) {
+    private ReportTag(AnalysisReport report, Tag tag, ReportTagSource source, boolean confirmed) {
         this.report = report;
         this.tag = tag;
         this.source = source;
+        this.confirmed = confirmed;
     }
 
-    public static ReportTag create(AnalysisReport report, Tag tag, ReportTagSource source) {
-        return new ReportTag(report, tag, source);
+    public static ReportTag suggestedByAi(AnalysisReport report, Tag tag) {
+        return new ReportTag(report, tag, ReportTagSource.AI, false);
+    }
+
+    public static ReportTag addedByMember(AnalysisReport report, Tag tag) {
+        return new ReportTag(report, tag, ReportTagSource.USER, true);
     }
 
     public void confirm() {
         this.confirmed = true;
+    }
+
+    public boolean isConfirmed() {
+        return Boolean.TRUE.equals(confirmed);
     }
 }

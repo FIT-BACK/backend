@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.lookbook.service;
 
+import static com.fitback.backend.domain.lookbook.LookbookImageFixtures.readyImage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -7,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fitback.backend.domain.image.entity.ImagePurpose;
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
 import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
 import com.fitback.backend.domain.lookbook.entity.LookbookReport;
@@ -56,8 +58,8 @@ class LookbookReportCommandServiceTest {
 
         lookbook = Lookbook.create(
                 owner,
-                "https://s3.example.com/original.jpg",
-                "https://s3.example.com/matched.jpg",
+                readyImage("report-command-original", owner, ImagePurpose.LOOKBOOK_ORIGINAL),
+                readyImage("report-command-matched", owner, ImagePurpose.LOOKBOOK_MATCHED),
                 null,
                 null
         );

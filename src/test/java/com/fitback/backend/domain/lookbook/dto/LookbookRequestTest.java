@@ -23,6 +23,24 @@ class LookbookRequestTest {
     }
 
     @Test
+    void lookbookCreateRequiresImageIds() {
+        LookbookRequest.LookbookCreate request = new LookbookRequest.LookbookCreate(
+                " ",
+                "",
+                null,
+                List.of(10L),
+                null
+        );
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .contains(
+                        "원본 룩 이미지 ID는 필수입니다.",
+                        "가성비 매칭 이미지 ID는 필수입니다."
+                );
+    }
+
+    @Test
     void lookbookCreateRejectsNullTagIds() {
         LookbookRequest.LookbookCreate request = createRequest(null, "한 줄 코멘트");
 
@@ -104,8 +122,8 @@ class LookbookRequestTest {
     @Test
     void lookbookUpdateNormalizesBlankPurchaseUrlAndAllowsNullComment() {
         LookbookRequest.LookbookUpdate request = new LookbookRequest.LookbookUpdate(
-                "https://s3.example.com/updated-original.jpg",
-                "https://s3.example.com/updated-matched.jpg",
+                "updated-original-image-id",
+                "updated-matched-image-id",
                 "   ",
                 List.of(10L),
                 null
@@ -118,8 +136,8 @@ class LookbookRequestTest {
     @Test
     void lookbookUpdateRejectsTagCountOutsideOneToFive() {
         LookbookRequest.LookbookUpdate request = new LookbookRequest.LookbookUpdate(
-                "https://s3.example.com/updated-original.jpg",
-                "https://s3.example.com/updated-matched.jpg",
+                "updated-original-image-id",
+                "updated-matched-image-id",
                 null,
                 List.of(),
                 null
@@ -153,8 +171,8 @@ class LookbookRequestTest {
             String comment
     ) {
         return new LookbookRequest.LookbookCreate(
-                "https://s3.example.com/original.jpg",
-                "https://s3.example.com/matched.jpg",
+                "original-image-id",
+                "matched-image-id",
                 purchaseUrl,
                 tagIds,
                 comment

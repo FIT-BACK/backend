@@ -13,8 +13,8 @@ import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
-import com.fitback.backend.global.mock.AuthMember;
 import com.fitback.backend.global.response.ApiResponse;
+import com.fitback.backend.global.security.entity.AuthMember;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,8 +44,8 @@ class LookbookControllerTest {
         ReflectionTestUtils.setField(member, "id", 1L);
         authMember = new AuthMember(member);
         request = new LookbookRequest.LookbookCreate(
-                "https://s3.example.com/original.jpg",
-                "https://s3.example.com/matched.jpg",
+                "original-image-id",
+                "matched-image-id",
                 null,
                 List.of(10L, 20L),
                 "합리적인 가격으로 완성한 룩입니다."
@@ -80,8 +80,8 @@ class LookbookControllerTest {
     @Test
     void updateLookbookReturnsSuccessResponse() {
         LookbookRequest.LookbookUpdate updateRequest = new LookbookRequest.LookbookUpdate(
-                "https://s3.example.com/updated-original.jpg",
-                "https://s3.example.com/updated-matched.jpg",
+                "updated-original-image-id",
+                "updated-matched-image-id",
                 "https://shop.example.com/updated-item",
                 List.of(10L, 20L),
                 "수정된 코멘트"
@@ -104,8 +104,8 @@ class LookbookControllerTest {
     @Test
     void updateLookbookFailsWithoutAuthenticationPrincipal() {
         LookbookRequest.LookbookUpdate updateRequest = new LookbookRequest.LookbookUpdate(
-                "https://s3.example.com/updated-original.jpg",
-                "https://s3.example.com/updated-matched.jpg",
+                "updated-original-image-id",
+                "updated-matched-image-id",
                 null,
                 List.of(10L),
                 null

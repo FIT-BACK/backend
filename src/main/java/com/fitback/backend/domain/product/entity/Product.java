@@ -80,7 +80,7 @@ public class Product extends BaseTimeEntity {
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.brandName = brandName;
         this.sellerName = Objects.requireNonNull(sellerName, "sellerName must not be null");
-        this.price = Objects.requireNonNull(price, "price must not be null");
+        this.price = requireNonNegative(price, "price");
         this.averagePrice = averagePrice;
         this.category = Objects.requireNonNull(category, "category must not be null");
         this.season = season;
@@ -121,7 +121,15 @@ public class Product extends BaseTimeEntity {
     }
 
     public void changePrice(Integer price, Integer averagePrice) {
-        this.price = Objects.requireNonNull(price, "price must not be null");
+        this.price = requireNonNegative(price, "price");
         this.averagePrice = averagePrice;
+    }
+
+    private static Integer requireNonNegative(Integer value, String fieldName) {
+        Integer requiredValue = Objects.requireNonNull(value, fieldName + " must not be null");
+        if (requiredValue < 0) {
+            throw new IllegalArgumentException(fieldName + " must not be negative");
+        }
+        return requiredValue;
     }
 }

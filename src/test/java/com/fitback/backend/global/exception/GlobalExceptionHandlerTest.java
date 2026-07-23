@@ -3,11 +3,14 @@ package com.fitback.backend.global.exception;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fitback.backend.global.response.ApiResponse;
+import jakarta.validation.ConstraintViolationException;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.mock.http.MockHttpInputMessage;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 class GlobalExceptionHandlerTest {
 
@@ -55,5 +58,30 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(ErrorCode.BAD_REQUEST.getHttpStatus());
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().code()).isEqualTo("COMMON400_1");
+    }
+
+    @Test
+    void handleMaxUploadSizeExceededExceptionReturnsInvalidImageResponse() {
+        MaxUploadSizeExceededException exception = new MaxUploadSizeExceededException(5L * 1024 * 1024);
+
+        ResponseEntity<ApiResponse<Void>> response =
+                globalExceptionHandler.handleMaxUploadSizeExceededException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(ErrorCode.INVALID_ANALYSIS_IMAGE.getHttpStatus());
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("ANALYSIS400_1");
+    }
+
+    @Test
+    void handleConstraintViolationExceptionReturnsPayloadFreeFailure() {
+        ConstraintViolationException exception = new ConstraintViolationException(Set.of());
+
+        ResponseEntity<ApiResponse<Void>> response =
+                globalExceptionHandler.handleConstraintViolationException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(ErrorCode.VALIDATION_ERROR.getHttpStatus());
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("COMMON400_2");
+        assertThat(response.getBody().data()).isNull();
     }
 }
