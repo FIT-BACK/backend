@@ -11,6 +11,8 @@ import com.fitback.backend.domain.notification.service.NotificationSettingServic
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
+import com.fitback.backend.global.security.token.TempTokenPayload;
+import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +44,8 @@ class AuthServiceTest {
     private RejoinBlockChecker rejoinBlockChecker;
     @Mock
     private NotificationSettingService notificationSettingService;
+    @Mock
+    private TempTokenStore tempTokenStore;
 
     //authService 실제 객체 생성 후 mock 객체 주입
     @InjectMocks
@@ -308,6 +312,62 @@ class AuthServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode())
                                 .isEqualTo(ErrorCode.NOT_FOUND));
+    }
+
+    //임시 토큰 교환 성공 테스트 - 유효한 임시 토큰이면 access/refresh 발급, refresh 저장, isNewMember 반환
+    @Test
+    void exchangeTokenSuccessTest(){
+        Member member = createTestMember(1L, "kakao@fitback.com", null);
+        //신규 카카오 가입자 임시 토큰
+        TempTokenPayload payload = new TempTokenPayload(1L, true);
+
+        //given
+        when(tempTokenStore.consume("temp-abc")).thenReturn(Optional.of(payload));
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(jwtUtil.createAccessToken(any(AuthMember.class))).thenReturn("access-token");
+        when(jwtUtil.createRefreshToken(any(AuthMember.class))).thenReturn("refresh-token");
+
+        //when
+        MemberResponse.TokenExchangeResponse response = authService.exchangeToken("temp-abc");
+
+        //then
+        assertThat(response.accessToken()).isEqualTo("access-token");
+        assertThat(response.refreshToken()).isEqualTo("refresh-token");
+        //payload의 신규 가입 여부가 그대로 전달
+        assertThat(response.isNewMember()).isTrue();
+        //발급한 refresh 토큰이 회원에 저장되었는지 검증
+        assertThat(member.getRefreshToken()).isEqualTo("refresh-token");
+    }
+
+    //임시 토큰 교환 실패 테스트 - 없거나 만료된 임시 토큰이면 INVALID_TEMP_TOKEN
+    @Test
+    void exchangeTokenInvalidTest(){
+        //consume 결과가 비어있음 (없거나 만료·재사용)
+        when(tempTokenStore.consume("bad-token")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.exchangeToken("bad-token"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode())
+                                .isEqualTo(ErrorCode.INVALID_TEMP_TOKEN));
+
+        //토큰 발급 미호출 검증
+        verify(jwtUtil, never()).createAccessToken(any());
+        verify(jwtUtil, never()).createRefreshToken(any());
+    }
+
+    //임시 토큰 교환 실패 테스트 - 임시 토큰은 유효하나 회원이 없으면 NOT_FOUND
+    @Test
+    void exchangeTokenMemberNotFoundTest(){
+        //임시 토큰은 유효하지만 payload가 가리키는 회원이 삭제됨
+        when(tempTokenStore.consume("temp-abc")).thenReturn(Optional.of(new TempTokenPayload(99L, false)));
+        when(memberRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.exchangeToken("temp-abc"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode())
+                                .isEqualTo(ErrorCode.NOT_FOUND));
+
+        verify(jwtUtil, never()).createAccessToken(any());
     }
 
 }

@@ -77,4 +77,23 @@ class ProductionProfileConfigurationTest {
                 getClass().getClassLoader()
         )).isTrue();
     }
+
+    @Test
+    void productionProfileMapsKakaoAndOAuthEnvironmentVariables() {
+        contextRunner.run(context -> {
+            Environment environment = context.getEnvironment();
+
+            //카카오 클라이언트 자격정보는 env로 주입
+            assertThat(environment.getProperty("spring.security.oauth2.client.registration.kakao.client-id"))
+                    .isEqualTo("test-kakao-client-id");
+            assertThat(environment.getProperty("spring.security.oauth2.client.registration.kakao.client-secret"))
+                    .isEqualTo("test-kakao-client-secret");
+            //프론트 리다이렉트 주소는 env로 주입
+            assertThat(environment.getProperty("app.oauth.front-redirect-uri"))
+                    .isEqualTo("http://localhost:3000/oauth/success");
+            //임시 토큰 TTL은 고정값
+            assertThat(environment.getProperty("app.oauth.temp-token-ttl", Long.class))
+                    .isEqualTo(180000L);
+        });
+    }
 }

@@ -6,6 +6,8 @@ import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.notification.entity.MemberNotificationSetting;
 import com.fitback.backend.domain.notification.repository.MemberNotificationSettingRepository;
+import com.fitback.backend.global.security.token.TempTokenPayload;
+import com.fitback.backend.global.security.token.TempTokenStore;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -36,6 +39,9 @@ class AuthControllerIntegrationTest {
 
     @Autowired
     private MemberNotificationSettingRepository notificationSettingRepository;
+
+    @Autowired
+    private TempTokenStore tempTokenStore;
 
     //JSON 생성/파싱용, 컨텍스트에 빈이 없어 직접 생성
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -220,5 +226,81 @@ class AuthControllerIntegrationTest {
                         .header("Authorization", "Bearer " + refreshToken))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("COMMON401_1"));
+    }
+
+    //임시 토큰 교환 성공 테스트 - 인증 헤더 없이 200(permitAll), 새 refresh 토큰이 DB에 저장
+    @Test
+    void exchangeTokenSuccessTest() throws Exception {
+        //교환 대상 회원 생성 후 임시 토큰 발급
+        JsonNode data = signUp("exchange@fitback.com", "password123");
+        long memberId = data.get("memberId").asLong();
+        String tempToken = tempTokenStore.issue(new TempTokenPayload(memberId, true));
+
+        //인증 헤더 없이 교환 (permitAll)
+        String responseBody = mockMvc.perform(post("/api/v1/auth/token/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("tempToken", tempToken))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("COMMON200_1"))
+                .andExpect(jsonPath("$.data.accessToken").exists())
+                .andExpect(jsonPath("$.data.refreshToken").exists())
+                .andExpect(jsonPath("$.data.isNewMember").value(true))
+                .andReturn().getResponse().getContentAsString();
+
+        //교환으로 발급된 refresh 토큰이 DB에 갱신되었는지 검증
+        String newRefreshToken = objectMapper.readTree(responseBody).get("data").get("refreshToken").asText();
+        Member member = memberRepository.findByEmail("exchange@fitback.com").orElseThrow();
+        assertThat(member.getRefreshToken()).isEqualTo(newRefreshToken);
+    }
+
+    //임시 토큰 교환 실패 테스트 - 유효하지 않은 임시 토큰은 401 + AUTH401_3 (보안이 아닌 비즈니스 계층 도달 = permitAll 확인)
+    @Test
+    void exchangeInvalidTokenTest() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/token/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("tempToken", "invalid-token"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH401_3"));
+    }
+
+    //임시 토큰 교환 실패 테스트 - 빈 임시 토큰은 검증 오류 400
+    @Test
+    void exchangeEmptyTokenTest() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/token/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("tempToken", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+    }
+
+    //임시 토큰은 일회용 - 한 번 교환한 토큰은 재교환 시 401
+    @Test
+    void exchangeReusedTokenTest() throws Exception {
+        JsonNode data = signUp("reuse@fitback.com", "password123");
+        long memberId = data.get("memberId").asLong();
+        String tempToken = tempTokenStore.issue(new TempTokenPayload(memberId, false));
+
+        //1회차 교환 성공
+        mockMvc.perform(post("/api/v1/auth/token/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("tempToken", tempToken))))
+                .andExpect(status().isOk());
+
+        //2회차는 이미 소비되어 401
+        mockMvc.perform(post("/api/v1/auth/token/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("tempToken", tempToken))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH401_3"));
+    }
+
+    //보안 설정 - 카카오 로그인 시작 URL은 인증 없이 카카오 인가 페이지로 리다이렉트
+    @Test
+    void kakaoAuthorizationRedirectsWithoutAuthTest() throws Exception {
+        String location = mockMvc.perform(get("/api/v1/auth/oauth2/kakao"))
+                .andExpect(status().is3xxRedirection())
+                .andReturn().getResponse().getRedirectedUrl();
+
+        assertThat(location).startsWith("https://kauth.kakao.com/oauth/authorize");
     }
 }

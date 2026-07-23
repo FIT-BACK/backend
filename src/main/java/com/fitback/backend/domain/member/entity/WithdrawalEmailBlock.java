@@ -22,7 +22,7 @@ import lombok.NoArgsConstructor;
                 name = "UK_WITHDRAWAL_EMAIL_BLOCK_EMAIL_HASH",
                 columnNames = "email_hash"
         ),
-        indexes = @Index(
+        indexes = @Index( //인덱스 생성
                 name = "IDX_WITHDRAWAL_EMAIL_BLOCK_BLOCKED_UNTIL",
                 columnList = "blocked_until"
         )
