@@ -84,9 +84,10 @@ CloudFront 기본 도메인을 운영 HTTPS 주소로 사용합니다. EC2의 HT
 
 사용자 업로드 이미지는 비공개 S3 버킷에 저장하며, `https://d1p2ierkew26r1.cloudfront.net`에서 서명된 URL로만 조회합니다. S3 직접 접근과 서명 없는 CloudFront 접근은 허용하지 않습니다.
 
-인증된 사용자는 `POST /api/v1/images/presigned-uploads`에서 5분 유효한 Presigned PUT URL을
-발급받아 JPEG, PNG, WebP 이미지를 최대 5 MiB까지 S3로 직접 업로드할 수 있습니다. 발급 URL의
-요청 헤더와 업로드 후 처리 계약은 [API 명세](docs/API_SPEC.md)를 참고합니다.
+인증된 사용자는 `POST /api/v1/images/upload-requests`에서 5분 유효한 Presigned POST 정보를
+발급받아 JPEG, PNG, WebP 이미지를 최대 5 MiB까지 S3로 직접 업로드할 수 있습니다. S3 업로드는
+응답의 `uploadUrl`과 `uploadFields`를 `FormData`로 전송한 뒤 완료 API를 호출하는 방식입니다. 자세한
+계약은 [API 명세](docs/API_SPEC.md)를 참고합니다.
 
 ## Security
 

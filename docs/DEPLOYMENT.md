@@ -16,7 +16,7 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 
 ## 현재 운영 구성
 
-2026-07-22 KST 기준 운영 구성은 다음과 같다. 비밀값과 private RDS endpoint는 문서에 기록하지 않는다.
+2026-07-24 KST 기준 운영 구성은 다음과 같다. 비밀값과 private RDS endpoint는 문서에 기록하지 않는다.
 
 | 항목 | 현재 값 |
 | --- | --- |
@@ -25,6 +25,7 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 | EC2 | `i-0e6d218e8b181a20e`, `t3.micro`, 20 GiB gp3, Elastic IP `54.180.189.89` |
 | CloudFront API | `E1R1PDNM4AAKD8`, `https://d1ra74et9h0ohu.cloudfront.net` |
 | S3 이미지 버킷 | `fitback-prod-images-123209654535-ap-northeast-2`, Block Public Access 및 Bucket owner enforced |
+| S3 이미지 CORS | `https://frontend-chi-one-35.vercel.app`의 `POST`만 허용, `Content-Type`, `ETag`, preflight cache 300초 |
 | CloudFront 이미지 | `EV1PM17XDVYU5`, `https://d1p2ierkew26r1.cloudfront.net`, OAC 및 trusted key group 적용 |
 | CloudFront 이미지 서명 | public key `K1XNJ3JDEDCVL3`, key group `4d40e17b-cb3b-4374-845d-e6228157e7d1` |
 | RDS | `fitback-prod-mysql`, `db.t4g.micro`, Single-AZ, 20 GiB gp3 |
@@ -44,6 +45,11 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 - 외부 8080 직접 접근: timeout으로 차단 확인
 - 이미지 S3 직접 접근: `403`
 - 서명 없는 이미지 CloudFront 접근: `403`
+- 이미지 S3 CORS: 운영 프론트 Origin의 `POST` preflight `200`, 비허용 Origin과 `PUT` preflight `403`
+- Presigned POST/FormData: 68-byte PNG 업로드 `204`, 응답 `ETag` 확인, S3 metadata의
+  `Content-Length=68`과 `Content-Type=image/png` 확인
+- Smoke 객체는 검증 직후 삭제하고 `head-object` 실패로 부재를 확인했으며, 이 검증에는 EC2를
+  시작하지 않았다.
 - Actions 로그: DB URL/user/password 미노출, runner token 마스킹 확인
 
 ## GitHub Repository Variables
@@ -200,18 +206,29 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - 버킷 정책은 CloudFront distribution `EV1PM17XDVYU5`의 OAC `s3:GetObject`만 허용한다.
 - CloudFront 기본 동작은 HTTPS redirect, `GET`/`HEAD`, `CachingOptimized`, trusted key group `fitback-private-images`를 사용한다.
 - 이미지 조회는 signed URL 또는 signed cookie만 허용하며 서명 없는 요청은 `403`이다.
-- 운영 EC2 역할은 Presigned PUT 발급, 업로드 완료 검증, 미사용 객체 정리에 필요한
+- 운영 EC2 역할은 Presigned POST 발급, 업로드 완료 검증, 미사용 객체 정리에 필요한
   `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`만 가진다.
 - 실제 적용 위치는 IAM role `FitbackProductionEC2Role`의 inline policy
   `FitbackProductionRuntimeAccess`, statement `ManageUserImageObjects`이다.
-- Presigned PUT CORS는 `PUT`/`HEAD`, `Content-Type`, `ETag`, 300초를 허용한다. 현재 프론트엔드 운영 origin이 확정되지 않아 origin은 임시로 `*`이다. 프론트엔드 공개 배포 전 이슈 `#83`과 배포 게이트로 정확한 origin 반영을 완료하고 `*`를 제거한다.
-- S3 객체 수명 주기 자동 만료는 도메인 참조와 이미지 상태를 구분할 수 없어 적용하지 않는다. 애플리케이션 작업자는 도메인에서 참조하지 않는 `PENDING`, `READY`, `REJECTED` 이미지를 생성 또는 업로드 완료 후 24시간이 지나면 정리하고, `DELETE_FAILED`는 재시도 시각 이후 다시 처리한다. `ACTIVE` 이미지는 자동 정리 대상에서 제외한다.
+- 백엔드 이미지 업로드 API 계약은 Presigned POST/FormData,
+  `purpose=ANALYSIS|LOOKBOOK|PROFILE`, 논리 초기 상태 `PENDING_UPLOAD`다.
+- 운영 이미지 버킷 CORS는 `https://frontend-chi-one-35.vercel.app` Origin의 `POST`만 허용한다.
+  `AllowedHeaders`는 `Content-Type`, `ExposeHeaders`는 `ETag`, `MaxAgeSeconds`는 300이며
+  와일드카드 Origin과 `PUT`/`HEAD`는 허용하지 않는다.
+- 2026-07-24 KST 실제 AWS에서 운영 Origin의 Presigned POST/FormData 업로드 `204`,
+  `ETag`, 저장 객체의 크기와 MIME을 확인했다. 비허용 Origin과 `PUT` preflight는 `403`이며
+  Smoke 객체는 삭제 후 부재를 확인했다.
+- Issue #95는 expand/contract 릴리스 A만 적용한다. A는 신규 writer가 API purpose를 legacy DB purpose로 저장하고 논리 `PENDING_UPLOAD`를 DB `PENDING`으로 저장하는 dual-read/legacy-write 단계다. V4는 데이터 UPDATE 없이 old/new purpose와 `PENDING`/`PENDING_UPLOAD`를 모두 허용하는 check constraint만 적용한다.
+- 이후 B는 new-write/backfill+dual constraint 단계(`#96`), B가 rollback target이 된 뒤 C는 constraint 축소와 legacy 제거 단계(`#97`)로 진행한다.
+- A의 활성화 실패로 직전 release를 다시 시작하는 자동 rollback은 기존 DB 값과 legacy write를 유지하므로 schema 호환된다. 다만 공용 endpoint/응답과 룩북 purpose는 breaking change다. A가 실제 요청을 받은 뒤 생성한 `LOOKBOOK` 업로드는 DB에 `LOOKBOOK_ORIGINAL`로 저장되므로, 이를 matched 이미지로 연결하려는 요청을 A 이전 서버가 처리하면 기존 `LOOKBOOK_MATCHED` 검증에서 거절할 수 있다. 따라서 A가 운영 current가 된 뒤에는 A보다 이전 release로 수동 rollback하지 않고, 불가피하면 룩북 데이터/API 호환성을 별도로 확인한다.
+- S3 객체 수명 주기 자동 만료는 `ACTIVE`와 미사용 상태를 구분할 수 없어 적용하지 않는다. 24시간 미사용 `PENDING`/`PENDING_UPLOAD`/`READY`/`REJECTED` 정리와 `DELETE_FAILED` 재시도는 DB 상태와 도메인 참조를 기준으로 애플리케이션 작업자가 수행한다.
 - 외부 상품 공급자의 이미지는 이 버킷으로 복사하지 않는다.
 
 운영 애플리케이션은 시작 시 Flyway를 단일 schema 변경 경로로 사용한다. 기존 운영 schema는
 version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V2__add_analysis_image_reference_and_soft_delete.sql`,
-`V3__add_member_refresh_token.sql`을 순서대로 적용하고 Hibernate
+`V3__add_member_refresh_token.sql`,
+`V4__update_image_upload_policy.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
 
@@ -244,6 +261,8 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | Nginx 및 backend readiness | 실제 CloudFront HTTPS | 성공 |
 | Elastic IP 80 직접 접근 | 실제 외부 HTTP | 차단 |
 | 8080 직접 접근 | 실제 외부 HTTP | 차단 |
+| 이미지 S3 CORS | 실제 S3 OPTIONS | 운영 Origin의 `POST`만 성공, 비허용 Origin과 `PUT`은 `403` |
+| 이미지 Presigned POST | 실제 AWS CloudShell/S3 | PNG 업로드 `204`, `ETag` 및 metadata 확인 후 객체 삭제 |
 | image pull 실패 | `scripts/deploy/test_remote_deploy.sh` | stack 변경 전 실패, 이전 release 유지 |
 | readiness timeout/비정상 container | `scripts/deploy/test_remote_deploy.sh` | 직전 release와 symlink 복원 |
 | 잘못된 digest | remote deploy 입력 검증 및 mock test | 배포 전 거절 |
@@ -251,7 +270,7 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | rollback 자체 실패 | mock test | 비정상 종료 코드 반환 |
 | 활성화 실패 및 INT/TERM | mock test | 직전 release 복원 |
 | DB/JWT 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
-| Flyway V1/V2/V3 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환 및 nullable/길이 계약 확인 |
+| Flyway V1~V4 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환, 이미지 old/new purpose/status check constraint 확인 |
 
 검증 명령:
 
@@ -306,6 +325,7 @@ ECR 및 S3 저장량, CloudFront 요청·데이터 전송, 소량의 CloudWatch 
 - [x] CloudFront API 배포와 `PUBLIC_BASE_URL`을 구성했다.
 - [x] EC2 HTTP 80 source를 CloudFront origin-facing prefix list로 제한했다.
 - [x] private S3 이미지 버킷, CloudFront OAC, trusted key group을 구성했다.
+- [x] 운영 프론트 Origin의 S3 Presigned POST 전용 CORS와 실제 업로드를 검증했다.
 - [x] 이미지 저장소 Repository Variable 세 개와 `/fitback/prod/cloudfront-private-key` SecureString을 구성했다.
 - [x] `/fitback/prod/jwt-secret-key`를 포함한 운영 Parameter Store SecureString을 모두 생성했다.
 - [x] GitHub OIDC 역할에 SSM 최소 권한을 추가했다.

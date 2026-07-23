@@ -5,7 +5,10 @@ import java.util.Map;
 public record ImageUploadUrl(
         String uploadUrl,
         String uploadMethod,
-        Map<String, String> requiredHeaders,
-        String imageUrl
+        Map<String, String> uploadFields
 ) {
+
+    public ImageUploadUrl {
+        uploadFields = Map.copyOf(uploadFields);
+    }
 }
