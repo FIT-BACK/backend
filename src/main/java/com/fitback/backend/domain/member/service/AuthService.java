@@ -5,7 +5,6 @@ import com.fitback.backend.domain.member.dto.MemberResponse;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
-import com.fitback.backend.domain.member.repository.WithdrawalEmailBlockRepository;
 import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
@@ -13,13 +12,11 @@ import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.security.token.TempTokenPayload;
 import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
-import com.fitback.backend.global.util.HmacUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -31,8 +28,7 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final TempTokenStore tempTokenStore;
 
-    private final WithdrawalEmailBlockRepository withdrawalEmailBlockRepository;
-    private final HmacUtil hmacUtil;
+    private final RejoinBlockChecker rejoinBlockChecker;
     private final NotificationSettingService notificationSettingService;
 
     //이메일 회원가입
@@ -45,7 +41,9 @@ public class AuthService {
         }
 
         //30일 재가입 차단 검사
-        assertNotRejoinBlocked(dto.email());
+        if (rejoinBlockChecker.isRejoinBlocked(dto.email())) {
+            throw new BusinessException(ErrorCode.REJOIN_BLOCKED);
+        }
 
         //임시 닉네임 설정 (중복 방지)
         String temporalNickName;
@@ -145,14 +143,6 @@ public class AuthService {
 
         //refresh token 초기화
         member.clearRefreshToken();
-    }
-
-    //탈퇴 후 30일 재가입 차단 검사 (이메일·소셜 가입 공용)
-    private void assertNotRejoinBlocked(String email) {
-        String hashedEmail = hmacUtil.hashHex(email);
-        if (withdrawalEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(hashedEmail, LocalDateTime.now())) {
-            throw new BusinessException(ErrorCode.REJOIN_BLOCKED);
-        }
     }
 
     //카카오 임시 토큰을 실제 access/refresh 토큰으로 교환 (일회용)

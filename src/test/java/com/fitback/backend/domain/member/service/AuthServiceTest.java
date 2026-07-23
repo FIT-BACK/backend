@@ -7,13 +7,11 @@ import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
 import com.fitback.backend.domain.member.repository.MemberRepository;
-import com.fitback.backend.domain.member.repository.WithdrawalEmailBlockRepository;
 import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.security.util.JwtUtil;
-import com.fitback.backend.global.util.HmacUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -23,7 +21,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,9 +39,7 @@ class AuthServiceTest {
     @Mock
     private JwtUtil jwtUtil;
     @Mock
-    private WithdrawalEmailBlockRepository withdrawalEmailBlockRepository;
-    @Mock
-    private HmacUtil hmacUtil;
+    private RejoinBlockChecker rejoinBlockChecker;
     @Mock
     private NotificationSettingService notificationSettingService;
 
@@ -69,8 +64,7 @@ class AuthServiceTest {
         //회원가입을 위해 중복 여부는 false가 반환되도록
         when(memberRepository.existsByEmail(request.email())).thenReturn(false);
         //재가입 차단 대상 아님
-        when(hmacUtil.hashHex(request.email())).thenReturn("hashed-email");
-        when(withdrawalEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(anyString(), any(LocalDateTime.class))).thenReturn(false);
+        when(rejoinBlockChecker.isRejoinBlocked(request.email())).thenReturn(false);
         when(memberRepository.existsByNickname(anyString())).thenReturn(false);
         //테스트용 비밀번호
         when(passwordEncoder.encode(request.password())).thenReturn("encodedPw");
@@ -125,9 +119,8 @@ class AuthServiceTest {
         MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("blocked@fitback.com", "password123");
         //이메일 중복은 아님
         when(memberRepository.existsByEmail(request.email())).thenReturn(false);
-        //해시된 이메일이 만료 전 차단 기록에 존재
-        when(hmacUtil.hashHex(request.email())).thenReturn("hashed-email");
-        when(withdrawalEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(anyString(), any(LocalDateTime.class))).thenReturn(true);
+        //재가입 차단 대상 (만료 전 차단 기록 존재)
+        when(rejoinBlockChecker.isRejoinBlocked(request.email())).thenReturn(true);
 
         //예외 타입과 ErrorCode가 REJOIN_BLOCKED인지 검증
         assertThatThrownBy(() -> authService.signUp(request))

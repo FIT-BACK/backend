@@ -3,6 +3,7 @@ package com.fitback.backend.global.security.service;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.member.service.RejoinBlockChecker;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.OAuthMember;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ import java.util.UUID;
 public class CustomOAuthService extends DefaultOAuth2UserService {
 
     private final MemberRepository memberRepository;
+    private final RejoinBlockChecker rejoinBlockChecker;
 
     @Override
     @Transactional
@@ -58,6 +60,11 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
         //같은 email의 기존 계정이 있다면 가입 막기
         if (memberRepository.existsByEmail(email)) {
             throw oauthException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        }
+
+        //탈퇴 후 30일 재가입 차단
+        if (rejoinBlockChecker.isRejoinBlocked(email)) {
+            throw oauthException(ErrorCode.REJOIN_BLOCKED);
         }
 
         //임시 닉네임 부여
