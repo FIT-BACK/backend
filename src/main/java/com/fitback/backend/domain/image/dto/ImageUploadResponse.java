@@ -7,8 +7,11 @@ public record ImageUploadResponse(
         String imageId,
         String uploadUrl,
         String uploadMethod,
-        Map<String, String> requiredHeaders,
-        Instant expiresAt,
-        String imageUrl
+        Map<String, String> uploadFields,
+        Instant expiresAt
 ) {
+
+    public ImageUploadResponse {
+        uploadFields = Map.copyOf(uploadFields);
+    }
 }

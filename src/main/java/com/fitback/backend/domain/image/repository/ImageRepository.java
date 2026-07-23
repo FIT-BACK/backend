@@ -24,11 +24,26 @@ public interface ImageRepository extends JpaRepository<Image, String> {
             select image
             from Image image
             where image.status in :statuses
-              and (image.nextRetryAt is null or image.nextRetryAt <= :now)
               and (:afterId is null or image.id > :afterId)
               and (
-                    (image.uploadedAt is null and image.createdAt < :createdBefore)
-                    or image.uploadedAt < :createdBefore
+                    (
+                        image.status in (
+                            com.fitback.backend.domain.image.entity.ImageStatus.PENDING,
+                            com.fitback.backend.domain.image.entity.ImageStatus.PENDING_UPLOAD
+                        )
+                        and image.createdAt < :createdBefore
+                    )
+                    or (
+                        image.status in (
+                            com.fitback.backend.domain.image.entity.ImageStatus.READY,
+                            com.fitback.backend.domain.image.entity.ImageStatus.REJECTED
+                        )
+                        and coalesce(image.uploadedAt, image.createdAt) < :createdBefore
+                    )
+                    or (
+                        image.status = com.fitback.backend.domain.image.entity.ImageStatus.DELETE_FAILED
+                        and (image.nextRetryAt is null or image.nextRetryAt <= :now)
+                    )
               )
             order by image.id
             """)

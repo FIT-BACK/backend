@@ -1,7 +1,6 @@
 package com.fitback.backend.domain.lookbook.service;
 
 import com.fitback.backend.domain.image.entity.Image;
-import com.fitback.backend.domain.image.entity.ImagePurpose;
 import com.fitback.backend.domain.image.entity.ImageStatus;
 import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
 import com.fitback.backend.domain.lookbook.dto.LookbookRequest;
@@ -466,8 +465,8 @@ public class LookbookService {
 
         Image originalImage = findImage(imagesById, originalImageId);
         Image matchedImage = findImage(imagesById, matchedImageId);
-        validateImage(originalImage, ImagePurpose.LOOKBOOK_ORIGINAL);
-        validateImage(matchedImage, ImagePurpose.LOOKBOOK_MATCHED);
+        validateLookbookImage(originalImage);
+        validateLookbookImage(matchedImage);
         return new LookbookImages(originalImage, matchedImage);
     }
 
@@ -479,10 +478,10 @@ public class LookbookService {
         return image;
     }
 
-    private void validateImage(Image image, ImagePurpose expectedPurpose) {
+    private void validateLookbookImage(Image image) {
         boolean availableStatus = image.getStatus() == ImageStatus.READY
                 || image.getStatus() == ImageStatus.ACTIVE;
-        if (image.getPurpose() != expectedPurpose || !availableStatus) {
+        if (!image.getPurpose().isLookbook() || !availableStatus) {
             throw new BusinessException(ErrorCode.IMAGE_INVALID_STATE);
         }
     }

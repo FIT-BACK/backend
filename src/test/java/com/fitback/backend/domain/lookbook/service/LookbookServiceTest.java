@@ -156,6 +156,27 @@ class LookbookServiceTest {
     }
 
     @Test
+    void createLookbookAcceptsFutureGenericLookbookPurpose() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L));
+        Image genericOriginal = readyImage("original", member, ImagePurpose.LOOKBOOK);
+        Image genericMatched = readyImage("matched", member, ImagePurpose.LOOKBOOK);
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("original", "matched"),
+                1L
+        )).thenReturn(List.of(genericOriginal, genericMatched));
+        when(lookbookRepository.save(any(Lookbook.class))).thenAnswer(invocation -> {
+            Lookbook lookbook = invocation.getArgument(0);
+            ReflectionTestUtils.setField(lookbook, "id", 100L);
+            return lookbook;
+        });
+
+        LookbookResponse.LookbookCreate response = lookbookService.createLookbook(member, request);
+
+        assertThat(response.lookbookId()).isEqualTo(100L);
+    }
+
+    @Test
     void createLookbookFailsWhenTagDoesNotExist() {
         LookbookRequest.LookbookCreate request = createRequest(List.of(10L, 999L));
         when(tagRepository.findAllById(List.of(10L, 999L)))
@@ -205,7 +226,7 @@ class LookbookServiceTest {
         Image invalidMatchedImage = readyImage(
                 "matched",
                 member,
-                ImagePurpose.LOOKBOOK_ORIGINAL
+                ImagePurpose.ANALYSIS
         );
         when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
         when(lookbookImageRepository.findAllOwnedImages(
@@ -224,7 +245,10 @@ class LookbookServiceTest {
     @ParameterizedTest
     @EnumSource(
             value = ImageStatus.class,
-            names = {"PENDING", "DELETING", "DELETE_FAILED", "DELETED", "REJECTED"}
+            names = {
+                "PENDING", "PENDING_UPLOAD", "DELETING",
+                "DELETE_FAILED", "DELETED", "REJECTED"
+            }
     )
     void createLookbookRejectsUnavailableImageStatus(ImageStatus unavailableStatus) {
         LookbookRequest.LookbookCreate request = createRequest(List.of(10L));

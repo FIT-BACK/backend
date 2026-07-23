@@ -200,18 +200,22 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - 버킷 정책은 CloudFront distribution `EV1PM17XDVYU5`의 OAC `s3:GetObject`만 허용한다.
 - CloudFront 기본 동작은 HTTPS redirect, `GET`/`HEAD`, `CachingOptimized`, trusted key group `fitback-private-images`를 사용한다.
 - 이미지 조회는 signed URL 또는 signed cookie만 허용하며 서명 없는 요청은 `403`이다.
-- 운영 EC2 역할은 Presigned PUT 발급, 업로드 완료 검증, 미사용 객체 정리에 필요한
+- 운영 EC2 역할은 Presigned POST 발급, 업로드 완료 검증, 미사용 객체 정리에 필요한
   `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`만 가진다.
 - 실제 적용 위치는 IAM role `FitbackProductionEC2Role`의 inline policy
   `FitbackProductionRuntimeAccess`, statement `ManageUserImageObjects`이다.
-- Presigned PUT CORS는 `PUT`/`HEAD`, `Content-Type`, `ETag`, 300초를 허용한다. 현재 프론트엔드 운영 origin이 확정되지 않아 origin은 임시로 `*`이다. 프론트엔드 공개 배포 전 이슈 `#83`과 배포 게이트로 정확한 origin 반영을 완료하고 `*`를 제거한다.
-- S3 객체 수명 주기 자동 만료는 `ACTIVE`와 `PENDING`을 구분할 수 없어 적용하지 않는다. 24시간 미사용 `PENDING` 정리는 DB 상태를 기준으로 애플리케이션 작업자가 수행한다.
+- 백엔드 이미지 업로드 API 계약은 Presigned POST/FormData, `purpose=ANALYSIS|LOOKBOOK|PROFILE`, 논리 초기 상태 `PENDING_UPLOAD`다. 실제 S3 CORS의 POST 허용 반영과 production smoke test는 운영 이슈 `#83`에서 별도로 확인한다. 이 문서는 CORS가 이미 운영에 적용됐다고 주장하지 않는다.
+- Issue #95는 expand/contract 릴리스 A만 적용한다. A는 신규 writer가 API purpose를 legacy DB purpose로 저장하고 논리 `PENDING_UPLOAD`를 DB `PENDING`으로 저장하는 dual-read/legacy-write 단계다. V4는 데이터 UPDATE 없이 old/new purpose와 `PENDING`/`PENDING_UPLOAD`를 모두 허용하는 check constraint만 적용한다.
+- 이후 B는 new-write/backfill+dual constraint 단계(`#96`), B가 rollback target이 된 뒤 C는 constraint 축소와 legacy 제거 단계(`#97`)로 진행한다.
+- A의 활성화 실패로 직전 release를 다시 시작하는 자동 rollback은 기존 DB 값과 legacy write를 유지하므로 schema 호환된다. 다만 공용 endpoint/응답과 룩북 purpose는 breaking change다. A가 실제 요청을 받은 뒤 생성한 `LOOKBOOK` 업로드는 DB에 `LOOKBOOK_ORIGINAL`로 저장되므로, 이를 matched 이미지로 연결하려는 요청을 A 이전 서버가 처리하면 기존 `LOOKBOOK_MATCHED` 검증에서 거절할 수 있다. 따라서 A가 운영 current가 된 뒤에는 A보다 이전 release로 수동 rollback하지 않고, 불가피하면 룩북 데이터/API 호환성을 별도로 확인한다.
+- S3 객체 수명 주기 자동 만료는 `ACTIVE`와 미사용 상태를 구분할 수 없어 적용하지 않는다. 24시간 미사용 `PENDING`/`PENDING_UPLOAD`/`READY`/`REJECTED` 정리와 `DELETE_FAILED` 재시도는 DB 상태와 도메인 참조를 기준으로 애플리케이션 작업자가 수행한다.
 - 외부 상품 공급자의 이미지는 이 버킷으로 복사하지 않는다.
 
 운영 애플리케이션은 시작 시 Flyway를 단일 schema 변경 경로로 사용한다. 기존 운영 schema는
 version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V2__add_analysis_image_reference_and_soft_delete.sql`,
-`V3__add_member_refresh_token.sql`을 순서대로 적용하고 Hibernate
+`V3__add_member_refresh_token.sql`,
+`V4__update_image_upload_policy.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
 
@@ -251,7 +255,7 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | rollback 자체 실패 | mock test | 비정상 종료 코드 반환 |
 | 활성화 실패 및 INT/TERM | mock test | 직전 release 복원 |
 | DB/JWT 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
-| Flyway V1/V2/V3 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환 및 nullable/길이 계약 확인 |
+| Flyway V1~V4 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환, 이미지 old/new purpose/status check constraint 확인 |
 
 검증 명령:
 

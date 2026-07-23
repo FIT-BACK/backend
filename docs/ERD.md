@@ -4,7 +4,7 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 기준일 | 2026-07-22 |
+| 기준일 | 2026-07-24 |
 | 적용 범위 | Recommendation, Product, 원상품 선택, 상품 찜, 사용자 이미지 업로드 metadata |
 | 기준 코드 | 현재 `develop`의 `Member`, `AnalysisReport`, `Tag`, `Product`, `ProductTag`, `RecommendedItem` |
 | 연동 참고 | Auth `#20`은 PR `#34`로 병합되어 `AuthMember` principal 계약을 확인함. Analysis `#35`는 실제 연동 전 병합본 재확인 |
@@ -113,8 +113,9 @@ providerIdentityKey = SHA-256(
 | `CandidatePriceType` | candidate price type 컬럼 `VARCHAR(20)` | `CURRENT`, `SALE` |
 | `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(20)` | `V1` |
 | `ProductTagSource` | `product_tag.source VARCHAR(20)` | `PROVIDER`, `AI`, `RULE`, `MANUAL` |
-| `ImagePurpose` | `image.purpose VARCHAR(30)` | `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `LOOKBOOK_MATCHED`, `PROFILE` |
-| `ImageStatus` | `image.status VARCHAR(20)` | `PENDING`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
+| `ImageUploadPurpose` | API request enum | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
+| `ImagePurpose` | `image.purpose VARCHAR(30)` 호환 저장 enum | 릴리스 A writer: `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `PROFILE`; reader/domain check: `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `LOOKBOOK_MATCHED`, `PROFILE`, `ANALYSIS`, `LOOKBOOK` |
+| `ImageStatus` | `image.status VARCHAR(20)` 호환 저장 enum | 릴리스 A writer: `PENDING`; reader/domain check: `PENDING`, `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
 | `ImageVisibility` | `image.visibility VARCHAR(20)` | `PRIVATE`, `PUBLIC` |
 
 카테고리의 API 노출 순서는 enum 선언 순서와 동일하다. 각 그룹은 최대 5개이며 빈 그룹도
@@ -814,15 +815,15 @@ JPA `ddl-auto=validate`로 Entity mapping을 검증한다.
 | --- | --- | --- | --- |
 | `image_id` | `VARCHAR(36)` | N | UUID PK |
 | `owner_id` | `BIGINT` | N | `member.member_id` FK |
-| `object_key` | `VARCHAR(512)` | N | S3 object key, `UK_IMAGE_OBJECT_KEY` |
-| `purpose` | `VARCHAR(30)` | N | `ImagePurpose` |
+| `object_key` | `VARCHAR(512)` | N | S3 object key, `UK_IMAGE_OBJECT_KEY`. 신규 업로드는 `images/{purpose}/{memberId}/{yyyy}/{MM}/{imageId}.{ext}` |
+| `purpose` | `VARCHAR(30)` | N | DB 호환 저장값. 릴리스 A 신규 writer는 API `ANALYSIS`→`ANALYSIS_ORIGINAL`, `LOOKBOOK`→`LOOKBOOK_ORIGINAL`, `PROFILE`→`PROFILE`로 저장하고 기존 `LOOKBOOK_MATCHED`는 보존 |
 | `content_type` | `VARCHAR(30)` | N | 허용된 MIME type |
-| `file_size` | `BIGINT` | N | 발급 요청 크기. 활성화 시 S3 실제값 재검증 |
-| `status` | `VARCHAR(20)` | N | `ImageStatus`, 신규 발급은 `PENDING` |
+| `file_size` | `BIGINT` | N | 발급 요청 크기. 완료 검증 시 S3 실제값 재검증 |
+| `status` | `VARCHAR(20)` | N | DB 호환 저장값. API 논리 초기 상태는 `PENDING_UPLOAD`지만 릴리스 A 신규 writer는 rollback 호환을 위해 `PENDING` 저장 |
 | `visibility` | `VARCHAR(20)` | N | 신규 발급은 `PRIVATE` |
 | `presigned_expires_at` | `DATETIME(6)` | Y | 업로드 URL 만료 시각. 완료·거부·삭제 선점 시 NULL |
 | `uploaded_at` | `DATETIME(6)` | Y | S3 객체 검증 완료 또는 거부 처리 시각 |
-| `activated_at` | `DATETIME(6)` | Y | 검증 완료 시각 |
+| `activated_at` | `DATETIME(6)` | Y | 도메인 연결로 `ACTIVE` 전환된 시각 |
 | `delete_requested_at` | `DATETIME(6)` | Y | 삭제 요청 시각 |
 | `deleted_at` | `DATETIME(6)` | Y | 객체 삭제 완료 시각 |
 | `retry_count` | `INT` | N | 삭제 재시도 횟수, 기본 0 |
@@ -830,5 +831,5 @@ JPA `ddl-auto=validate`로 Entity mapping을 검증한다.
 | `created_at` | `DATETIME(6)` | N | 생성 시각 |
 
 인덱스는 소유자별 상태 조회용 `IX_IMAGE_OWNER_STATUS(owner_id, status)`와 오래된 상태 작업
-조회용 `IX_IMAGE_STATUS_CREATED_AT(status, created_at)`를 둔다. Member 삭제 시 이미지 행이나
+조회용 `IX_IMAGE_STATUS_CREATED_AT(status, created_at)`를 둔다. V4 migration은 데이터 UPDATE를 수행하지 않고 check constraint만 old/new purpose와 old/new pending 상태를 모두 허용하도록 확장한다. Member 삭제 시 이미지 행이나
 S3 객체를 암묵적으로 cascade 삭제하지 않고 서비스의 명시적 정리 절차를 사용한다.

@@ -26,11 +26,11 @@ public class ImageController {
     private final ImageUploadService imageUploadService;
 
     @Operation(
-            summary = "이미지 업로드 URL 발급",
-            description = "인증 회원의 private S3 직접 업로드를 위한 5분 유효 Presigned PUT URL을 발급합니다."
+            summary = "이미지 업로드 요청 발급",
+            description = "인증 회원의 private S3 직접 업로드를 위한 5분 유효 Presigned POST 정보를 발급합니다."
     )
-    @PostMapping("/presigned-uploads")
-    public ResponseEntity<ApiResponse<ImageUploadResponse>> createPresignedUpload(
+    @PostMapping("/upload-requests")
+    public ResponseEntity<ApiResponse<ImageUploadResponse>> createUploadRequest(
             @AuthenticationPrincipal AuthMember authMember,
             @Valid @RequestBody ImageUploadRequest request
     ) {
