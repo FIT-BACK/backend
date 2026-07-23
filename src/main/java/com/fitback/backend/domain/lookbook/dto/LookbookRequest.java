@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.lookbook.dto;
 
+import com.fitback.backend.domain.lookbook.entity.LookbookReportReason;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -92,5 +93,13 @@ public final class LookbookRequest {
                 }
             }
         }
+    }
+
+    // 룩북 신고
+    @Schema(name = "LookbookReportRequest")
+    public record LookbookReport(
+            @NotNull(message = "신고 사유는 필수입니다.")
+            LookbookReportReason reason
+    ) {
     }
 }

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.lookbook.dto.LookbookRequest;
 import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
+import com.fitback.backend.domain.lookbook.entity.LookbookReportReason;
 import com.fitback.backend.domain.lookbook.service.LookbookService;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
@@ -111,6 +112,40 @@ class LookbookControllerTest {
         );
 
         assertThatThrownBy(() -> lookbookController.updateLookbook(100L, null, updateRequest))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED)
+                );
+    }
+
+    @Test
+    void reportLookbookReturnsSuccessResponse() {
+        LookbookRequest.LookbookReport request = new LookbookRequest.LookbookReport(
+                LookbookReportReason.COPYRIGHT_INFRINGEMENT
+        );
+        LookbookResponse.LookbookReport serviceResponse = LookbookResponse.LookbookReport.builder()
+                .reportId(101L)
+                .build();
+        when(lookbookService.reportLookbook(100L, member, request)).thenReturn(serviceResponse);
+
+        ApiResponse<LookbookResponse.LookbookReport> response = lookbookController.reportLookbook(
+                100L,
+                authMember,
+                request
+        );
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.code()).isEqualTo("COMMON200_1");
+        assertThat(response.data().reportId()).isEqualTo(101L);
+        verify(lookbookService).reportLookbook(100L, member, request);
+    }
+
+    @Test
+    void reportLookbookFailsWithoutAuthenticationPrincipal() {
+        LookbookRequest.LookbookReport request = new LookbookRequest.LookbookReport(
+                LookbookReportReason.OTHER
+        );
+
+        assertThatThrownBy(() -> lookbookController.reportLookbook(100L, null, request))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED)
                 );

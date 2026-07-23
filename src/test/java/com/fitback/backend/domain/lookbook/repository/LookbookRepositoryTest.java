@@ -3,6 +3,7 @@ package com.fitback.backend.domain.lookbook.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
+import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
 import com.fitback.backend.domain.lookbook.entity.LookbookTag;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
@@ -50,7 +51,10 @@ class LookbookRepositoryTest {
         entityManager.clear();
 
         List<Lookbook> lookbooks = lookbookRepository
-                .findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(PageRequest.of(0, 21));
+                .findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
+                        LookbookModerationStatus.VISIBLE,
+                        PageRequest.of(0, 21)
+                );
 
         assertThat(lookbooks)
                 .extracting(Lookbook::getId)
@@ -92,6 +96,7 @@ class LookbookRepositoryTest {
 
         List<Lookbook> lookbooks = lookbookRepository.findAllByTagName(
                 "미니멀",
+                LookbookModerationStatus.VISIBLE,
                 PageRequest.of(0, 21)
         );
 

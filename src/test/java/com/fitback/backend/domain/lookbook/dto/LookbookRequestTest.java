@@ -2,6 +2,7 @@ package com.fitback.backend.domain.lookbook.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fitback.backend.domain.lookbook.entity.LookbookReportReason;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import java.util.Arrays;
@@ -127,6 +128,19 @@ class LookbookRequestTest {
         assertThat(validator.validate(request))
                 .extracting(violation -> violation.getMessage())
                 .contains("스타일 태그는 1개 이상 5개 이하여야 합니다.");
+    }
+
+    @Test
+    void lookbookReportRequiresReason() {
+        LookbookRequest.LookbookReport validRequest = new LookbookRequest.LookbookReport(
+                LookbookReportReason.FRAUD_OR_FALSE_INFORMATION
+        );
+        LookbookRequest.LookbookReport invalidRequest = new LookbookRequest.LookbookReport(null);
+
+        assertThat(validator.validate(validRequest)).isEmpty();
+        assertThat(validator.validate(invalidRequest))
+                .extracting(violation -> violation.getMessage())
+                .contains("신고 사유는 필수입니다.");
     }
 
     private LookbookRequest.LookbookCreate createRequest(List<Long> tagIds, String comment) {

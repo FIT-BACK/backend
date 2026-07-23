@@ -41,6 +41,22 @@ public final class LookbookResponse {
         }
     }
 
+    // 룩북 신고
+    @Schema(name = "LookbookReportResponse")
+    @Builder
+    public record LookbookReport(
+            Long reportId
+    ) {
+
+        public static LookbookReport toLookbookReport(
+                com.fitback.backend.domain.lookbook.entity.LookbookReport report
+        ) {
+            return LookbookReport.builder()
+                    .reportId(report.getId())
+                    .build();
+        }
+    }
+
     // 룩북 목록 조회
     @Builder
     public record LookbookList(

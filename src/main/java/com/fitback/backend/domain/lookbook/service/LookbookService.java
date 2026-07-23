@@ -3,8 +3,11 @@ package com.fitback.backend.domain.lookbook.service;
 import com.fitback.backend.domain.lookbook.dto.LookbookRequest;
 import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
+import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
+import com.fitback.backend.domain.lookbook.entity.LookbookReport;
 import com.fitback.backend.domain.lookbook.entity.LookbookTag;
 import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookReportRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.Member;
@@ -39,6 +42,8 @@ public class LookbookService {
     private final LookbookLikeRepository lookbookLikeRepository;
     private final TagRepository tagRepository;
     private final LookbookLikeCommandService lookbookLikeCommandService;
+    private final LookbookReportCommandService lookbookReportCommandService;
+    private final LookbookReportRepository lookbookReportRepository;
 
     // 룩북 업로드
     @Transactional
@@ -119,6 +124,37 @@ public class LookbookService {
         lookbookTagRepository.saveAll(lookbookTags);
 
         return LookbookResponse.LookbookUpdate.toLookbookUpdate(lookbook);
+    }
+
+    // 룩북 신고
+    public LookbookResponse.LookbookReport reportLookbook(
+            Long lookbookId,
+            Member member,
+            LookbookRequest.LookbookReport request
+    ) {
+        LookbookReport report;
+
+        try {
+            // 룩북 신고 엔티티 생성 시도
+            report = lookbookReportCommandService.createReport(
+                    lookbookId,
+                    member,
+                    request.reason()
+            );
+        } catch (DataIntegrityViolationException exception) {
+            // 해당 룩북을 이미 신고하였다면 생성하지 않음
+            boolean alreadyReported = lookbookReportRepository.existsByLookbookIdAndMemberId(
+                    lookbookId,
+                    member.getId()
+            );
+            if (!alreadyReported) {
+                // 해당 룩북을 신고하지 않은 상태인데 예외가 발생했다면 새로운 예외 처리
+                throw exception;
+            }
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "이미 신고한 룩북입니다.");
+        }
+
+        return LookbookResponse.LookbookReport.toLookbookReport(report);
     }
 
     // 룩북 목록 조회
@@ -287,12 +323,18 @@ public class LookbookService {
         if (cursor == null) {
             if (tag != null) {
                 // 선택된 태그가 있을 때
-                return lookbookRepository.findAllByTagName(tag, pageRequest);
+                return lookbookRepository.findAllByTagName(
+                        tag,
+                        LookbookModerationStatus.VISIBLE,
+                        pageRequest
+                );
             }
             // 선택된 태그가 없을 때
-            return lookbookRepository.findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(
-                    pageRequest
-            );
+            return lookbookRepository
+                    .findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
+                            LookbookModerationStatus.VISIBLE,
+                            pageRequest
+                    );
         }
 
         // cursor 유효성 확인 후 cursor 에 해당하는 룩북 조회
@@ -306,6 +348,7 @@ public class LookbookService {
         if (tag != null) {
             return lookbookRepository.findNextPageByTagName(
                     tag,
+                    LookbookModerationStatus.VISIBLE,
                     cursorLookbook.getCreatedAt(),
                     cursorLookbook.getId(),
                     pageRequest
@@ -314,6 +357,7 @@ public class LookbookService {
 
         // 태그가 없을 때 목록 조회
         return lookbookRepository.findNextPage(
+                LookbookModerationStatus.VISIBLE,
                 cursorLookbook.getCreatedAt(),
                 cursorLookbook.getId(),
                 pageRequest

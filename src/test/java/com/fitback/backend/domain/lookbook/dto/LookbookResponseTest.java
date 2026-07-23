@@ -23,6 +23,17 @@ class LookbookResponseTest {
     }
 
     @Test
+    void lookbookReportSerializesAccordingToApiSpecification() throws Exception {
+        LookbookResponse.LookbookReport response = LookbookResponse.LookbookReport.builder()
+                .reportId(101L)
+                .build();
+
+        String json = objectMapper.writeValueAsString(response);
+
+        assertThat(json).isEqualTo("{\"reportId\":101}");
+    }
+
+    @Test
     void lookbookListSerializesAccordingToApiSpecification() throws Exception {
         LookbookResponse.LookbookItem item = LookbookResponse.LookbookItem.builder()
                 .lookbookId(12L)

@@ -12,8 +12,12 @@ import static org.mockito.Mockito.when;
 import com.fitback.backend.domain.lookbook.dto.LookbookRequest;
 import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
+import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
+import com.fitback.backend.domain.lookbook.entity.LookbookReport;
+import com.fitback.backend.domain.lookbook.entity.LookbookReportReason;
 import com.fitback.backend.domain.lookbook.entity.LookbookTag;
 import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookReportRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.LoginProvider;
@@ -57,6 +61,12 @@ class LookbookServiceTest {
 
     @Mock
     private LookbookLikeCommandService lookbookLikeCommandService;
+
+    @Mock
+    private LookbookReportCommandService lookbookReportCommandService;
+
+    @Mock
+    private LookbookReportRepository lookbookReportRepository;
 
     @InjectMocks
     private LookbookService lookbookService;
@@ -181,6 +191,65 @@ class LookbookServiceTest {
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
                 );
         verify(lookbookTagRepository, never()).deleteAllByLookbookId(any());
+    }
+
+    @Test
+    void reportLookbookReturnsCreatedReportId() {
+        Member reporter = Member.create(
+                "reporter@fitback.com",
+                "reporter",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(reporter, "id", 2L);
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 23, 12, 0));
+        LookbookReport report = LookbookReport.create(
+                lookbook,
+                reporter,
+                LookbookReportReason.INAPPROPRIATE_IMAGE
+        );
+        ReflectionTestUtils.setField(report, "id", 101L);
+        LookbookRequest.LookbookReport request = new LookbookRequest.LookbookReport(
+                LookbookReportReason.INAPPROPRIATE_IMAGE
+        );
+        when(lookbookReportCommandService.createReport(
+                100L,
+                reporter,
+                LookbookReportReason.INAPPROPRIATE_IMAGE
+        )).thenReturn(report);
+
+        LookbookResponse.LookbookReport response = lookbookService.reportLookbook(
+                100L,
+                reporter,
+                request
+        );
+
+        assertThat(response.reportId()).isEqualTo(101L);
+    }
+
+    @Test
+    void reportLookbookConvertsDuplicateConstraintViolationToBadRequest() {
+        Member reporter = Member.create(
+                "duplicate-reporter@fitback.com",
+                "duplicate-reporter",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(reporter, "id", 2L);
+        LookbookRequest.LookbookReport request = new LookbookRequest.LookbookReport(
+                LookbookReportReason.OTHER
+        );
+        when(lookbookReportCommandService.createReport(100L, reporter, LookbookReportReason.OTHER))
+                .thenThrow(new DataIntegrityViolationException("duplicate report"));
+        when(lookbookReportRepository.existsByLookbookIdAndMemberId(100L, 2L))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> lookbookService.reportLookbook(100L, reporter, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST);
+                    assertThat(exception.getErrorCode().getCode()).isEqualTo("COMMON400_1");
+                    assertThat(exception.getMessage()).isEqualTo("이미 신고한 룩북입니다.");
+                });
     }
 
     @Test
@@ -374,7 +443,9 @@ class LookbookServiceTest {
                 .stream()
                 .map(Lookbook::getId)
                 .toList();
-        when(lookbookRepository.findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+        when(lookbookRepository
+                .findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
+                eq(LookbookModerationStatus.VISIBLE),
                 any(Pageable.class)
         ))
                 .thenReturn(lookbookPage);
@@ -404,14 +475,19 @@ class LookbookServiceTest {
 
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
         verify(lookbookRepository)
-                .findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(pageableCaptor.capture());
+                .findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
+                        eq(LookbookModerationStatus.VISIBLE),
+                        pageableCaptor.capture()
+                );
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(6);
     }
 
     @Test
     void getLookbooksReturnsLikedByMeFalseForAnonymousMember() {
         Lookbook lookbook = createListLookbook(100L, LocalDateTime.of(2026, 7, 16, 12, 0));
-        when(lookbookRepository.findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+        when(lookbookRepository
+                .findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
+                eq(LookbookModerationStatus.VISIBLE),
                 any(Pageable.class)
         ))
                 .thenReturn(List.of(lookbook));
@@ -443,6 +519,7 @@ class LookbookServiceTest {
                 .thenReturn(Optional.of(cursorLookbook));
         when(lookbookRepository.findNextPageByTagName(
                 eq("미니멀"),
+                eq(LookbookModerationStatus.VISIBLE),
                 eq(cursorCreatedAt),
                 eq(100L),
                 any(Pageable.class)
@@ -470,6 +547,7 @@ class LookbookServiceTest {
         Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
         when(lookbookRepository.findById(100L)).thenReturn(Optional.of(cursorLookbook));
         when(lookbookRepository.findNextPage(
+                eq(LookbookModerationStatus.VISIBLE),
                 eq(cursorCreatedAt),
                 eq(100L),
                 any(Pageable.class)
@@ -493,7 +571,11 @@ class LookbookServiceTest {
     @Test
     void getLookbooksFiltersFirstPageByTag() {
         Lookbook lookbook = createListLookbook(100L, LocalDateTime.of(2026, 7, 16, 12, 0));
-        when(lookbookRepository.findAllByTagName(eq("미니멀"), any(Pageable.class)))
+        when(lookbookRepository.findAllByTagName(
+                eq("미니멀"),
+                eq(LookbookModerationStatus.VISIBLE),
+                any(Pageable.class)
+        ))
                 .thenReturn(List.of(lookbook));
         when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(100L)))
                 .thenReturn(List.of(LookbookTag.create(lookbook, minimalTag)));

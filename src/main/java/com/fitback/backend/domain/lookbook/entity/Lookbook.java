@@ -4,6 +4,8 @@ import com.fitback.backend.global.entity.BaseTimeEntity;
 import com.fitback.backend.domain.member.entity.Member;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -49,6 +51,15 @@ public class Lookbook extends BaseTimeEntity {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    @Column(name = "report_count", nullable = false)
+    private Integer reportCount = 0;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "moderation_status", nullable = false, length = 20)
+    private LookbookModerationStatus moderationStatus = LookbookModerationStatus.VISIBLE;
+
+    @Column(name = "auto_hidden_at")
+    private LocalDateTime autoHiddenAt;
 
     private Lookbook(
             Member member,

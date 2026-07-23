@@ -73,6 +73,28 @@ public class LookbookController {
     }
 
     @Operation(
+            summary = "룩북 신고",
+            description = "로그인한 회원이 타인의 룩북을 신고. 신고 사유는 필수이며 동일 룩북은 회원당 1회만 신고 가능."
+    )
+    @PostMapping("/{lookbookId}/reports")
+    public ApiResponse<LookbookResponse.LookbookReport> reportLookbook(
+            @PathVariable("lookbookId") Long lookbookId,
+            @AuthenticationPrincipal AuthMember authMember,
+            @Valid @RequestBody LookbookRequest.LookbookReport request
+    ) {
+        if (authMember == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+
+        LookbookResponse.LookbookReport response = lookbookService.reportLookbook(
+                lookbookId,
+                authMember.getMember(),
+                request
+        );
+        return ApiResponse.onSuccess(response);
+    }
+
+    @Operation(
             summary = "룩북 삭제",
             description = "룩북 작성자 또는 ADMIN 권한을 가진 회원이 룩북을 soft delete 방식으로 삭제."
     )

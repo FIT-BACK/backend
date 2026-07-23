@@ -1,6 +1,7 @@
 package com.fitback.backend.domain.lookbook.repository;
 
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
+import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -17,13 +18,17 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
     Optional<Lookbook> findByIdAndDeletedAtIsNull(Long id);
 
     @EntityGraph(attributePaths = "member")
-    List<Lookbook> findAllByDeletedAtIsNullOrderByCreatedAtDescIdDesc(Pageable pageable);
+    List<Lookbook> findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
+            LookbookModerationStatus moderationStatus,
+            Pageable pageable
+    );
 
     @EntityGraph(attributePaths = "member")
     @Query("""
             SELECT lookbook
             FROM Lookbook lookbook
             WHERE lookbook.deletedAt IS NULL
+              AND lookbook.moderationStatus = :moderationStatus
               AND EXISTS (
                   SELECT lookbookTag.id
                   FROM LookbookTag lookbookTag
@@ -34,6 +39,7 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             """)
     List<Lookbook> findAllByTagName(
             @Param("tagName") String tagName,
+            @Param("moderationStatus") LookbookModerationStatus moderationStatus,
             Pageable pageable
     );
 
@@ -58,11 +64,13 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             SELECT lookbook
             FROM Lookbook lookbook
             WHERE lookbook.deletedAt IS NULL
+              AND lookbook.moderationStatus = :moderationStatus
               AND (lookbook.createdAt < :cursorCreatedAt
                OR (lookbook.createdAt = :cursorCreatedAt AND lookbook.id < :cursorId))
             ORDER BY lookbook.createdAt DESC, lookbook.id DESC
             """)
     List<Lookbook> findNextPage(
+            @Param("moderationStatus") LookbookModerationStatus moderationStatus,
             @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
             @Param("cursorId") Long cursorId,
             Pageable pageable
@@ -73,6 +81,7 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             SELECT lookbook
             FROM Lookbook lookbook
             WHERE lookbook.deletedAt IS NULL
+              AND lookbook.moderationStatus = :moderationStatus
               AND EXISTS (
                   SELECT lookbookTag.id
                   FROM LookbookTag lookbookTag
@@ -85,6 +94,7 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             """)
     List<Lookbook> findNextPageByTagName(
             @Param("tagName") String tagName,
+            @Param("moderationStatus") LookbookModerationStatus moderationStatus,
             @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
             @Param("cursorId") Long cursorId,
             Pageable pageable
@@ -115,4 +125,30 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
               AND lookbook.deletedAt IS NULL
             """)
     Optional<Integer> findLikeCountByIdAndDeletedAtIsNull(@Param("lookbookId") Long lookbookId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Lookbook lookbook
+            SET lookbook.reportCount = lookbook.reportCount + 1
+            WHERE lookbook.id = :lookbookId
+              AND lookbook.deletedAt IS NULL
+            """)
+    int incrementReportCount(@Param("lookbookId") Long lookbookId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Lookbook lookbook
+            SET lookbook.moderationStatus = :autoHiddenStatus,
+                lookbook.autoHiddenAt = CURRENT_TIMESTAMP
+            WHERE lookbook.id = :lookbookId
+              AND lookbook.deletedAt IS NULL
+              AND lookbook.reportCount >= :reportThreshold
+              AND lookbook.moderationStatus = :visibleStatus
+            """)
+    int autoHideReportedLookbook(
+            @Param("lookbookId") Long lookbookId,
+            @Param("reportThreshold") int reportThreshold,
+            @Param("visibleStatus") LookbookModerationStatus visibleStatus,
+            @Param("autoHiddenStatus") LookbookModerationStatus autoHiddenStatus
+    );
 }
