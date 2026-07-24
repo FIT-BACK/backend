@@ -8,6 +8,7 @@ import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.repository.WithdrawnEmailBlockRepository;
+import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
@@ -44,6 +45,8 @@ class AuthServiceTest {
     private WithdrawnEmailBlockRepository withdrawnEmailBlockRepository;
     @Mock
     private HmacUtil hmacUtil;
+    @Mock
+    private NotificationSettingService notificationSettingService;
 
     //authService 실제 객체 생성 후 mock 객체 주입
     @InjectMocks
@@ -95,6 +98,7 @@ class AuthServiceTest {
         assertThat(savedMember.getPassword()).isEqualTo("encodedPw");
         assertThat(savedMember.getLoginProvider()).isEqualTo(LoginProvider.EMAIL);
         assertThat(savedMember.getRole()).isEqualTo(MemberRole.USER);
+        verify(notificationSettingService).createDefaultSetting(savedMember);
     }
 
     //회원가입 실패 - 이미 존재하는 이메일이면 EMAIL_ALREADY_EXISTS
@@ -112,6 +116,7 @@ class AuthServiceTest {
 
         //save가 한번도 호출되지 않았는지 검증
         verify(memberRepository, never()).save(any(Member.class));
+        verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
     }
 
     //회원가입 실패 - 30일 재가입 차단 기간이면 REJOIN_BLOCKED
@@ -132,6 +137,7 @@ class AuthServiceTest {
 
         //차단 시 save 미호출 검증
         verify(memberRepository, never()).save(any(Member.class));
+        verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
     }
 
     //로그인 성공 테스트 - 자격 증명이 맞으면 토큰을 반환하고 refresh를 저장
