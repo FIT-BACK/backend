@@ -32,11 +32,13 @@ DB_USER=your_mysql_user
 DB_PASSWORD=your_mysql_password
 SHOPPING_PROVIDER=fixture
 SHOPIFY_ENABLED=false
+SHOPPING_CANDIDATE_TOKEN_TTL=PT10M
 ```
 
 쇼핑 공급자는 최종 공급자가 확정되기 전까지 `fixture`를 기본값으로 사용합니다.
 Shopify 런타임은 비활성화되어 있으므로 로컬 및 CI에서 Shopify 인증정보나 외부 API 호출이
-필요하지 않습니다.
+필요하지 않습니다. 상품 검색에서 발급하는 candidate token은 기본 10분 동안 유효하며
+`SHOPPING_CANDIDATE_TOKEN_TTL`에 ISO-8601 Duration 형식으로 설정합니다.
 
 ### 2. MySQL 데이터베이스 생성
 

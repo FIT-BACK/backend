@@ -391,17 +391,22 @@ JPA에는 대규모 `CascadeType.ALL`을 기본 적용하지 않는다. 특히 P
 
 ---
 
-## 7. 현재 Entity 대비 migration 후보
+## 7. Entity migration 상태
 
-실제 변경은 후속 기능 이슈에서 migration과 함께 수행한다.
+Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수행한다.
 
 ### 7.1 `Product`
 
-- `Integer price`를 근거 있는 `BigDecimal` 가격 필드로 전환한다.
-- 공급자 identity, materialization key, storage mode, availability와 TTL을 추가한다.
-- `category String`은 문자열 enum으로 전환한다.
-- `purchaseUrl`과 `affiliateUrl`을 분리한다.
-- 기존 가격의 통화를 근거 없이 KRW로 일괄 채우지 않는다.
+- Issue #106과 V5 migration에서 공급자 identity, materialization key, storage mode,
+  availability, snapshot TTL과 근거 있는 `BigDecimal` 가격 필드를 추가한다.
+- 신규 Entity writer는 `category` 문자열 enum, 분리된 `purchaseUrl`/`affiliateUrl`과
+  가격 통화·관측 시각을 함께 저장한다.
+- 기존 `category`는 내부 enum 값으로 정규화하고 알 수 없는 값은 `OTHER`로 보존한다.
+- rollback 호환을 위해 기존 `price`, `average_price`, `season`, `gender` 컬럼은 nullable
+  legacy 컬럼으로 유지하지만 신규 Entity는 읽거나 쓰지 않는다.
+- 기존 정수 가격은 통화를 추측할 수 없으므로 새 `current_price`로 백필하지 않는다.
+- 기존 상품 row는 `SNAPSHOT_UUID`와 versioned legacy materialization key로 백필하며,
+  신규 안정 identity 상품은 `PROVIDER_KEY`를 사용한다.
 
 ### 7.2 `RecommendedItem`
 
