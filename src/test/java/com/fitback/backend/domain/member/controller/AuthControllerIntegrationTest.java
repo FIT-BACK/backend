@@ -66,7 +66,7 @@ class AuthControllerIntegrationTest {
     void signUpSuccessTest() throws Exception {
         mockMvc.perform(post("/api/v1/auth/sign")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonBody("test@fitback.com", "password123")))
+                        .content(jsonBody("Test@FITBACK.COM", "password123")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.code").value("COMMON201_1"))
@@ -92,7 +92,7 @@ class AuthControllerIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/sign")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonBody("dup@fitback.com", "password123")))
+                        .content(jsonBody("Dup@FITBACK.COM", "password123")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("AUTH409_1"));
@@ -115,7 +115,7 @@ class AuthControllerIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonBody("login@fitback.com", "password123")))
+                        .content(jsonBody("Login@FITBACK.COM", "password123")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("COMMON200_1"))
                 .andExpect(jsonPath("$.data.accessToken").exists())

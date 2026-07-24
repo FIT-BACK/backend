@@ -12,9 +12,8 @@ class JwtUtilTest {
 
     //HS256 서명용 최소 32바이트 키 필요, 넉넉히 긴 시크릿 사용
     private static final String SECRET = "test-secret-key-for-jwt-unit-test-1234567890";
-    private static final long ACCESS_MS = 1800000L;       //access 토큰 만료 30분
-    private static final long REFRESH_MS = 1209600000L;  //refresh 토큰 만료 14일
-
+    private static final long ACCESS_MS = 3600000L;       //access 토큰 만료 1시간
+    private static final long REFRESH_MS = 604800000L;  //refresh 토큰 만료 7일
     //테스트 대상 JwtUtil (시크릿, 만료시간 직접 주입)
     private final JwtUtil jwtUtil = new JwtUtil(SECRET, ACCESS_MS, REFRESH_MS);
 

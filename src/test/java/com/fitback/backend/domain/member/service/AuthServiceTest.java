@@ -62,13 +62,13 @@ class AuthServiceTest {
     //회원가입 성공 테스트
     @Test
     void signUpSuccessTest(){
-        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("test@fitback.com", "password123");
+        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("Test@FITBACK.COM", "password123");
 
         //given
         //회원가입을 위해 중복 여부는 false가 반환되도록
-        when(memberRepository.existsByEmail(request.email())).thenReturn(false);
+        when(memberRepository.existsByEmail("test@fitback.com")).thenReturn(false);
         //재가입 차단 대상 아님
-        when(rejoinBlockChecker.isRejoinBlocked(request.email())).thenReturn(false);
+        when(rejoinBlockChecker.isRejoinBlocked("test@fitback.com")).thenReturn(false);
         when(memberRepository.existsByNickname(anyString())).thenReturn(false);
         //테스트용 비밀번호
         when(passwordEncoder.encode(request.password())).thenReturn("encodedPw");
@@ -102,9 +102,9 @@ class AuthServiceTest {
     //회원가입 실패 - 이미 존재하는 이메일이면 EMAIL_ALREADY_EXISTS
     @Test
     void signUpduplicateEmailTest() {
-        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("dup@fitback.com", "password123");
+        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("Dup@FITBACK.COM", "password123");
         //이메일 중복 검사 시 true 반환 설정
-        when(memberRepository.existsByEmail(request.email())).thenReturn(true);
+        when(memberRepository.existsByEmail("dup@fitback.com")).thenReturn(true);
 
         // 발생한 예외 타입이 BusinessException인지 해당 BusinessException의 ErrorCode가 EMAIL_ALREADY_EXISTS인지 검증
         assertThatThrownBy(() -> authService.signUp(request))
@@ -120,11 +120,11 @@ class AuthServiceTest {
     //회원가입 실패 - 30일 재가입 차단 기간이면 REJOIN_BLOCKED
     @Test
     void signUpRejoinBlockedTest(){
-        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("blocked@fitback.com", "password123");
+        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("Blocked@FITBACK.COM", "password123");
         //이메일 중복은 아님
-        when(memberRepository.existsByEmail(request.email())).thenReturn(false);
+        when(memberRepository.existsByEmail("blocked@fitback.com")).thenReturn(false);
         //재가입 차단 대상 (만료 전 차단 기록 존재)
-        when(rejoinBlockChecker.isRejoinBlocked(request.email())).thenReturn(true);
+        when(rejoinBlockChecker.isRejoinBlocked("blocked@fitback.com")).thenReturn(true);
 
         //예외 타입과 ErrorCode가 REJOIN_BLOCKED인지 검증
         assertThatThrownBy(() -> authService.signUp(request))
@@ -140,13 +140,13 @@ class AuthServiceTest {
     //로그인 성공 테스트 - 자격 증명이 맞으면 토큰을 반환하고 refresh를 저장
     @Test
     void loginSuccessTest(){
-        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("test@fitback.com", "password123");
+        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("Test@FITBACK.COM", "password123");
         //id, 이메일, 암호화된 비밀번호를 가진 테스트 회원 생성
         Member member = createTestMember(1L, "test@fitback.com", "encodedPw");
 
         //given
         //이메일로 회원 조회 시 위 회원 반환
-        when(memberRepository.findByEmail(request.email())).thenReturn(Optional.of(member));
+        when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
         //비밀번호 일치하도록 설정
         when(passwordEncoder.matches(request.password(), "encodedPw")).thenReturn(true);
         //테스트용 토큰
@@ -166,10 +166,10 @@ class AuthServiceTest {
     //로그인 실패 테스트 - 이메일이 없으면 INVALID_CREDENTIALS
     @Test
     void loginEmailNotFoundTest(){
-        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("none@fitback.com", "password123");
+        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("None@FITBACK.COM", "password123");
 
         //이메일로 회원 조회 시 빈 Optional 반환
-        when(memberRepository.findByEmail(request.email())).thenReturn(Optional.empty());
+        when(memberRepository.findByEmail("none@fitback.com")).thenReturn(Optional.empty());
 
         //예외 타입과 ErrorCode가 INVALID_CREDENTIALS인지 검증
         assertThatThrownBy(() -> authService.login(request))
@@ -185,10 +185,10 @@ class AuthServiceTest {
     //로그인 실패 - 비밀번호가 틀리면 INVALID_CREDENTIALS
     @Test
     void loginWrongPasswordTest(){
-        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("test@fitback.com", "wrongPw");
+        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("Test@FITBACK.COM", "wrongPw");
         Member member = createTestMember(1L, "test@fitback.com", "encodedPw");
 
-        when(memberRepository.findByEmail(request.email())).thenReturn(Optional.of(member));
+        when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
         //비밀번호 불일치하도록 설정
         when(passwordEncoder.matches(request.password(), "encodedPw")).thenReturn(false);
 
@@ -216,7 +216,7 @@ class AuthServiceTest {
         when(jwtUtil.isValid(oldRefresh)).thenReturn(true);
         when(jwtUtil.isRefreshToken(oldRefresh)).thenReturn(true);
         //토큰에서 이메일 추출
-        when(jwtUtil.getEmailFromToken(oldRefresh)).thenReturn("test@fitback.com");
+        when(jwtUtil.getEmailFromToken(oldRefresh)).thenReturn("Test@FITBACK.COM");
         when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
         //새로 발급될 토큰
         when(jwtUtil.createAccessToken(any(AuthMember.class))).thenReturn("new-access");
@@ -264,7 +264,7 @@ class AuthServiceTest {
         //given
         when(jwtUtil.isValid(requestToken)).thenReturn(true);
         when(jwtUtil.isRefreshToken(requestToken)).thenReturn(true);
-        when(jwtUtil.getEmailFromToken(requestToken)).thenReturn("test@fitback.com");
+        when(jwtUtil.getEmailFromToken(requestToken)).thenReturn("Test@FITBACK.COM");
         when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
 
         //요청 토큰과 저장된 토큰이 달라 예외 발생, ErrorCode가 INVALID_REFRESH_TOKEN인지 검증

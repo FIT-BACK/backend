@@ -50,7 +50,7 @@ class CustomOAuthServiceTest {
         Member savedMember = ReflectionTestUtils.invokeMethod(
                 customOAuthService,
                 "registerNewKakaoMember",
-                "kakao@fitback.com",
+                "Kakao@FITBACK.COM",
                 "12345"
         );
 
