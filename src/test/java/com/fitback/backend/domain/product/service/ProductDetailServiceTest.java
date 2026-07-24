@@ -14,8 +14,10 @@ import com.fitback.backend.domain.product.entity.Product;
 import com.fitback.backend.domain.product.repository.ProductRepository;
 import com.fitback.backend.domain.product.service.exception.ProductProviderException;
 import com.fitback.backend.domain.product.service.exception.ProductProviderFailure;
+import com.fitback.backend.domain.product.service.model.ExternalProductCandidate;
 import com.fitback.backend.domain.product.service.model.ProductAvailability;
 import com.fitback.backend.domain.product.service.model.ProductDataStatus;
+import com.fitback.backend.domain.product.service.model.ProductSnapshot;
 import com.fitback.backend.domain.product.service.model.ProviderCapabilities;
 import com.fitback.backend.domain.product.service.model.ProviderIdentityType;
 import com.fitback.backend.domain.product.service.model.ProviderProductRef;
@@ -33,6 +35,70 @@ import org.junit.jupiter.api.Test;
 class ProductDetailServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-07-24T00:00:00Z");
+
+    @Test
+    void refreshesSnapshotAndReturnsLiveDetailWhenLookupSucceeds() {
+        Dependencies dependencies = dependencies();
+        Product product = providerProduct();
+        ProviderProductRef providerRef = providerRef();
+        ExternalProductCandidate candidate = mock(ExternalProductCandidate.class);
+        ProductSnapshot snapshot = mock(ProductSnapshot.class);
+        ProductDetailResponse expected = detailResponse(
+                "Live Product",
+                ProductAvailability.AVAILABLE,
+                ProductDataStatus.LIVE
+        );
+        when(dependencies.productRepository().findById(1L)).thenReturn(Optional.of(product));
+        when(dependencies.productCatalogPort().lookup(providerRef))
+                .thenReturn(Optional.of(candidate));
+        when(dependencies.candidateMapper().snapshot(
+                providerRef,
+                candidate,
+                NOW.plus(Duration.ofHours(1))
+        )).thenReturn(snapshot);
+        when(dependencies.responseMapper().detail(
+                1L,
+                candidate,
+                ProductDataStatus.LIVE
+        )).thenReturn(expected);
+
+        assertThat(dependencies.service().getDetail(1L)).isEqualTo(expected);
+        verify(dependencies.productCatalogPort()).lookup(providerRef);
+        verify(dependencies.candidateMapper()).snapshot(
+                providerRef,
+                candidate,
+                NOW.plus(Duration.ofHours(1))
+        );
+        verify(dependencies.persistenceService()).refresh(1L, snapshot);
+    }
+
+    @Test
+    void marksProductUnavailableWhenLookupReturnsEmpty() {
+        Dependencies dependencies = dependencies();
+        Product product = providerProduct();
+        ProductDetailResponse expected = detailResponse(
+                "Cached Product",
+                ProductAvailability.UNAVAILABLE,
+                ProductDataStatus.LIVE
+        );
+        when(dependencies.productRepository().findById(1L)).thenReturn(Optional.of(product));
+        when(dependencies.productCatalogPort().lookup(providerRef()))
+                .thenReturn(Optional.empty());
+        when(dependencies.responseMapper().detail(
+                product,
+                ProductAvailability.UNAVAILABLE,
+                ProductDataStatus.LIVE
+        )).thenReturn(expected);
+
+        assertThat(dependencies.service().getDetail(1L)).isEqualTo(expected);
+        verify(dependencies.persistenceService()).markUnavailable(1L);
+        verify(dependencies.responseMapper()).detail(
+                product,
+                ProductAvailability.UNAVAILABLE,
+                ProductDataStatus.LIVE
+        );
+        verifyNoInteractions(dependencies.candidateMapper());
+    }
 
     @Test
     void mapsMalformedLookupResponseInsteadOfMaskingItWithSnapshot() {
@@ -123,6 +189,36 @@ class ProductDetailServiceTest {
         verify(dependencies.productCatalogPort(), never()).lookup(any());
     }
 
+    @Test
+    void legacySnapshotIdentityReturnsStaleSnapshotWhenSnapshotExpired() {
+        Dependencies dependencies = dependencies();
+        Product product = mock(Product.class);
+        ProductDetailResponse expected = detailResponse(
+                "Legacy Product",
+                ProductAvailability.UNKNOWN,
+                ProductDataStatus.STALE_SNAPSHOT
+        );
+        when(product.getSourceApi()).thenReturn("fixture");
+        when(product.getIdentityStrategy()).thenReturn(ProviderIdentityType.SNAPSHOT_UUID);
+        when(product.getExternalProductId()).thenReturn("legacy-external-id");
+        when(product.hasDisplayData()).thenReturn(true);
+        when(product.getSnapshotExpiresAt()).thenReturn(NOW.minus(Duration.ofHours(1)));
+        when(dependencies.productRepository().findById(1L)).thenReturn(Optional.of(product));
+        when(dependencies.responseMapper().detail(
+                product,
+                ProductAvailability.UNKNOWN,
+                ProductDataStatus.STALE_SNAPSHOT
+        )).thenReturn(expected);
+
+        assertThat(dependencies.service().getDetail(1L)).isEqualTo(expected);
+        verify(dependencies.productCatalogPort(), never()).lookup(any());
+        verify(dependencies.responseMapper()).detail(
+                product,
+                ProductAvailability.UNKNOWN,
+                ProductDataStatus.STALE_SNAPSHOT
+        );
+    }
+
     private static Product providerProduct() {
         Product product = mock(Product.class);
         when(product.getSourceApi()).thenReturn("fixture");
@@ -133,6 +229,37 @@ class ProductDetailServiceTest {
         when(product.getMerchantId()).thenReturn("merchant-1");
         when(product.hasDisplayData()).thenReturn(true);
         return product;
+    }
+
+    private static ProviderProductRef providerRef() {
+        return ProviderProductRef.stable(
+                "fixture",
+                "external-product",
+                "variant-1",
+                "merchant-1"
+        );
+    }
+
+    private static ProductDetailResponse detailResponse(
+            String name,
+            ProductAvailability availability,
+            ProductDataStatus dataStatus
+    ) {
+        return new ProductDetailResponse(
+                1L,
+                null,
+                name,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                availability,
+                dataStatus,
+                List.of(),
+                false
+        );
     }
 
     private static Dependencies dependencies() {
@@ -154,7 +281,9 @@ class ProductDetailServiceTest {
                 service,
                 productCatalogPort,
                 productRepository,
-                responseMapper
+                candidateMapper,
+                responseMapper,
+                persistenceService
         );
     }
 
@@ -179,7 +308,9 @@ class ProductDetailServiceTest {
             ProductDetailService service,
             ProductCatalogPort productCatalogPort,
             ProductRepository productRepository,
-            ProductResponseMapper responseMapper
+            ProductCandidateMapper candidateMapper,
+            ProductResponseMapper responseMapper,
+            ProductPersistenceService persistenceService
     ) {
     }
 }
