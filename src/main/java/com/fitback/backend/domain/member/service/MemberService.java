@@ -234,7 +234,7 @@ public class MemberService {
 
         //태그 id로 찾은 태그 개수와 태그 id의 수가 다르다면 잘못된 태그 id 포함
         if (tags.size() != distinctIds.size()) {
-            throw new BusinessException(ErrorCode.TAG_NOT_FOUND);
+            throw new BusinessException(ErrorCode.MEMBER_TAG_NOT_FOUND);
         }
 
         //기존 태그 삭제

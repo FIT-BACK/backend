@@ -186,7 +186,7 @@ class MemberServiceTest {
         assertThat(response.tags()).hasSize(1);
     }
 
-    //회원정보 수정 - 존재하지 않는 tag id 포함 시 TAG_NOT_FOUND
+    //회원정보 수정 - 존재하지 않는 tag id 포함 시 MEMBER_TAG_NOT_FOUND
     @Test
     void updateMemberInvalidTagTest(){
         Member member = createTestMember(1L, "test@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
@@ -201,7 +201,7 @@ class MemberServiceTest {
         assertThatThrownBy(() -> memberService.updateMember(authMember, request))
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode())
-                                .isEqualTo(ErrorCode.TAG_NOT_FOUND));
+                                .isEqualTo(ErrorCode.MEMBER_TAG_NOT_FOUND));
 
         //검증 실패 시 삭제 미발생
         verify(memberTagRepository, never()).deleteByMemberId(anyLong());
@@ -435,7 +435,7 @@ class MemberServiceTest {
                                 .isEqualTo(ErrorCode.NICKNAME_ALREADY_EXISTS));
     }
 
-    //온보딩 - 존재하지 않는 태그 포함 시 TAG_NOT_FOUND
+    //온보딩 - 존재하지 않는 태그 포함 시 MEMBER_TAG_NOT_FOUND
     @Test
     void onboardingInvalidTagTest(){
         Member member = createTestMember(1L, "test@fitback.com", "tempNick", "encodedPw", LoginProvider.EMAIL);
@@ -451,7 +451,7 @@ class MemberServiceTest {
         assertThatThrownBy(() -> memberService.onboarding(authMember, request))
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode())
-                                .isEqualTo(ErrorCode.TAG_NOT_FOUND));
+                                .isEqualTo(ErrorCode.MEMBER_TAG_NOT_FOUND));
     }
 
     //온보딩 - 빈 태그 배열은 허용
@@ -549,7 +549,7 @@ class MemberServiceTest {
         assertThat(response.tags()).hasSize(1);
     }
 
-    //관심 태그 수정 - 존재하지 않는 태그 포함 시 TAG_NOT_FOUND
+    //관심 태그 수정 - 존재하지 않는 태그 포함 시 MEMBER_TAG_NOT_FOUND
     @Test
     void updateTagsInvalidTest(){
         Member member = createTestMember(1L, "test@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
@@ -563,7 +563,7 @@ class MemberServiceTest {
         assertThatThrownBy(() -> memberService.updateTags(authMember, request))
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode())
-                                .isEqualTo(ErrorCode.TAG_NOT_FOUND));
+                                .isEqualTo(ErrorCode.MEMBER_TAG_NOT_FOUND));
 
         verify(memberTagRepository, never()).deleteByMemberId(anyLong());
     }

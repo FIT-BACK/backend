@@ -8,7 +8,7 @@
 2. GitHub OIDC로 AWS IAM 역할을 위임받아 ECR의 `git-${GITHUB_SHA}` 태그를 조회하고, 없을 때만 푸시한다. 같은 SHA를 다시 실행하면 기존 불변 태그를 재사용한다.
 3. ECR에서 `sha256` digest를 확인해 변경 불가능한 이미지 참조를 생성한다.
 4. `EC2_INSTANCE_ID` 저장소 변수가 설정된 경우에만 SSM Run Command로 EC2 배포를 실행한다.
-5. EC2는 고유한 release 디렉터리에서 Parameter Store의 DB와 JWT 값을 읽고 Compose stack을 갱신한다.
+5. EC2는 고유한 release 디렉터리에서 Parameter Store의 DB, JWT, HMAC 값을 읽고 Compose stack을 갱신한다.
 6. Nginx와 backend health check가 실패하면 직전 release 전체로 rollback한다.
 7. `PUBLIC_BASE_URL`이 설정되어 있으면 CloudFront HTTPS 주소에서 Nginx와 backend readiness를 다시 확인한다.
 
@@ -71,6 +71,7 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 /fitback/prod/db-user
 /fitback/prod/db-password
 /fitback/prod/jwt-secret-key
+/fitback/prod/hmac-secret-key
 /fitback/prod/cloudfront-private-key
 ```
 
@@ -81,6 +82,7 @@ db-url=jdbc:mysql://<private-rds-endpoint>:3306/fitback?serverTimezone=Asia/Seou
 db-user=<application-user>
 db-password=<generated-password>
 jwt-secret-key=<at-least-32-byte-random-secret>
+hmac-secret-key=<stable-at-least-32-byte-random-secret>
 cloudfront-private-key=<base64-encoded-pkcs8-der>
 ```
 
@@ -220,9 +222,9 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `scripts/deploy/remote_deploy.sh`는 다음 작업을 수행한다.
 
 1. digest가 포함된 ECR 이미지 참조를 검증한다.
-2. Parameter Store의 DB, JWT, Base64 CloudFront 개인 키 값을 단일 행 값으로 검증한다.
+2. Parameter Store의 DB, JWT, HMAC, Base64 CloudFront 개인 키 값을 단일 행 값으로 검증한다.
 3. host 단위 `flock`을 획득해 같은 EC2에서 두 배포가 동시에 실행되지 않게 한다.
-4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, CloudFront 개인 키 비밀값은 현재 Compose 프로세스 환경으로 전달한다.
+4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, CloudFront 개인 키 비밀값은 현재 Compose 프로세스 환경으로 전달한다.
 5. EC2 instance role로 ECR에 로그인하고 backend 이미지를 pull한다.
 6. 새 release의 `docker compose up -d --remove-orphans`를 실행한다.
 7. `/nginx-health`와 backend container health가 모두 정상인지 확인한다.
@@ -250,7 +252,7 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | 중복 배포 | `flock` mock test | 두 번째 실행 거절 |
 | rollback 자체 실패 | mock test | 비정상 종료 코드 반환 |
 | 활성화 실패 및 INT/TERM | mock test | 직전 release 복원 |
-| DB/JWT 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
+| DB/JWT/HMAC 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
 | Flyway V1/V2/V3 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환 및 nullable/길이 계약 확인 |
 
 검증 명령:
@@ -307,7 +309,7 @@ ECR 및 S3 저장량, CloudFront 요청·데이터 전송, 소량의 CloudWatch 
 - [x] EC2 HTTP 80 source를 CloudFront origin-facing prefix list로 제한했다.
 - [x] private S3 이미지 버킷, CloudFront OAC, trusted key group을 구성했다.
 - [x] 이미지 저장소 Repository Variable 세 개와 `/fitback/prod/cloudfront-private-key` SecureString을 구성했다.
-- [x] `/fitback/prod/jwt-secret-key`를 포함한 운영 Parameter Store SecureString을 모두 생성했다.
+- [ ] `/fitback/prod/jwt-secret-key`, `/fitback/prod/hmac-secret-key`를 포함한 운영 Parameter Store SecureString을 모두 생성했다.
 - [x] GitHub OIDC 역할에 SSM 최소 권한을 추가했다.
 - [x] GitHub Repository Variable `EC2_INSTANCE_ID`를 추가했다.
 - [x] `Backend CD`를 실제 실행해 SSM command와 health check를 확인했다.

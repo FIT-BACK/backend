@@ -18,6 +18,7 @@ class ProductionProfileConfigurationTest {
                     "DB_USER=fitback",
                     "DB_PASSWORD=secret",
                     "JWT_SECRET_KEY=production-jwt-secret-key-at-least-32-bytes",
+                    "HMAC_SECRET_KEY=production-hmac-secret-key-at-least-32-bytes",
                     "AWS_REGION=ap-northeast-2",
                     "IMAGE_BUCKET=fitback-prod-images",
                     "IMAGE_CDN_BASE_URL=https://images.example.com",
@@ -44,6 +45,8 @@ class ProductionProfileConfigurationTest {
                     .isEqualTo("0");
             assertThat(environment.getProperty("jwt.token.secretKey"))
                     .isEqualTo("production-jwt-secret-key-at-least-32-bytes");
+            assertThat(environment.getProperty("hmac.secret-key"))
+                    .isEqualTo("production-hmac-secret-key-at-least-32-bytes");
             assertThat(environment.getProperty("image.storage.aws-region"))
                     .isEqualTo("ap-northeast-2");
             assertThat(environment.getProperty("image.storage.bucket"))
