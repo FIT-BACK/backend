@@ -7,6 +7,7 @@ import com.fitback.backend.domain.member.service.RejoinBlockChecker;
 import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.OAuthMember;
+import com.fitback.backend.global.util.LowercaseNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
@@ -48,7 +49,7 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
         if (kakaoAccount == null || kakaoAccount.get("email") == null) {
             throw oauthException(ErrorCode.SOCIAL_EMAIL_REQUIRED);
         }
-        String email = (String) kakaoAccount.get("email");
+        String email = LowercaseNormalizer.normalize((String) kakaoAccount.get("email"));
 
         Optional<Member> found =
                 memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, socialUid);
@@ -59,13 +60,15 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
     }
 
     private Member registerNewKakaoMember(String email, String socialUid){
+        String normalizedEmail = LowercaseNormalizer.normalize(email);
+
         //같은 email의 기존 계정이 있다면 가입 막기
-        if (memberRepository.existsByEmail(email)) {
+        if (memberRepository.existsByEmail(normalizedEmail)) {
             throw oauthException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         //탈퇴 후 30일 재가입 차단
-        if (rejoinBlockChecker.isRejoinBlocked(email)) {
+        if (rejoinBlockChecker.isRejoinBlocked(normalizedEmail)) {
             throw oauthException(ErrorCode.REJOIN_BLOCKED);
         }
 
@@ -75,7 +78,7 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
             tempNickname = "user_" + UUID.randomUUID().toString().substring(0, 8);
         } while (memberRepository.existsByNickname(tempNickname));
 
-        Member newMember = Member.createSocial(email, tempNickname, LoginProvider.KAKAO, socialUid);
+        Member newMember = Member.createSocial(normalizedEmail, tempNickname, LoginProvider.KAKAO, socialUid);
         Member savedMember = memberRepository.save(newMember);
 
         //카카오 신규 회원도 기본 알림 설정값 생성

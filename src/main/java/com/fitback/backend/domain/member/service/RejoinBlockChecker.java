@@ -2,6 +2,7 @@ package com.fitback.backend.domain.member.service;
 
 import com.fitback.backend.domain.member.repository.WithdrawnEmailBlockRepository;
 import com.fitback.backend.global.util.HmacUtil;
+import com.fitback.backend.global.util.LowercaseNormalizer;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -17,7 +18,8 @@ public class RejoinBlockChecker {
 
     //탈퇴 후 30일 재가입 차단 대상 이메일인지 여부
     public boolean isRejoinBlocked(String email) {
-        String hashedEmail = hmacUtil.hashHex(email);
+        String normalizedEmail = LowercaseNormalizer.normalize(email);
+        String hashedEmail = hmacUtil.hashHex(normalizedEmail);
         return withdrawnEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(hashedEmail, LocalDateTime.now());
     }
 }

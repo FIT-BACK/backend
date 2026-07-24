@@ -12,6 +12,7 @@ import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.security.token.TempTokenPayload;
 import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
+import com.fitback.backend.global.util.LowercaseNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -34,14 +35,15 @@ public class AuthService {
     //이메일 회원가입
     @Transactional
     public MemberResponse.SignUpResponse signUp(MemberRequest.SignUpRequest dto) {
+        String email = LowercaseNormalizer.normalize(dto.email());
 
         // 이메일 중복 검사
-        if (memberRepository.existsByEmail(dto.email())) {
+        if (memberRepository.existsByEmail(email)) {
             throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         //30일 재가입 차단 검사
-        if (rejoinBlockChecker.isRejoinBlocked(dto.email())) {
+        if (rejoinBlockChecker.isRejoinBlocked(email)) {
             throw new BusinessException(ErrorCode.REJOIN_BLOCKED);
         }
 
@@ -55,7 +57,7 @@ public class AuthService {
         String encodedPassword = passwordEncoder.encode(dto.password());
 
         //member 객체 생성 후 저장
-        Member newMember = Member.create(dto.email(), temporalNickName, encodedPassword, LoginProvider.EMAIL);
+        Member newMember = Member.create(email, temporalNickName, encodedPassword, LoginProvider.EMAIL);
         Member savedMember = memberRepository.save(newMember);
 
         //회원가입과 같은 트랜잭션에서 기본 알림 설정 row 생성
@@ -78,9 +80,10 @@ public class AuthService {
     //이메일 로그인 서비스 메서드
     @Transactional
     public MemberResponse.LoginResponse login(MemberRequest.LoginRequest dto) {
+        String email = LowercaseNormalizer.normalize(dto.email());
 
         //이메일로 member 찾기
-        Member member = memberRepository.findByEmail(dto.email())
+        Member member = memberRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
         //비밀번호 일치 여부 확인
@@ -114,7 +117,7 @@ public class AuthService {
         }
 
         //이메일로 Member 찾기
-        String email = jwtUtil.getEmailFromToken(refreshToken);
+        String email = LowercaseNormalizer.normalize(jwtUtil.getEmailFromToken(refreshToken));
         Member member = memberRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
 
