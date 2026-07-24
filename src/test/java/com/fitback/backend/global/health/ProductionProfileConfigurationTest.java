@@ -57,6 +57,8 @@ class ProductionProfileConfigurationTest {
             assertThat(environment.getProperty("shopping.provider")).isEqualTo("fixture");
             assertThat(environment.getProperty("shopping.shopify.enabled", Boolean.class))
                     .isFalse();
+            assertThat(environment.getProperty("shopping.candidate-token.ttl"))
+                    .isEqualTo("PT10M");
         });
     }
 
