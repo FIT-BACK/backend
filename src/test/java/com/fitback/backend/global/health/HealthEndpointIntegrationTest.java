@@ -30,7 +30,8 @@ import org.springframework.test.web.servlet.MockMvc;
         "image.storage.bucket=fitback-health-test-images",
         "image.storage.cdn-base-url=https://example.invalid",
         "image.storage.cloudfront-key-pair-id=TESTKEY",
-        "image.storage.cloudfront-private-key-base64=dGVzdC1wcml2YXRlLWtleQ=="
+        "image.storage.cloudfront-private-key-base64=dGVzdC1wcml2YXRlLWtleQ==",
+        "hmac.secret-key=test-hmac-secret-key-for-health-endpoint-tests"
 })
 class HealthEndpointIntegrationTest {
 
