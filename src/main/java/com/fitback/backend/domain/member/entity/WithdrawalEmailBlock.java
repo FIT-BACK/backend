@@ -28,31 +28,31 @@ import lombok.NoArgsConstructor;
         )
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class WithdrawnEmailBlock extends BaseCreateTimeEntity {
+public class WithdrawalEmailBlock extends BaseCreateTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "withdrawal_id")
     private Long id;
 
-    //이메일 원문 대신 HMAC-SHA256 hex (개인정보 hard delete 후에도 재가입 차단용)
+    //이메일 원문 대신 HMAC-SHA256 hex 저장
     @Column(name = "email_hash", nullable = false, length = 64)
     private String emailHash;
 
-    //재가입 제한 종료 시각 (탈퇴 시각 + 30일)
+    //재가입 차단 종료 시각
     @Column(name = "blocked_until", nullable = false)
     private LocalDateTime blockedUntil;
 
-    private WithdrawnEmailBlock(String emailHash, LocalDateTime blockedUntil) {
+    private WithdrawalEmailBlock(String emailHash, LocalDateTime blockedUntil) {
         this.emailHash = emailHash;
         this.blockedUntil = blockedUntil;
     }
 
-    public static WithdrawnEmailBlock create(String emailHash, LocalDateTime blockedUntil) {
-        return new WithdrawnEmailBlock(emailHash, blockedUntil);
+    public static WithdrawalEmailBlock create(String emailHash, LocalDateTime blockedUntil) {
+        return new WithdrawalEmailBlock(emailHash, blockedUntil);
     }
 
-    //재탈퇴 시 기존 기록 재사용 (email_hash UNIQUE 충돌 방지 upsert)
+    //동일 이메일 재탈퇴 시 기존 차단 기록 갱신
     public void renew(LocalDateTime blockedUntil) {
         this.blockedUntil = blockedUntil;
     }

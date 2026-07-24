@@ -36,11 +36,13 @@ docker exec "$container_name" mysql -uroot -e \
 
 printf '%s\n' \
   'CREATE TABLE member (member_id BIGINT NOT NULL PRIMARY KEY);' \
+  'INSERT INTO member (member_id) VALUES (1);' \
   'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL);' \
   | docker exec -i "$container_name" mysql -uroot fitback
 
 printf '%s\n' \
   'CREATE TABLE member (member_id BIGINT NOT NULL PRIMARY KEY, refresh_token VARCHAR(512) NULL);' \
+  'INSERT INTO member (member_id) VALUES (1);' \
   'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL);' \
   | docker exec -i "$container_name" mysql -uroot fitback_existing_refresh_token
 
@@ -59,6 +61,25 @@ actual_contract="$(docker exec "$container_name" mysql -uroot \
           (TABLE_NAME = 'image' AND COLUMN_NAME = 'presigned_expires_at')
           OR (TABLE_NAME = 'member' AND COLUMN_NAME = 'refresh_token')
           OR (
+            TABLE_NAME = 'member_notification_setting'
+            AND COLUMN_NAME IN (
+              'member_id',
+              'analysis_complete_enabled',
+              'lookbook_liked_enabled',
+              'trend_update_enabled',
+              'marketing_enabled',
+              'updated_at'
+            )
+          )
+          OR (
+            TABLE_NAME = 'marketing_consent_history'
+            AND COLUMN_NAME IN ('marketing_consent_history_id', 'member_id', 'is_agreed', 'created_at')
+          )
+          OR (
+            TABLE_NAME = 'withdrawal_email_block'
+            AND COLUMN_NAME IN ('withdrawal_id', 'email_hash', 'blocked_until', 'created_at')
+          )
+          OR (
             TABLE_NAME = 'analysis_report'
             AND COLUMN_NAME IN ('original_image_id', 'deleted_at', 'purge_after')
           )
@@ -70,7 +91,21 @@ expected_contract="$(printf '%s\n' \
   'analysis_report.original_image_id=YES' \
   'analysis_report.purge_after=YES' \
   'image.presigned_expires_at=YES' \
-  'member.refresh_token=YES')"
+  'marketing_consent_history.created_at=NO' \
+  'marketing_consent_history.is_agreed=NO' \
+  'marketing_consent_history.marketing_consent_history_id=NO' \
+  'marketing_consent_history.member_id=NO' \
+  'member.refresh_token=YES' \
+  'member_notification_setting.analysis_complete_enabled=NO' \
+  'member_notification_setting.lookbook_liked_enabled=NO' \
+  'member_notification_setting.marketing_enabled=NO' \
+  'member_notification_setting.member_id=NO' \
+  'member_notification_setting.trend_update_enabled=NO' \
+  'member_notification_setting.updated_at=NO' \
+  'withdrawal_email_block.blocked_until=NO' \
+  'withdrawal_email_block.created_at=NO' \
+  'withdrawal_email_block.email_hash=NO' \
+  'withdrawal_email_block.withdrawal_id=NO')"
 
 if [ "$actual_contract" != "$expected_contract" ]; then
   echo 'Unexpected MySQL migration contract:' >&2
@@ -92,5 +127,22 @@ for database in fitback fitback_existing_refresh_token; do
     exit 1
   fi
 done
+
+notification_defaults="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+          member_id, ':',
+          analysis_complete_enabled, ':',
+          lookbook_liked_enabled, ':',
+          trend_update_enabled, ':',
+          marketing_enabled
+      )
+      FROM fitback.member_notification_setting
+      ORDER BY member_id;")"
+
+if [ "$notification_defaults" != '1:1:1:0:0' ]; then
+  echo "Unexpected member_notification_setting defaults: $notification_defaults" >&2
+  exit 1
+fi
 
 echo 'MySQL migration tests passed.'

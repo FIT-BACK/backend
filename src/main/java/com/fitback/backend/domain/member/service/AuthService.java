@@ -5,7 +5,7 @@ import com.fitback.backend.domain.member.dto.MemberResponse;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
-import com.fitback.backend.domain.member.repository.WithdrawnEmailBlockRepository;
+import com.fitback.backend.domain.member.repository.WithdrawalEmailBlockRepository;
 import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
@@ -28,7 +28,7 @@ public class AuthService {
     private final MemberRepository memberRepository;
     private final JwtUtil jwtUtil;
 
-    private final WithdrawnEmailBlockRepository withdrawnEmailBlockRepository;
+    private final WithdrawalEmailBlockRepository withdrawalEmailBlockRepository;
     private final HmacUtil hmacUtil;
     private final NotificationSettingService notificationSettingService;
 
@@ -147,7 +147,7 @@ public class AuthService {
     //탈퇴 후 30일 재가입 차단 검사 (이메일·소셜 가입 공용)
     private void assertNotRejoinBlocked(String email) {
         String hashedEmail = hmacUtil.hashHex(email);
-        if (withdrawnEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(hashedEmail, LocalDateTime.now())) {
+        if (withdrawalEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(hashedEmail, LocalDateTime.now())) {
             throw new BusinessException(ErrorCode.REJOIN_BLOCKED);
         }
     }

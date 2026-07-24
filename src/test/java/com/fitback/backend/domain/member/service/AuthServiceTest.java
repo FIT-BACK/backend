@@ -7,7 +7,7 @@ import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
 import com.fitback.backend.domain.member.repository.MemberRepository;
-import com.fitback.backend.domain.member.repository.WithdrawnEmailBlockRepository;
+import com.fitback.backend.domain.member.repository.WithdrawalEmailBlockRepository;
 import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
@@ -42,7 +42,7 @@ class AuthServiceTest {
     @Mock
     private JwtUtil jwtUtil;
     @Mock
-    private WithdrawnEmailBlockRepository withdrawnEmailBlockRepository;
+    private WithdrawalEmailBlockRepository withdrawalEmailBlockRepository;
     @Mock
     private HmacUtil hmacUtil;
     @Mock
@@ -70,7 +70,7 @@ class AuthServiceTest {
         when(memberRepository.existsByEmail(request.email())).thenReturn(false);
         //재가입 차단 대상 아님
         when(hmacUtil.hashHex(request.email())).thenReturn("hashed-email");
-        when(withdrawnEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(anyString(), any(LocalDateTime.class))).thenReturn(false);
+        when(withdrawalEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(anyString(), any(LocalDateTime.class))).thenReturn(false);
         when(memberRepository.existsByNickname(anyString())).thenReturn(false);
         //테스트용 비밀번호
         when(passwordEncoder.encode(request.password())).thenReturn("encodedPw");
@@ -127,7 +127,7 @@ class AuthServiceTest {
         when(memberRepository.existsByEmail(request.email())).thenReturn(false);
         //해시된 이메일이 만료 전 차단 기록에 존재
         when(hmacUtil.hashHex(request.email())).thenReturn("hashed-email");
-        when(withdrawnEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(anyString(), any(LocalDateTime.class))).thenReturn(true);
+        when(withdrawalEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(anyString(), any(LocalDateTime.class))).thenReturn(true);
 
         //예외 타입과 ErrorCode가 REJOIN_BLOCKED인지 검증
         assertThatThrownBy(() -> authService.signUp(request))

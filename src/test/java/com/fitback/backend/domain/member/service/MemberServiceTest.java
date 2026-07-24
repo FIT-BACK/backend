@@ -8,11 +8,11 @@ import com.fitback.backend.domain.member.dto.MemberResponse;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberTag;
-import com.fitback.backend.domain.member.entity.WithdrawnEmailBlock;
+import com.fitback.backend.domain.member.entity.WithdrawalEmailBlock;
 import com.fitback.backend.domain.member.init.WithdrawnMember;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.repository.MemberTagRepository;
-import com.fitback.backend.domain.member.repository.WithdrawnEmailBlockRepository;
+import com.fitback.backend.domain.member.repository.WithdrawalEmailBlockRepository;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
@@ -60,7 +60,7 @@ class MemberServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
-    private WithdrawnEmailBlockRepository withdrawnEmailBlockRepository;
+    private WithdrawalEmailBlockRepository withdrawalEmailBlockRepository;
     @Mock
     private HmacUtil hmacUtil;
 
@@ -660,13 +660,13 @@ class MemberServiceTest {
         when(memberRepository.findByEmail(WithdrawnMember.EMAIL)).thenReturn(Optional.of(withdrawnMember));
         when(hmacUtil.hashHex("user@fitback.com")).thenReturn("hashed-email");
         //기존 차단 기록 없음 -> 신규 저장
-        when(withdrawnEmailBlockRepository.findByEmailHash("hashed-email")).thenReturn(Optional.empty());
+        when(withdrawalEmailBlockRepository.findByEmailHash("hashed-email")).thenReturn(Optional.empty());
 
         memberService.deleteAccount(authMember);
 
-        ArgumentCaptor<WithdrawnEmailBlock> captor = ArgumentCaptor.forClass(WithdrawnEmailBlock.class);
-        verify(withdrawnEmailBlockRepository).save(captor.capture());
-        WithdrawnEmailBlock saved = captor.getValue();
+        ArgumentCaptor<WithdrawalEmailBlock> captor = ArgumentCaptor.forClass(WithdrawalEmailBlock.class);
+        verify(withdrawalEmailBlockRepository).save(captor.capture());
+        WithdrawalEmailBlock saved = captor.getValue();
         assertThat(saved.getEmailHash()).isEqualTo("hashed-email");
         //호출 시각 차이로 정확히 30일은 못 맞추므로 범위로 검증
         assertThat(saved.getBlockedUntil())
@@ -681,17 +681,17 @@ class MemberServiceTest {
         AuthMember authMember = new AuthMember(deleteMember);
         Member withdrawnMember = createTestMember(99L, WithdrawnMember.EMAIL, WithdrawnMember.NICKNAME, null, LoginProvider.EMAIL);
         //만료 전 기존 기록
-        WithdrawnEmailBlock existing = WithdrawnEmailBlock.create("hashed-email", LocalDateTime.now().plusDays(5));
+        WithdrawalEmailBlock existing = WithdrawalEmailBlock.create("hashed-email", LocalDateTime.now().plusDays(5));
 
         when(memberRepository.findById(1L)).thenReturn(Optional.of(deleteMember));
         when(memberRepository.findByEmail(WithdrawnMember.EMAIL)).thenReturn(Optional.of(withdrawnMember));
         when(hmacUtil.hashHex("user@fitback.com")).thenReturn("hashed-email");
-        when(withdrawnEmailBlockRepository.findByEmailHash("hashed-email")).thenReturn(Optional.of(existing));
+        when(withdrawalEmailBlockRepository.findByEmailHash("hashed-email")).thenReturn(Optional.of(existing));
 
         memberService.deleteAccount(authMember);
 
         //신규 저장 대신 기존 기록만 갱신
-        verify(withdrawnEmailBlockRepository, never()).save(any());
+        verify(withdrawalEmailBlockRepository, never()).save(any());
         assertThat(existing.getBlockedUntil())
                 .isAfter(LocalDateTime.now().plusDays(29))
                 .isBefore(LocalDateTime.now().plusDays(31));
@@ -707,7 +707,7 @@ class MemberServiceTest {
         when(memberRepository.findById(1L)).thenReturn(Optional.of(deleteMember));
         when(memberRepository.findByEmail(WithdrawnMember.EMAIL)).thenReturn(Optional.of(withdrawnMember));
         when(hmacUtil.hashHex("user@fitback.com")).thenReturn("hashed-email");
-        when(withdrawnEmailBlockRepository.findByEmailHash("hashed-email")).thenReturn(Optional.empty());
+        when(withdrawalEmailBlockRepository.findByEmailHash("hashed-email")).thenReturn(Optional.empty());
 
         memberService.deleteAccount(authMember);
 

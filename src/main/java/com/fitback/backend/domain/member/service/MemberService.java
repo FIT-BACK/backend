@@ -3,7 +3,7 @@ package com.fitback.backend.domain.member.service;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
-import com.fitback.backend.domain.member.entity.WithdrawnEmailBlock;
+import com.fitback.backend.domain.member.entity.WithdrawalEmailBlock;
 import com.fitback.backend.domain.member.init.WithdrawnMember;
 import com.fitback.backend.domain.member.dto.MemberRequest;
 import com.fitback.backend.domain.member.dto.MemberResponse;
@@ -12,7 +12,7 @@ import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberTag;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.repository.MemberTagRepository;
-import com.fitback.backend.domain.member.repository.WithdrawnEmailBlockRepository;
+import com.fitback.backend.domain.member.repository.WithdrawalEmailBlockRepository;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
@@ -43,7 +43,7 @@ public class MemberService {
 
     private final PasswordEncoder passwordEncoder;
 
-    private final WithdrawnEmailBlockRepository withdrawnEmailBlockRepository;
+    private final WithdrawalEmailBlockRepository withdrawalEmailBlockRepository;
     private final HmacUtil hmacUtil;
 
     //회원정보 수정
@@ -125,11 +125,11 @@ public class MemberService {
         LocalDateTime blockedUntil = LocalDateTime.now().plusDays(30);
 
         //기존 차단 기록이 있으면 갱신, 없으면 신규 저장 (email_hash UNIQUE 충돌 방지)
-        Optional<WithdrawnEmailBlock> existingBlock = withdrawnEmailBlockRepository.findByEmailHash(hashedEmail);
+        Optional<WithdrawalEmailBlock> existingBlock = withdrawalEmailBlockRepository.findByEmailHash(hashedEmail);
         if (existingBlock.isPresent()) {
             existingBlock.get().renew(blockedUntil);
         } else {
-            withdrawnEmailBlockRepository.save(WithdrawnEmailBlock.create(hashedEmail, blockedUntil));
+            withdrawalEmailBlockRepository.save(WithdrawalEmailBlock.create(hashedEmail, blockedUntil));
         }
 
         //룩북은 삭제하지 않고 탈퇴 회원 계정으로 익명화 (member 삭제 전에)
