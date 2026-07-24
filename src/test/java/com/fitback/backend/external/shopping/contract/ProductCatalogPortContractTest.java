@@ -32,6 +32,7 @@ public abstract class ProductCatalogPortContractTest {
         ProductSearchResult result = port().search(query);
 
         assertThat(result).isNotNull();
+        assertThat(result.items()).isNotEmpty();
         assertThat(result.items()).hasSizeLessThanOrEqualTo(query.pageSize());
         assertThat(result.items())
                 .extracting(ExternalProductCandidate::providerRef)
