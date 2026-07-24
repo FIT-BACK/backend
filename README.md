@@ -102,6 +102,22 @@ JWT 기반 인증을 사용합니다. `SecurityConfig`에서 Swagger/OpenAPI 경
 요청의 `Authorization: Bearer {accessToken}` 헤더는 `JwtAuthFilter`가 검증하여 인증 정보를 설정합니다.
 REST API 기준으로 CSRF, Form Login, HTTP Basic은 비활성화되어 있으며, 세션은 `STATELESS`로 사용합니다.
 
+로컬 프론트엔드 QA에서는 다음 Origin만 백엔드 CORS allowlist에 포함합니다.
+
+```text
+http://localhost:3000
+http://localhost:5173
+http://127.0.0.1:3000
+http://127.0.0.1:5173
+```
+
+JWT는 응답 본문과 `Authorization` 헤더로 전달하며 credential cookie는 허용하지 않습니다.
+배포 후에는 allowlist에 포함된 로컬 프론트엔드 Origin으로 로그인 OPTIONS preflight와 POST 응답의
+`Access-Control-Allow-Origin`을 확인합니다. Spring 애플리케이션 직접 경로는 성공하지만
+CloudFront 경유 요청만 실패하면 CloudFront의 Origin 요청 헤더 전달 및 OPTIONS 캐시 정책을
+별도로 확인합니다. 운영 프론트엔드 Origin 추가는 이 로컬 QA 허용 범위에 포함하지 않습니다.
+이 설정은 S3 이미지 업로드 CORS 또는 EC2 보안 그룹 설정과는 무관합니다.
+
 ## 브랜치 컨벤션
 
 ```text
