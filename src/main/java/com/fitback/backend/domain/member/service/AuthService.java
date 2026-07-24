@@ -6,6 +6,7 @@ import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.repository.WithdrawnEmailBlockRepository;
+import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
@@ -29,6 +30,7 @@ public class AuthService {
 
     private final WithdrawnEmailBlockRepository withdrawnEmailBlockRepository;
     private final HmacUtil hmacUtil;
+    private final NotificationSettingService notificationSettingService;
 
     //이메일 회원가입
     @Transactional
@@ -54,6 +56,9 @@ public class AuthService {
         //member 객체 생성 후 저장
         Member newMember = Member.create(dto.email(), temporalNickName, encodedPassword, LoginProvider.EMAIL);
         Member savedMember = memberRepository.save(newMember);
+
+        //회원가입과 같은 트랜잭션에서 기본 알림 설정 row 생성
+        notificationSettingService.createDefaultSetting(savedMember);
 
         //UserDetails 구현체인 authMember 생성
         AuthMember authMember = new AuthMember(savedMember);
