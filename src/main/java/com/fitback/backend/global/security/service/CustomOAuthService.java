@@ -4,6 +4,7 @@ import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.service.RejoinBlockChecker;
+import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.OAuthMember;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
 
     private final MemberRepository memberRepository;
     private final RejoinBlockChecker rejoinBlockChecker;
+    private final NotificationSettingService notificationSettingService;
 
     @Override
     @Transactional
@@ -37,7 +39,7 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
         // 해당 Access Token을 이용해 카카오 사용자 정보 조회
         OAuth2User oAuth2User = super.loadUser(userRequest);
 
-        // 최상단 id → socialUid (getAttribute의 반환 타입을 Long으로 못박아 String.valueOf(char[]) 오추론 방지)
+        // 최상단 id → socialUid
         Long kakaoId = oAuth2User.getAttribute("id");
         String socialUid = String.valueOf(kakaoId);
 
@@ -50,7 +52,7 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
 
         Optional<Member> found =
                 memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, socialUid);
-        boolean isNewMember = found.isEmpty();      // 조회 결과가 비었으면 = 신규
+        boolean isNewMember = found.isEmpty();      // 조회 결과가 비었으면 신규 계정 생성
         Member member = found.orElseGet(() -> registerNewKakaoMember(email, socialUid));
 
         return new OAuthMember(member, oAuth2User.getAttributes(), isNewMember);
@@ -74,7 +76,12 @@ public class CustomOAuthService extends DefaultOAuth2UserService {
         } while (memberRepository.existsByNickname(tempNickname));
 
         Member newMember = Member.createSocial(email, tempNickname, LoginProvider.KAKAO, socialUid);
-        return memberRepository.save(newMember);
+        Member savedMember = memberRepository.save(newMember);
+
+        //카카오 신규 회원도 기본 알림 설정값 생성
+        notificationSettingService.createDefaultSetting(savedMember);
+
+        return savedMember;
     }
 
     // 우리 ErrorCode를 OAuth2Error에 실어 던지기 (FailureHandler에서 꺼내 프론트로 전달)
