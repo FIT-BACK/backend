@@ -5,7 +5,7 @@
 | 항목 | 값 |
 | --- | --- |
 | 기준일 | 2026-07-24 |
-| 적용 범위 | 추천 결과 생성, 상품 검색·상세, 쇼핑 API 연동, 추천 상품 저장, 카테고리별 그룹핑, 기존 이미지·분석 API |
+| 적용 범위 | Recommendation/Product MVP: 추천 결과 생성, 상품 검색·상세, 쇼핑 API 연동, 추천 상품 저장, 카테고리별 그룹핑. Image/Analysis는 기존 계약 참조 |
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
 | 연동 참고 | Auth `#20`의 `AuthMember` principal과 현재 `AnalysisReport`의 분석 결과를 입력으로 사용 |
@@ -394,6 +394,10 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
 
 인증 회원의 기존 분석 결과를 읽어 현재 추천 세트를 생성하거나 교체한다. Request body는 없다.
 이 API는 분석 태그, `matchPercentage`, 이미지 상태를 변경하지 않는다.
+
+이 절은 후속 기능 이슈에서 구현할 **목표 계약**이다. 현재 `develop`의 legacy
+`PATCH /api/v1/analyses/{reportId}/recommendations`와 `ConfirmTagsRequest`는 이 문서만으로
+변경되지 않으며, Controller·Service·테스트를 함께 전환한 뒤 이 POST 계약을 제공한다.
 
 ### Response `200 OK`
 
@@ -866,8 +870,9 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 
 ### `POST /api/v1/analyses/{reportId}/recommendations`
 
-기존 분석 결과를 읽어 추천 현재 세트를 생성한다. Request body는 없으며 분석 태그와
-`matchPercentage`를 변경하지 않는다. 세부 계약은 7절을 따른다.
+후속 기능 이슈의 목표 계약이다. 기존 분석 결과를 읽어 추천 현재 세트를 생성한다. Request
+body는 없으며 분석 태그와 `matchPercentage`를 변경하지 않는다. 현재 legacy PATCH 구현과
+전환 조건을 포함한 세부 계약은 7절을 따른다.
 
 ### `DELETE /api/v1/analyses/{reportId}`
 

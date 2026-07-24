@@ -131,9 +131,9 @@ erDiagram
 
     PRODUCT {
         BIGINT product_id PK
-        VARCHAR source_api UK
+        VARCHAR source_api
         VARCHAR identity_strategy
-        CHAR provider_identity_key UK
+        CHAR provider_identity_key
         CHAR materialization_key UK
         VARCHAR external_product_id
         VARCHAR external_variant_id
@@ -156,6 +156,8 @@ erDiagram
         DATETIME created_at
         DATETIME updated_at
     }
+
+    %% composite unique: PRODUCT(source_api, provider_identity_key)
 
     RECOMMENDED_ITEM {
         BIGINT recommended_item_id PK
