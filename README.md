@@ -30,7 +30,13 @@ cp .env.example .env
 DB_URL=jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
 DB_USER=your_mysql_user
 DB_PASSWORD=your_mysql_password
+SHOPPING_PROVIDER=fixture
+SHOPIFY_ENABLED=false
 ```
+
+쇼핑 공급자는 최종 공급자가 확정되기 전까지 `fixture`를 기본값으로 사용합니다.
+Shopify 런타임은 비활성화되어 있으므로 로컬 및 CI에서 Shopify 인증정보나 외부 API 호출이
+필요하지 않습니다.
 
 ### 2. MySQL 데이터베이스 생성
 
@@ -55,6 +61,7 @@ CREATE DATABASE fitback;
 ```
 
 테스트 환경에서는 `application-test.yml`을 통해 H2 인메모리 DB를 사용합니다.
+쇼핑 공급자 contract test도 외부 네트워크 없이 fixture Adapter를 기준으로 실행합니다.
 
 ## Swagger
 
