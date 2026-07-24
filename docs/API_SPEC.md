@@ -390,10 +390,10 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
 
 ## 7. 추천 결과 생성
 
-### `POST /api/v1/analyses/{reportId}/recommendations`
+### 목표 계약 — `POST /api/v1/analyses/{reportId}/recommendations`
 
-인증 회원의 기존 분석 결과를 읽어 현재 추천 세트를 생성하거나 교체한다. Request body는 없다.
-이 API는 분석 태그, `matchPercentage`, 이미지 상태를 변경하지 않는다.
+후속 기능 이슈에서 인증 회원의 기존 분석 결과를 읽어 현재 추천 세트를 생성하거나 교체한다.
+목표 Request body는 없으며 분석 태그, `matchPercentage`, 이미지 상태를 변경하지 않는다.
 
 이 절은 후속 기능 이슈에서 구현할 **목표 계약**이다. 현재 `develop`의 legacy
 `PATCH /api/v1/analyses/{reportId}/recommendations`와 `ConfirmTagsRequest`는 이 문서만으로
@@ -868,7 +868,7 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 본인의 삭제되지 않은 리포트 상세와 확정 태그, 추천 그룹을 반환한다. private 이미지 URL은
 10분 유효한 CloudFront signed URL이다.
 
-### `POST /api/v1/analyses/{reportId}/recommendations`
+### 목표 계약 — `POST /api/v1/analyses/{reportId}/recommendations`
 
 후속 기능 이슈의 목표 계약이다. 기존 분석 결과를 읽어 추천 현재 세트를 생성한다. Request
 body는 없으며 분석 태그와 `matchPercentage`를 변경하지 않는다. 현재 legacy PATCH 구현과
