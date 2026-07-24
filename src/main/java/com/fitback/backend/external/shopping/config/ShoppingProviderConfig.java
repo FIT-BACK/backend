@@ -1,5 +1,7 @@
 package com.fitback.backend.external.shopping.config;
 
+import com.fitback.backend.domain.product.service.port.ProductCategoryMapper;
+import com.fitback.backend.external.shopping.fixture.FixtureProductCategoryMapper;
 import com.fitback.backend.external.shopping.fixture.FixtureShoppingProviderAdapter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -19,5 +21,10 @@ public class ShoppingProviderConfig {
             );
         }
         return new FixtureShoppingProviderAdapter();
+    }
+
+    @Bean
+    public ProductCategoryMapper productCategoryMapper() {
+        return new FixtureProductCategoryMapper();
     }
 }
