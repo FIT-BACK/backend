@@ -37,7 +37,6 @@ public class LookbookLike extends BaseCreateTimeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lookbook_id", nullable = false)
-    @OnDelete(action = OnDeleteAction.CASCADE)
     private Lookbook lookbook;
 
     @ManyToOne(fetch = FetchType.LAZY)
