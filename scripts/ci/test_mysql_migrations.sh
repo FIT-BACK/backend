@@ -37,11 +37,15 @@ docker exec "$container_name" mysql -uroot -e \
 printf '%s\n' \
   'CREATE TABLE member (member_id BIGINT NOT NULL PRIMARY KEY);' \
   'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL);' \
+  'CREATE TABLE product (product_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, external_product_id VARCHAR(100) NULL, name VARCHAR(255) NOT NULL, brand_name VARCHAR(100) NULL, seller_name VARCHAR(100) NOT NULL, price INT NOT NULL, average_price INT NULL, category VARCHAR(50) NOT NULL, season VARCHAR(20) NULL, gender VARCHAR(10) NULL, purchase_url VARCHAR(2048) NOT NULL, image_url VARCHAR(2048) NOT NULL, source_api VARCHAR(50) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL);' \
+  "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
   | docker exec -i "$container_name" mysql -uroot fitback
 
 printf '%s\n' \
   'CREATE TABLE member (member_id BIGINT NOT NULL PRIMARY KEY, refresh_token VARCHAR(512) NULL);' \
   'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL);' \
+  'CREATE TABLE product (product_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, external_product_id VARCHAR(100) NULL, name VARCHAR(255) NOT NULL, brand_name VARCHAR(100) NULL, seller_name VARCHAR(100) NOT NULL, price INT NOT NULL, average_price INT NULL, category VARCHAR(50) NOT NULL, season VARCHAR(20) NULL, gender VARCHAR(10) NULL, purchase_url VARCHAR(2048) NOT NULL, image_url VARCHAR(2048) NOT NULL, source_api VARCHAR(50) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL);' \
+  "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
   | docker exec -i "$container_name" mysql -uroot fitback_existing_refresh_token
 
 for database in fitback fitback_existing_refresh_token; do
@@ -59,6 +63,73 @@ for database in fitback fitback_existing_refresh_token; do
     docker exec -i "$container_name" mysql -uroot "$database" < "$migration"
   done
 done
+
+product_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = 'fitback'
+        AND TABLE_NAME = 'product'
+        AND COLUMN_NAME IN (
+          'category',
+          'identity_strategy',
+          'provider_identity_key',
+          'materialization_key',
+          'storage_mode',
+          'current_price',
+          'currency',
+          'availability',
+          'snapshot_expires_at'
+        )
+      ORDER BY COLUMN_NAME;")"
+
+expected_product_contract="$(printf '%s\n' \
+  'availability:NO:varchar' \
+  'category:YES:varchar' \
+  'currency:YES:char' \
+  'current_price:YES:decimal' \
+  'identity_strategy:NO:varchar' \
+  'materialization_key:YES:char' \
+  'provider_identity_key:YES:char' \
+  'snapshot_expires_at:YES:datetime' \
+  'storage_mode:NO:varchar')"
+
+if [ "$product_contract" != "$expected_product_contract" ]; then
+  echo 'Unexpected product migration contract:' >&2
+  printf '%s\n' "$product_contract" >&2
+  exit 1
+fi
+
+legacy_product_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        identity_strategy, ':',
+        storage_mode, ':',
+        availability, ':',
+        CHAR_LENGTH(materialization_key), ':',
+        IF(current_price IS NULL, 'NO_GUESSED_PRICE', 'GUESSED_PRICE'), ':',
+        category
+      )
+      FROM fitback.product
+      WHERE external_product_id = 'legacy-1';")"
+
+if [ "$legacy_product_contract" != 'SNAPSHOT_UUID:SNAPSHOT:UNKNOWN:64:NO_GUESSED_PRICE:OTHER' ]; then
+  echo "Unexpected legacy product backfill: $legacy_product_contract" >&2
+  exit 1
+fi
+
+product_category_length="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CHARACTER_MAXIMUM_LENGTH
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = 'fitback'
+        AND TABLE_NAME = 'product'
+        AND COLUMN_NAME = 'category';")"
+
+if [ "$product_category_length" != '30' ]; then
+  echo "Unexpected product.category length: $product_category_length" >&2
+  exit 1
+fi
 
 actual_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
