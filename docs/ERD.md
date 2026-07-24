@@ -227,16 +227,18 @@ erDiagram
 UK_PRODUCT_SOURCE_IDENTITY(source_api, provider_identity_key)
 UK_PRODUCT_MATERIALIZATION_KEY(materialization_key)
 IDX_PRODUCT_CATEGORY_AVAILABILITY(category, availability)
-CHK_PRODUCT_IDENTITY_STRATEGY(
-  (identity_strategy='PROVIDER_KEY' AND provider_identity_key IS NOT NULL)
+CK_PRODUCT_IDENTITY_STRATEGY(
+  (identity_strategy='PROVIDER_KEY' AND provider_identity_key IS NOT NULL
+   AND external_product_id IS NOT NULL)
   OR (identity_strategy='SNAPSHOT_UUID' AND materialization_key IS NOT NULL)
 )
-CHK_PRODUCT_PRICE_METADATA(
+CK_PRODUCT_PRICE_METADATA(
   (list_price IS NULL AND current_price IS NULL AND sale_price IS NULL
    AND currency IS NULL AND price_observed_at IS NULL)
-  OR (currency IS NOT NULL AND price_observed_at IS NOT NULL)
+  OR (currency IS NOT NULL AND price_observed_at IS NOT NULL
+      AND (list_price IS NOT NULL OR current_price IS NOT NULL OR sale_price IS NOT NULL))
 )
-CHK_PRODUCT_PRICE_VALUE(
+CK_PRODUCT_PRICE_VALUE(
   (list_price IS NULL OR list_price >= 0)
   AND (current_price IS NULL OR current_price >= 0)
   AND (sale_price IS NULL OR sale_price >= 0)
