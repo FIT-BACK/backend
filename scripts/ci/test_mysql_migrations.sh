@@ -64,25 +64,6 @@ for database in fitback fitback_existing_refresh_token; do
   done
 done
 
-product_contract="$(docker exec "$container_name" mysql -uroot \
-  --batch --skip-column-names \
-  -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
-      FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = 'fitback'
-        AND TABLE_NAME = 'product'
-        AND COLUMN_NAME IN (
-          'category',
-          'identity_strategy',
-          'provider_identity_key',
-          'materialization_key',
-          'storage_mode',
-          'current_price',
-          'currency',
-          'availability',
-          'snapshot_expires_at'
-        )
-      ORDER BY COLUMN_NAME;")"
-
 expected_product_contract="$(printf '%s\n' \
   'availability:NO:varchar' \
   'category:YES:varchar' \
@@ -94,42 +75,72 @@ expected_product_contract="$(printf '%s\n' \
   'snapshot_expires_at:YES:datetime' \
   'storage_mode:NO:varchar')"
 
-if [ "$product_contract" != "$expected_product_contract" ]; then
-  echo 'Unexpected product migration contract:' >&2
-  printf '%s\n' "$product_contract" >&2
-  exit 1
-fi
+validate_product_contract() {
+  local database="$1"
+  local product_contract
+  local legacy_product_contract
+  local product_category_length
 
-legacy_product_contract="$(docker exec "$container_name" mysql -uroot \
-  --batch --skip-column-names \
-  -e "SELECT CONCAT(
-        identity_strategy, ':',
-        storage_mode, ':',
-        availability, ':',
-        CHAR_LENGTH(materialization_key), ':',
-        IF(current_price IS NULL, 'NO_GUESSED_PRICE', 'GUESSED_PRICE'), ':',
-        category
-      )
-      FROM fitback.product
-      WHERE external_product_id = 'legacy-1';")"
+  product_contract="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'product'
+          AND COLUMN_NAME IN (
+            'category',
+            'identity_strategy',
+            'provider_identity_key',
+            'materialization_key',
+            'storage_mode',
+            'current_price',
+            'currency',
+            'availability',
+            'snapshot_expires_at'
+          )
+        ORDER BY COLUMN_NAME;")"
 
-if [ "$legacy_product_contract" != 'SNAPSHOT_UUID:SNAPSHOT:UNKNOWN:64:NO_GUESSED_PRICE:OTHER' ]; then
-  echo "Unexpected legacy product backfill: $legacy_product_contract" >&2
-  exit 1
-fi
+  if [ "$product_contract" != "$expected_product_contract" ]; then
+    echo "Unexpected product migration contract in $database:" >&2
+    printf '%s\n' "$product_contract" >&2
+    exit 1
+  fi
 
-product_category_length="$(docker exec "$container_name" mysql -uroot \
-  --batch --skip-column-names \
-  -e "SELECT CHARACTER_MAXIMUM_LENGTH
-      FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = 'fitback'
-        AND TABLE_NAME = 'product'
-        AND COLUMN_NAME = 'category';")"
+  legacy_product_contract="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+          identity_strategy, ':',
+          storage_mode, ':',
+          availability, ':',
+          CHAR_LENGTH(materialization_key), ':',
+          IF(current_price IS NULL, 'NO_GUESSED_PRICE', 'GUESSED_PRICE'), ':',
+          category
+        )
+        FROM $database.product
+        WHERE external_product_id = 'legacy-1';")"
 
-if [ "$product_category_length" != '30' ]; then
-  echo "Unexpected product.category length: $product_category_length" >&2
-  exit 1
-fi
+  if [ "$legacy_product_contract" != 'SNAPSHOT_UUID:SNAPSHOT:UNKNOWN:64:NO_GUESSED_PRICE:OTHER' ]; then
+    echo "Unexpected legacy product backfill in $database: $legacy_product_contract" >&2
+    exit 1
+  fi
+
+  product_category_length="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CHARACTER_MAXIMUM_LENGTH
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'product'
+          AND COLUMN_NAME = 'category';")"
+
+  if [ "$product_category_length" != '30' ]; then
+    echo "Unexpected product.category length in $database: $product_category_length" >&2
+    exit 1
+  fi
+}
+
+for database in fitback fitback_existing_refresh_token; do
+  validate_product_contract "$database"
+done
 
 actual_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
