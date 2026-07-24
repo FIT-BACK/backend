@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
 import com.fitback.backend.external.shopping.fixture.FixtureShoppingProviderAdapter;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -26,6 +27,7 @@ class ShoppingProviderConfigTest {
             assertThat(properties.provider())
                     .isEqualTo(ShoppingProviderProperties.Provider.FIXTURE);
             assertThat(properties.shopify().enabled()).isFalse();
+            assertThat(properties.candidateToken().ttl()).isEqualTo(Duration.ofMinutes(10));
         });
     }
 
@@ -51,6 +53,19 @@ class ShoppingProviderConfigTest {
                     assertThat(context.getStartupFailure())
                             .hasStackTraceContaining(
                                     "shopping.shopify.enabled must remain false"
+                            );
+                });
+    }
+
+    @Test
+    void rejectsNonPositiveCandidateTokenTtl() {
+        contextRunner
+                .withPropertyValues("shopping.candidate-token.ttl=PT0S")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining(
+                                    "shopping.candidate-token.ttl must be positive"
                             );
                 });
     }

@@ -31,7 +31,34 @@ public enum ErrorCode {
     IMAGE_UPLOAD_EXPIRED(HttpStatus.GONE, "IMAGE410_1", "이미지 업로드 요청이 만료되었습니다."),
     INVALID_IMAGE_CONTENT(HttpStatus.UNPROCESSABLE_ENTITY, "IMAGE422_1", "실제 이미지 내용이 올바르지 않습니다."),
     IMAGE_PRESIGN_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "IMAGE500_1", "이미지 업로드 정보를 발급할 수 없습니다."),
-    IMAGE_STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "IMAGE500_2", "이미지 저장소 처리에 실패했습니다.");
+    IMAGE_STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "IMAGE500_2", "이미지 저장소 처리에 실패했습니다."),
+
+    PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT404_1", "상품을 찾을 수 없습니다."),
+    PRODUCT_REFERENCE_INVALID(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "PRODUCT422_1",
+            "상품 후보 정보가 유효하지 않습니다."
+    ),
+    PRODUCT_REFERENCE_UNSUPPORTED(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "PRODUCT422_2",
+            "상세 조회를 지원하지 않는 상품 후보입니다."
+    ),
+    PRODUCT_PROVIDER_RESPONSE_INVALID(
+            HttpStatus.BAD_GATEWAY,
+            "PRODUCT502_1",
+            "상품 공급자 응답을 처리할 수 없습니다."
+    ),
+    PRODUCT_PROVIDER_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "PRODUCT503_1",
+            "상품 공급자를 일시적으로 사용할 수 없습니다."
+    ),
+    PRODUCT_PROVIDER_QUOTA_EXCEEDED(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "PRODUCT503_2",
+            "상품 공급자 요청 한도를 초과했습니다."
+    );
 
     private final HttpStatus httpStatus;
     private final String code;

@@ -313,6 +313,8 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
 }
 ```
 
+`candidateToken`은 공백일 수 없으며 최대 4096자다.
+
 ### Response — 새 Product `201 Created`
 
 ```json
@@ -385,6 +387,10 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
 - 표시 가능한 데이터가 전혀 없으면 `PRODUCT503_1`이다.
 - provider not found는 Product를 hard delete하지 않고 `UNAVAILABLE`로 표시한다.
 - 찜 해제는 상세 조회 성공 여부와 무관하게 동작한다.
+
+Issue #106 구현은 fixture 기본 런타임에서 검색 GET의 무저장, 회원·목적·10분 만료
+candidate token, 안정 provider identity의 멱등 materialize와 상세 live lookup 계약을
+검증한다. Shopify 런타임 및 실제 외부 호출은 활성화하지 않는다.
 
 ---
 
