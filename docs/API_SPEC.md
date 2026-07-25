@@ -484,7 +484,7 @@ Request body는 없으며 분석 태그, `matchPercentage`, 이미지 상태를 
 - 추천 세트 교체는 `SavedProduct`를 변경하지 않는다.
 - 일부 태그 query가 실패하면 `PROVIDER_PARTIAL_FAILURE`, 저장 불가 후보를 제외하면
   `MATERIALIZATION_SKIPPED` warning과 `partial=true`를 반환한다.
-- 저장 상품 기능 구현 전까지 추천 응답의 `isSaved`는 `false`다.
+- 추천 응답과 상품 상세 응답의 `isSaved`는 인증 회원의 `SavedProduct` 관계를 기준으로 반환한다.
 
 ---
 
@@ -592,6 +592,8 @@ body는 없다.
 ```
 
 - 정렬은 `savedAt DESC, productId DESC`다.
+- `pageSize` 기본값은 10이며 허용 범위는 1~20이다.
+- `cursor`는 마지막 항목의 저장 시각과 상품 ID를 서버가 인코딩한 opaque 문자열이다.
 - 품절·not found·일시 장애여도 찜 관계는 유지한다.
 - live hydrate 실패 시 허용된 snapshot과 `dataStatus=STALE_SNAPSHOT`,
   `availability=TEMPORARILY_UNRESOLVED` 상태를 반환한다.

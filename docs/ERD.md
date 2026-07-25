@@ -4,11 +4,11 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 기준일 | 2026-07-24 |
+| 기준일 | 2026-07-26 |
 | 적용 범위 | 추천 결과 생성, 상품 검색·상세, 쇼핑 API 연동, 추천 상품 저장, 카테고리별 그룹핑, 기존 이미지 metadata |
-| 기준 코드 | 현재 `develop`의 `Member`, `AnalysisReport`, `Tag`, `Product`, `ProductTag`, `RecommendedItem` |
+| 기준 코드 | 현재 `develop`과 Issue `#114`의 `Member`, `AnalysisReport`, `Tag`, `Product`, `ProductTag`, `RecommendedItem`, `SavedProduct` |
 | 연동 참고 | Recommendation은 기존 Analysis 결과를 읽기 전용 입력으로 사용 |
-| 문서 성격 | Issue `#98` 데이터 계약. 실제 Entity·migration 변경은 후속 기능 이슈에서 진행 |
+| 문서 성격 | Issue `#98` 데이터 계약을 Issue `#114` 구현 상태와 동기화 |
 
 이 문서는 임시 ERD의 `products`, `recommendations`, `product_saves`,
 `product_style_tags` 개념을 현재 단수형 테이블명과 JPA 모델에 맞춘다. 현재 코드와 다른 항목은
@@ -434,7 +434,7 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 
 ### 7.5 신규 Entity
 
-- `SavedProduct`와 `SavedProductId`만 현재 범위의 신규 Entity 후보다.
+- Issue #114에서 `SavedProduct`와 `SavedProductId`를 구현한다.
 - 추천 실행 이력은 요구사항이 생길 때 별도 migration으로 추가한다.
 
 ---
@@ -460,7 +460,7 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 - [ ] 8개 그룹 순서, 그룹별 Top 5, 빈 그룹 포함이 검증됨
 - [ ] 입력 version 변경 후 늦게 끝난 요청이 현재 세트를 덮어쓰지 못함
 - [ ] 추천 항목 0개 성공과 미생성이 metadata로 구분됨
-- [ ] `saved_product` 복합 key로 PUT/DELETE가 멱등임
+- [x] `saved_product` 복합 key로 PUT/DELETE가 멱등임
 - [ ] 추천 교체·공급자 장애·품절 후에도 저장 상품이 유지됨
 - [ ] 공급자 약관상 저장 불가 필드가 DB에 남지 않음
 - [ ] Entity 또는 DB 변경 PR에서 이 문서와 실제 migration을 함께 갱신함
