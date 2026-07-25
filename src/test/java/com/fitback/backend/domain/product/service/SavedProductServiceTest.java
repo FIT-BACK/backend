@@ -8,18 +8,21 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.product.dto.SavedProductListResponse;
+import com.fitback.backend.domain.product.entity.Product;
 import com.fitback.backend.domain.product.entity.SavedProduct;
+import com.fitback.backend.domain.product.entity.SavedProductId;
 import com.fitback.backend.domain.product.repository.ProductRepository;
 import com.fitback.backend.domain.product.repository.SavedProductRepository;
-import com.fitback.backend.domain.product.service.ProductDetailService;
 import com.fitback.backend.domain.product.service.model.ProductAvailability;
 import com.fitback.backend.domain.product.service.model.ProductDataStatus;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.SliceImpl;
@@ -42,7 +45,7 @@ class SavedProductServiceTest {
     void keepsRelationshipAndReturnsMinimalItemWhenProductLookupFails() {
         SavedProduct savedProduct = mock(SavedProduct.class);
         when(savedProduct.getId()).thenReturn(
-                com.fitback.backend.domain.product.entity.SavedProductId.create(1L, 100L)
+                SavedProductId.create(1L, 100L)
         );
         when(savedProduct.getCreatedAt())
                 .thenReturn(Instant.parse("2026-07-26T03:00:00Z"));
@@ -65,5 +68,39 @@ class SavedProductServiceTest {
             assertThat(item.name()).isNull();
         });
         verify(savedProductRepository, never()).deleteSavedProduct(any(), any());
+    }
+
+    @Test
+    void normalizesCreatedSavedAtToDatabaseMicrosecondPrecision() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        ProductRepository productRepository = mock(ProductRepository.class);
+        SavedProduct savedProduct = mock(SavedProduct.class);
+        Member member = mock(Member.class);
+        Product product = mock(Product.class);
+        Instant nanosecondTimestamp = Instant.parse("2026-07-26T03:00:00.123456789Z");
+
+        when(member.getId()).thenReturn(1L);
+        when(product.getId()).thenReturn(100L);
+        when(memberRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(member));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(savedProductRepository.findByIdMemberIdAndIdProductId(1L, 100L))
+                .thenReturn(Optional.empty());
+        when(savedProductRepository.saveAndFlush(any(SavedProduct.class)))
+                .thenReturn(savedProduct);
+        when(savedProduct.getId()).thenReturn(SavedProductId.create(1L, 100L));
+        when(savedProduct.getCreatedAt()).thenReturn(nanosecondTimestamp);
+
+        SavedProductService service = new SavedProductService(
+                savedProductRepository,
+                memberRepository,
+                productRepository,
+                productDetailService,
+                new SavedProductCursorCodec()
+        );
+
+        SavedProductService.SaveResult result = service.save(1L, 100L);
+
+        assertThat(result.response().savedAt())
+                .isEqualTo(Instant.parse("2026-07-26T03:00:00.123456Z"));
     }
 }
