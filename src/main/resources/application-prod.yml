@@ -35,3 +35,6 @@ image:
     cdn-base-url: ${IMAGE_CDN_BASE_URL}
     cloudfront-key-pair-id: ${CLOUDFRONT_KEY_PAIR_ID}
     cloudfront-private-key-base64: ${CLOUDFRONT_PRIVATE_KEY_BASE64}
+
+hmac:
+  secret-key: ${HMAC_SECRET_KEY}

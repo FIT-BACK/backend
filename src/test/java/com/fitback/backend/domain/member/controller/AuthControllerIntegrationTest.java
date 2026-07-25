@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.notification.entity.MemberNotificationSetting;
+import com.fitback.backend.domain.notification.repository.MemberNotificationSettingRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -31,6 +33,9 @@ class AuthControllerIntegrationTest {
 
     @Autowired
     private MemberRepository memberRepository;
+
+    @Autowired
+    private MemberNotificationSettingRepository notificationSettingRepository;
 
     //JSON 생성/파싱용, 컨텍스트에 빈이 없어 직접 생성
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -64,6 +69,14 @@ class AuthControllerIntegrationTest {
 
         //DB에 회원 저장 확인
         assertThat(memberRepository.existsByEmail("test@fitback.com")).isTrue();
+
+        //회원가입 시 기본 알림 설정 저장 확인
+        Member member = memberRepository.findByEmail("test@fitback.com").orElseThrow();
+        MemberNotificationSetting setting = notificationSettingRepository.findById(member.getId()).orElseThrow();
+        assertThat(setting.getAnalysisCompleteEnabled()).isTrue();
+        assertThat(setting.getLookbookLikedEnabled()).isTrue();
+        assertThat(setting.getTrendUpdateEnabled()).isFalse();
+        assertThat(setting.getMarketingEnabled()).isFalse();
     }
 
     //회원가입 실패 테스트 - 이메일 중복 시 409

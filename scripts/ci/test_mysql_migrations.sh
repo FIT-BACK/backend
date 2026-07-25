@@ -34,25 +34,30 @@ fi
 docker exec "$container_name" mysql -uroot -e \
   'CREATE DATABASE fitback; CREATE DATABASE fitback_existing_refresh_token;'
 
-printf '%s\n' \
-  'CREATE TABLE member (member_id BIGINT NOT NULL PRIMARY KEY);' \
-  'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL);' \
-  'CREATE TABLE product (product_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, external_product_id VARCHAR(100) NULL, name VARCHAR(255) NOT NULL, brand_name VARCHAR(100) NULL, seller_name VARCHAR(100) NOT NULL, price INT NOT NULL, average_price INT NULL, category VARCHAR(50) NOT NULL, season VARCHAR(20) NULL, gender VARCHAR(10) NULL, purchase_url VARCHAR(2048) NOT NULL, image_url VARCHAR(2048) NOT NULL, source_api VARCHAR(50) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL);' \
-  "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
-  "INSERT INTO analysis_report (report_id, member_id, image_url, match_percentage) VALUES (7001, 8001, 'https://example.com/analysis.jpg', 70);" \
-  'CREATE TABLE recommended_item (recommend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, report_id BIGINT NOT NULL, product_id BIGINT NOT NULL, `rank` INT NOT NULL, category VARCHAR(50) NOT NULL, similarity_score INT NOT NULL, is_value_match BOOLEAN NOT NULL, created_at DATETIME(6) NOT NULL);' \
-  "INSERT INTO recommended_item (report_id, product_id, \`rank\`, category, similarity_score, is_value_match, created_at) VALUES (7001, 1, 1, '상의', 90, TRUE, NOW());" \
-  | docker exec -i "$container_name" mysql -uroot fitback
+seed_baseline_schema() {
+  local database="$1"
+  local member_columns="$2"
 
-printf '%s\n' \
-  'CREATE TABLE member (member_id BIGINT NOT NULL PRIMARY KEY, refresh_token VARCHAR(512) NULL);' \
-  'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL);' \
-  'CREATE TABLE product (product_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, external_product_id VARCHAR(100) NULL, name VARCHAR(255) NOT NULL, brand_name VARCHAR(100) NULL, seller_name VARCHAR(100) NOT NULL, price INT NOT NULL, average_price INT NULL, category VARCHAR(50) NOT NULL, season VARCHAR(20) NULL, gender VARCHAR(10) NULL, purchase_url VARCHAR(2048) NOT NULL, image_url VARCHAR(2048) NOT NULL, source_api VARCHAR(50) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL);' \
-  "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
-  "INSERT INTO analysis_report (report_id, member_id, image_url, match_percentage) VALUES (7001, 8001, 'https://example.com/analysis.jpg', 70);" \
-  'CREATE TABLE recommended_item (recommend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, report_id BIGINT NOT NULL, product_id BIGINT NOT NULL, `rank` INT NOT NULL, category VARCHAR(50) NOT NULL, similarity_score INT NOT NULL, is_value_match BOOLEAN NOT NULL, created_at DATETIME(6) NOT NULL);' \
-  "INSERT INTO recommended_item (report_id, product_id, \`rank\`, category, similarity_score, is_value_match, created_at) VALUES (7001, 1, 1, '상의', 90, TRUE, NOW());" \
-  | docker exec -i "$container_name" mysql -uroot fitback_existing_refresh_token
+  printf '%s\n' \
+    "CREATE TABLE member (${member_columns});" \
+    'INSERT INTO member (member_id) VALUES (1), (8001);' \
+    'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL, CONSTRAINT FK_ANALYSIS_REPORT_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
+    "INSERT INTO analysis_report (report_id, member_id, image_url, match_percentage) VALUES (7001, 8001, 'https://example.com/analysis.jpg', 70);" \
+    'CREATE TABLE product (product_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, external_product_id VARCHAR(100) NULL, name VARCHAR(255) NOT NULL, brand_name VARCHAR(100) NULL, seller_name VARCHAR(100) NOT NULL, price INT NOT NULL, average_price INT NULL, category VARCHAR(50) NOT NULL, season VARCHAR(20) NULL, gender VARCHAR(10) NULL, purchase_url VARCHAR(2048) NOT NULL, image_url VARCHAR(2048) NOT NULL, source_api VARCHAR(50) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL);' \
+    "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
+    'CREATE TABLE recommended_item (recommend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, report_id BIGINT NOT NULL, product_id BIGINT NOT NULL, `rank` INT NOT NULL, category VARCHAR(50) NOT NULL, similarity_score INT NOT NULL, is_value_match BOOLEAN NOT NULL, created_at DATETIME(6) NOT NULL);' \
+    "INSERT INTO recommended_item (report_id, product_id, \`rank\`, category, similarity_score, is_value_match, created_at) VALUES (7001, 1, 1, 'TOP', 90, TRUE, NOW());" \
+    'CREATE TABLE member_tag (member_tag_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_MEMBER_TAG_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
+    'CREATE TABLE report_tag (report_tag_id BIGINT NOT NULL PRIMARY KEY, report_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_REPORT_TAG_REPORT_OLD FOREIGN KEY (report_id) REFERENCES analysis_report (report_id));' \
+    'CREATE TABLE closet_save (closet_save_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, target_type VARCHAR(30) NOT NULL, target_id BIGINT NOT NULL, CONSTRAINT FK_CLOSET_SAVE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
+    'CREATE TABLE lookbook_like (lookbook_like_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, lookbook_id BIGINT NOT NULL, CONSTRAINT FK_LOOKBOOK_LIKE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
+    'CREATE TABLE trend_content (trend_id BIGINT NOT NULL PRIMARY KEY, created_by BIGINT NOT NULL, title VARCHAR(100) NOT NULL, CONSTRAINT FK_TREND_CONTENT_MEMBER_OLD FOREIGN KEY (created_by) REFERENCES member (member_id));' \
+    'CREATE TABLE trend_tag (trend_tag_id BIGINT NOT NULL PRIMARY KEY, trend_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_TREND_TAG_TREND_OLD FOREIGN KEY (trend_id) REFERENCES trend_content (trend_id));' \
+    | docker exec -i "$container_name" mysql -uroot "$database"
+}
+
+seed_baseline_schema fitback 'member_id BIGINT NOT NULL PRIMARY KEY'
+seed_baseline_schema fitback_existing_refresh_token 'member_id BIGINT NOT NULL PRIMARY KEY, refresh_token VARCHAR(512) NULL'
 
 for database in fitback fitback_existing_refresh_token; do
   for migration in src/main/resources/db/migration/V*.sql; do
@@ -365,6 +370,25 @@ actual_contract="$(docker exec "$container_name" mysql -uroot \
             TABLE_NAME = 'analysis_report'
             AND COLUMN_NAME IN ('original_image_id', 'deleted_at', 'purge_after')
           )
+          OR (
+            TABLE_NAME = 'member_notification_setting'
+            AND COLUMN_NAME IN (
+              'member_id',
+              'analysis_complete_enabled',
+              'lookbook_liked_enabled',
+              'trend_update_enabled',
+              'marketing_enabled',
+              'updated_at'
+            )
+          )
+          OR (
+            TABLE_NAME = 'marketing_consent_history'
+            AND COLUMN_NAME IN ('marketing_consent_history_id', 'member_id', 'is_agreed', 'created_at')
+          )
+          OR (
+            TABLE_NAME = 'withdrawal_email_block'
+            AND COLUMN_NAME IN ('withdrawal_id', 'email_hash', 'blocked_until', 'created_at')
+          )
         )
       ORDER BY TABLE_NAME, COLUMN_NAME;")"
 
@@ -373,7 +397,21 @@ expected_contract="$(printf '%s\n' \
   'analysis_report.original_image_id=YES' \
   'analysis_report.purge_after=YES' \
   'image.presigned_expires_at=YES' \
-  'member.refresh_token=YES')"
+  'marketing_consent_history.created_at=NO' \
+  'marketing_consent_history.is_agreed=NO' \
+  'marketing_consent_history.marketing_consent_history_id=NO' \
+  'marketing_consent_history.member_id=NO' \
+  'member.refresh_token=YES' \
+  'member_notification_setting.analysis_complete_enabled=NO' \
+  'member_notification_setting.lookbook_liked_enabled=NO' \
+  'member_notification_setting.marketing_enabled=NO' \
+  'member_notification_setting.member_id=NO' \
+  'member_notification_setting.trend_update_enabled=NO' \
+  'member_notification_setting.updated_at=NO' \
+  'withdrawal_email_block.blocked_until=NO' \
+  'withdrawal_email_block.created_at=NO' \
+  'withdrawal_email_block.email_hash=NO' \
+  'withdrawal_email_block.withdrawal_id=NO')"
 
 if [ "$actual_contract" != "$expected_contract" ]; then
   echo 'Unexpected MySQL migration contract:' >&2
@@ -471,5 +509,63 @@ for database in fitback fitback_existing_refresh_token; do
     exit 1
   fi
 done
+
+notification_defaults="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+          member_id, ':',
+          analysis_complete_enabled, ':',
+          lookbook_liked_enabled, ':',
+          trend_update_enabled, ':',
+          marketing_enabled
+      )
+      FROM fitback.member_notification_setting
+      ORDER BY member_id;")"
+
+expected_notification_defaults="$(printf '%s\n' \
+  '1:1:1:0:0' \
+  '8001:1:1:0:0' \
+  '9001:1:1:0:0')"
+
+if [ "$notification_defaults" != "$expected_notification_defaults" ]; then
+  echo "Unexpected member_notification_setting defaults: $notification_defaults" >&2
+  exit 1
+fi
+
+member_delete_cascades="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(k.TABLE_NAME, '.', k.COLUMN_NAME, '->', k.REFERENCED_TABLE_NAME, '=', rc.DELETE_RULE)
+      FROM information_schema.KEY_COLUMN_USAGE k
+      JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+        ON rc.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA
+       AND rc.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+      WHERE k.TABLE_SCHEMA = 'fitback'
+        AND (
+          (k.TABLE_NAME = 'member_tag' AND k.COLUMN_NAME = 'member_id' AND k.REFERENCED_TABLE_NAME = 'member')
+          OR (k.TABLE_NAME = 'analysis_report' AND k.COLUMN_NAME = 'member_id' AND k.REFERENCED_TABLE_NAME = 'member')
+          OR (k.TABLE_NAME = 'report_tag' AND k.COLUMN_NAME = 'report_id' AND k.REFERENCED_TABLE_NAME = 'analysis_report')
+          OR (k.TABLE_NAME = 'closet_save' AND k.COLUMN_NAME = 'member_id' AND k.REFERENCED_TABLE_NAME = 'member')
+          OR (k.TABLE_NAME = 'lookbook_like' AND k.COLUMN_NAME = 'member_id' AND k.REFERENCED_TABLE_NAME = 'member')
+          OR (k.TABLE_NAME = 'recommended_item' AND k.COLUMN_NAME = 'report_id' AND k.REFERENCED_TABLE_NAME = 'analysis_report')
+          OR (k.TABLE_NAME = 'trend_content' AND k.COLUMN_NAME = 'created_by' AND k.REFERENCED_TABLE_NAME = 'member')
+          OR (k.TABLE_NAME = 'trend_tag' AND k.COLUMN_NAME = 'trend_id' AND k.REFERENCED_TABLE_NAME = 'trend_content')
+        )
+      ORDER BY k.TABLE_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME;")"
+
+expected_member_delete_cascades="$(printf '%s\n' \
+  'analysis_report.member_id->member=CASCADE' \
+  'closet_save.member_id->member=CASCADE' \
+  'lookbook_like.member_id->member=CASCADE' \
+  'member_tag.member_id->member=CASCADE' \
+  'recommended_item.report_id->analysis_report=CASCADE' \
+  'report_tag.report_id->analysis_report=CASCADE' \
+  'trend_content.created_by->member=CASCADE' \
+  'trend_tag.trend_id->trend_content=CASCADE')"
+
+if [ "$member_delete_cascades" != "$expected_member_delete_cascades" ]; then
+  echo 'Unexpected member delete cascade contract:' >&2
+  printf '%s\n' "$member_delete_cascades" >&2
+  exit 1
+fi
 
 echo 'MySQL migration tests passed.'

@@ -174,6 +174,7 @@ compose_in() {
   DB_USER="$db_user" \
   DB_PASSWORD="$db_password" \
   JWT_SECRET_KEY="$jwt_secret_key" \
+  HMAC_SECRET_KEY="$hmac_secret_key" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$cloudfront_private_key_base64" \
     docker compose \
     --project-directory "$release_dir" \
@@ -276,12 +277,14 @@ db_url="$(get_parameter 'db-url')"
 db_user="$(get_parameter 'db-user')"
 db_password="$(get_parameter 'db-password')"
 jwt_secret_key="$(get_parameter 'jwt-secret-key')"
+hmac_secret_key="$(get_parameter 'hmac-secret-key')"
 cloudfront_private_key_base64="$(get_parameter 'cloudfront-private-key')"
 
 require_single_line 'db-url' "$db_url"
 require_single_line 'db-user' "$db_user"
 require_single_line 'db-password' "$db_password"
 require_single_line 'jwt-secret-key' "$jwt_secret_key"
+require_single_line 'hmac-secret-key' "$hmac_secret_key"
 require_single_line 'cloudfront-private-key' "$cloudfront_private_key_base64"
 
 if [[ ! "$cloudfront_private_key_base64" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
