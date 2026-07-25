@@ -266,6 +266,8 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 
 첫 배포가 실패해 이전 release가 없으면 실패한 stack을 내리고 `.env`를 제거한다. 배포 중 예기치 않은 오류, `INT`/`TERM`, 활성 symlink 교체 실패도 같은 rollback 경로를 사용한다. rollback 중 pull, 시작 또는 health 검증이 실패하면 별도의 rollback 실패 코드로 종료한다.
 
+카카오 로그인 임시 토큰은 현재 backend process 내부 메모리에 저장하므로 운영 배포는 단일 backend container를 전제로 한다. backend를 여러 instance/container로 수평 확장할 때는 임시 토큰 저장소를 Redis 같은 공유 저장소로 교체해야 한다.
+
 Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. GitHub Actions는 managed node 전달 제한 60초와 실행 제한 900초를 합친 구간에 여유 시간을 더해 polling한다. workflow 중단 또는 polling timeout이 발생하면 `ssm:CancelCommand`를 호출하고, 최대 60초 동안 terminal 상태를 확인한 뒤 마지막 상태와 표준 출력을 기록한다. `send-command --timeout-seconds`는 실행 제한이 아니라 managed node 전달 제한이다.
 
 ## 배포 및 Rollback 검증 범위
