@@ -87,7 +87,7 @@ public class ProductResponseMapper {
         );
     }
 
-    private static ProductPriceResponse price(Product product) {
+    public ProductPriceResponse price(Product product) {
         if (product.getSalePrice() != null) {
             return price(product, product.getSalePrice(), ProductPriceResponse.Type.SALE);
         }
