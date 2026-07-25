@@ -1,8 +1,10 @@
 package com.fitback.backend.global.security.token;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,6 +23,8 @@ class InMemoryTempTokenStoreTest {
         assertThat(result).isPresent();
         assertThat(result.get().memberId()).isEqualTo(1L);
         assertThat(result.get().isNewMember()).isTrue();
+
+        store.shutdown();
     }
 
     //같은 임시 토큰을 두 번 consume하면 두 번째는 비어있음 (일회용)
@@ -32,6 +36,8 @@ class InMemoryTempTokenStoreTest {
         assertThat(store.consume(token)).isPresent();
         //꺼내면서 삭제되므로 재사용 불가
         assertThat(store.consume(token)).isEmpty();
+
+        store.shutdown();
     }
 
     //만료된 임시 토큰은 비어있음
@@ -43,6 +49,26 @@ class InMemoryTempTokenStoreTest {
         Thread.sleep(50);
 
         assertThat(store.consume(token)).isEmpty();
+
+        store.shutdown();
+    }
+
+    //consume되지 않은 만료 토큰도 cleanup으로 제거됨
+    @Test
+    @SuppressWarnings("unchecked")
+    void expiredTokenIsAutomaticallyCleanedUpTest() throws InterruptedException {
+        InMemoryTempTokenStore store = new InMemoryTempTokenStore(1000);
+        String token = store.issue(new TempTokenPayload(1L, true));
+        ConcurrentHashMap<String, ?> internalStore =
+                (ConcurrentHashMap<String, ?>) ReflectionTestUtils.getField(store, "store");
+
+        assertThat(internalStore).containsKey(token);
+        for (int i = 0; i < 20 && internalStore.containsKey(token); i++) {
+            Thread.sleep(100);
+        }
+
+        assertThat(internalStore).doesNotContainKey(token);
+        store.shutdown();
     }
 
     //저장된 적 없는 토큰은 비어있음
@@ -51,5 +77,7 @@ class InMemoryTempTokenStoreTest {
         InMemoryTempTokenStore store = new InMemoryTempTokenStore(180000);
 
         assertThat(store.consume("never-issued")).isEmpty();
+
+        store.shutdown();
     }
 }
