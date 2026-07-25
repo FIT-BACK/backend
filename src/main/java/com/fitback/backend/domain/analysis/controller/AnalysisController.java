@@ -4,7 +4,6 @@ import com.fitback.backend.domain.analysis.dto.AnalysisByImageRequest;
 import com.fitback.backend.domain.analysis.dto.AnalysisCreateResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisDetailResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisListResponse;
-import com.fitback.backend.domain.analysis.dto.ConfirmTagsRequest;
 import com.fitback.backend.domain.analysis.service.AnalysisService;
 import com.fitback.backend.global.response.ApiResponse;
 import com.fitback.backend.global.security.CurrentMemberProvider;
@@ -19,7 +18,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -79,18 +77,6 @@ public class AnalysisController {
         return ApiResponse.onSuccess(analysisService.getReport(
                 currentMemberProvider.getCurrentMemberId(),
                 reportId
-        ));
-    }
-
-    @PatchMapping("/{reportId}/recommendations")
-    public ApiResponse<AnalysisDetailResponse> confirmTags(
-            @PathVariable @Positive Long reportId,
-            @Valid @RequestBody ConfirmTagsRequest request
-    ) {
-        return ApiResponse.onSuccess(analysisService.confirmTags(
-                currentMemberProvider.getCurrentMemberId(),
-                reportId,
-                request
         ));
     }
 

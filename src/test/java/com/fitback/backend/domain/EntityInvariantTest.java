@@ -96,16 +96,54 @@ class EntityInvariantTest {
         AnalysisReport report = AnalysisReport.create(member(), "https://example.com/report.jpg", 85);
         Product product = product(new BigDecimal("10000.00"));
 
-        assertThatThrownBy(() -> RecommendedItem.create(null, product, 1, "TOP", 90, true))
+        assertThatThrownBy(() -> RecommendedItem.create(
+                null,
+                product,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        ))
                 .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> RecommendedItem.create(report, null, 1, "TOP", 90, true))
+        assertThatThrownBy(() -> RecommendedItem.create(
+                report,
+                null,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        ))
                 .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> RecommendedItem.create(report, product, null, "TOP", 90, true))
-                .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> RecommendedItem.create(report, product, 1, null, 90, true))
-                .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> RecommendedItem.create(report, product, 1, "TOP", null, true))
-                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> RecommendedItem.create(
+                report,
+                product,
+                1,
+                6,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        ))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> RecommendedItem.create(
+                report,
+                product,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("101.00"),
+                new BigDecimal("101.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        ))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

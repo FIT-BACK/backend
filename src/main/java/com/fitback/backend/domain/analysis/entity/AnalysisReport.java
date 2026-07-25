@@ -61,6 +61,18 @@ public class AnalysisReport extends BaseTimeEntity {
     @Column(name = "purge_after")
     private Instant purgeAfter;
 
+    @Column(name = "recommendation_input_revision", nullable = false)
+    private Integer recommendationInputRevision = 1;
+
+    @Column(name = "result_input_revision")
+    private Integer resultInputRevision;
+
+    @Column(name = "result_score_version", length = 30)
+    private String resultScoreVersion;
+
+    @Column(name = "recommendation_generated_at")
+    private Instant recommendationGeneratedAt;
+
     @Getter(AccessLevel.NONE)
     @OneToMany(mappedBy = "report", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
@@ -142,6 +154,30 @@ public class AnalysisReport extends BaseTimeEntity {
             }
         }
         this.matchPercentage = matchPercentage;
+        this.recommendationInputRevision++;
+    }
+
+    public boolean hasRecommendationInputRevision(Integer inputRevision) {
+        return Objects.equals(recommendationInputRevision, inputRevision);
+    }
+
+    public void markRecommendationGenerated(
+            Integer inputRevision,
+            String scoreVersion,
+            Instant generatedAt
+    ) {
+        if (!hasRecommendationInputRevision(inputRevision)) {
+            throw new IllegalStateException("recommendation input revision changed");
+        }
+        if (scoreVersion == null || scoreVersion.isBlank()) {
+            throw new IllegalArgumentException("scoreVersion must not be blank");
+        }
+        this.resultInputRevision = inputRevision;
+        this.resultScoreVersion = scoreVersion;
+        this.recommendationGeneratedAt = Objects.requireNonNull(
+                generatedAt,
+                "generatedAt must not be null"
+        );
     }
 
     public List<ReportTag> getReportTags() {

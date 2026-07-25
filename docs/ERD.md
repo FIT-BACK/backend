@@ -412,9 +412,13 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 
 ### 7.2 `RecommendedItem`
 
-- `rank`를 예약어 회피용 `rankNo`/`rank_no`로 바꾼다.
-- 점수를 `BigDecimal DECIMAL(5,2)`로 전환한다.
-- 입력 revision, score version, category, reason codes를 추가한다.
+- Issue #111과 V6 migration에서 `recommend_id`를 `recommended_item_id`로,
+  `rank`를 예약어 회피용 `rankNo`/`rank_no`로 바꾼다.
+- 점수를 `BigDecimal DECIMAL(5,2)`로 전환하고 기존 점수를 `final_score`에도 백필한다.
+- 기존 추천 항목이 있는 리포트는 마지막 항목 생성 시각과 `SIMILARITY_V1` metadata를
+  함께 백필해 `NOT_GENERATED`로 잘못 표시되지 않도록 한다.
+- 입력 revision, score version, category, reason codes와 현재 세트 unique/check/index
+  제약을 추가한다.
 - 가격 비교나 원상품 연결 필드는 추가하지 않는다.
 
 ### 7.3 `ProductTag`
@@ -424,7 +428,8 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 
 ### 7.4 `AnalysisReport`
 
-- Analysis가 소유하는 `recommendationInputRevision`과 마지막 추천 결과 metadata를 추가한다.
+- Issue #111과 V6 migration에서 Analysis가 소유하는 `recommendationInputRevision`과
+  마지막 추천 결과 metadata를 추가한다.
 - Recommendation 생성은 이 version을 읽고 비교할 뿐 증가시키지 않는다.
 
 ### 7.5 신규 Entity
