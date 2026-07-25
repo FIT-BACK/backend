@@ -8,11 +8,9 @@ import com.fitback.backend.domain.recommendation.entity.RecommendedItem;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationSelection;
-import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,17 +25,20 @@ public class RecommendationSetWriter {
     private final AnalysisReportRepository analysisReportRepository;
     private final ProductRepository productRepository;
     private final RecommendedItemRepository recommendedItemRepository;
+    private final RecommendationInputSnapshotFactory snapshotFactory;
     private final Clock clock;
 
     public RecommendationSetWriter(
             AnalysisReportRepository analysisReportRepository,
             ProductRepository productRepository,
             RecommendedItemRepository recommendedItemRepository,
+            RecommendationInputSnapshotFactory snapshotFactory,
             Clock clock
     ) {
         this.analysisReportRepository = analysisReportRepository;
         this.productRepository = productRepository;
         this.recommendedItemRepository = recommendedItemRepository;
+        this.snapshotFactory = snapshotFactory;
         this.clock = clock;
     }
 
@@ -50,8 +51,7 @@ public class RecommendationSetWriter {
         AnalysisReport report = analysisReportRepository
                 .findOwnedReportForRecommendationUpdate(input.reportId(), input.memberId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_REPORT_NOT_FOUND));
-        if (!report.hasRecommendationInputRevision(input.inputRevision())
-                || !currentTagIds(report).equals(input.tagIds())) {
+        if (!snapshotFactory.matches(report, input)) {
             throw new BusinessException(ErrorCode.RECOMMENDATION_INPUT_CHANGED);
         }
 
@@ -87,10 +87,4 @@ public class RecommendationSetWriter {
         report.markRecommendationGenerated(input.inputRevision(), scoreVersion, clock.instant());
     }
 
-    private static List<Long> currentTagIds(AnalysisReport report) {
-        return report.getDisplayTags().stream()
-                .sorted(Comparator.comparing(Tag::getId).thenComparing(Tag::getTagName))
-                .map(Tag::getId)
-                .toList();
-    }
 }

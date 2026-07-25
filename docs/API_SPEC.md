@@ -4,12 +4,12 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 기준일 | 2026-07-24 |
+| 기준일 | 2026-07-26 |
 | 적용 범위 | Recommendation/Product MVP: 추천 결과 생성, 상품 검색·상세, 쇼핑 API 연동, 추천 상품 저장, 카테고리별 그룹핑. Image/Analysis는 기존 계약 참조 |
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
 | 연동 참고 | Auth `#20`의 `AuthMember` principal과 현재 `AnalysisReport`의 분석 결과를 입력으로 사용 |
-| 문서 성격 | Issue `#98` 기준 계약과 후속 기능 Issue `#106`, `#111` 구현 상태 반영 |
+| 문서 성격 | Issue `#98` 기준 계약과 후속 기능 Issue `#106`, `#111`, `#119` 구현 상태 반영 |
 
 이 문서는 제공된 임시 API 명세의 URI와 화면 흐름을 최대한 유지하면서 현재 backend 구조와
 확정된 Recommendation/Product 정책을 구체화한다. 이 범위 밖 Auth, Member, Tag, Trend,
@@ -21,9 +21,9 @@ Lookbook, Closet API는 해당 도메인의 명세를 따른다.
 | --- | --- |
 | 쇼핑몰 파트너 미확정 | partner 전용 ID·URI를 공개 계약에 넣지 않고 provider-neutral token/Product 사용 |
 | 비용 최소화 | pagination, Top 10, live lookup 최소화, fixture fallback을 전제로 함 |
-| 추천 생성 | 기존 분석 결과를 읽어 similarity-only 추천 결과를 생성하며 분석 태그를 변경하지 않음 |
+| 추천 생성 | 기존 분석 태그 또는 요청에서 확정한 기본·직접 입력 태그와 매칭값으로 추천 결과 생성 |
 | 추천 상품 저장(찜) | 추천 현재 세트와 분리된 `/members/me/saved-products` 정의 |
-| 범위 제한 | 원상품 후보 탐색·기준 가격 확정·공개 확정 태그 반영 API는 제외 |
+| 범위 제한 | 원상품 후보 탐색·기준 가격 확정·리포트 저장 모델은 제외 |
 | 3D 가상 피팅 제외 | 이 문서와 Recommendation/Product MVP endpoint에서 제외 |
 | 외부 데이터 정책 준수 | candidateToken, materialization, snapshot/identity-only 경계 정의 |
 
@@ -121,12 +121,15 @@ OTHER
 
 ### 2.2 추천 입력
 
-- 추천 생성 API는 인증 회원이 소유한 기존 `AnalysisReport`의 분석 태그를 읽기만 한다.
-- 추천 요청은 `confirmedTagIds`, `matchPercentage`, `memberId`를 받지 않는다.
-- 추천 생성 과정에서 `ReportTag`, 분석 결과, 이미지 상태를 변경하지 않는다.
-- 표시 가능한 분석 태그가 없거나 분석이 완료되지 않은 리포트는 추천을 생성하지 않는다.
-- 현재 `AnalysisReport`에는 별도 완료 status가 없으므로 Issue #111 구현은 삭제되지 않은
-  소유 리포트에 표시 가능한 태그가 1개 이상 있는지를 추천 입력 준비 완료 기준으로 사용한다.
+- Request body를 생략하면 기존 `AnalysisReport`의 표시 가능한 분석 태그와 현재 매칭값을 사용한다.
+- Request body를 보내면 `confirmedTagIds`, `customTagNames`, `matchPercentage`를 하나의 추천 입력으로
+  확정한다. `memberId`는 받지 않는다.
+- 기본 태그와 직접 입력 태그는 중복 제거 후 합계 1~8개이며, 직접 입력 태그는 각 1~50자다.
+- `matchPercentage`는 0~100 정수다.
+- 같은 정규화 입력을 다시 보내면 리포트의 `recommendationInputRevision`을 증가시키지 않는다.
+- 다른 입력을 확정하면 기본 태그, 직접 입력 태그, 매칭값을 함께 교체하고 revision을 한 번 증가시킨다.
+- 분석 이미지 상태는 추천 생성 과정에서 변경하지 않는다.
+- body를 생략한 요청은 표시 가능한 기존 분석 태그가 없으면 추천을 생성하지 않는다.
 - 원상품 후보 탐색, 원상품 선택, 기준 가격 확정은 이번 Recommendation/Product 범위가 아니다.
 
 ### 2.3 유사도 점수
@@ -405,10 +408,19 @@ candidate token, 안정 provider identity의 멱등 materialize와 상세 live l
 
 ### `POST /api/v1/analyses/{reportId}/recommendations`
 
-Issue #111에서 인증 회원의 기존 분석 결과를 읽어 현재 추천 세트를 생성하거나 교체한다.
-Request body는 없으며 분석 태그, `matchPercentage`, 이미지 상태를 변경하지 않는다.
-기존 `PATCH /api/v1/analyses/{reportId}/recommendations`와 `ConfirmTagsRequest` 공개 계약은
-제거되었다.
+Issue #119에서 인증 회원의 기존 분석 결과를 사용하거나 요청 body의 확정 입력을 먼저 반영한 뒤
+현재 추천 세트를 생성하거나 교체한다. Request body는 선택 사항이다.
+
+```json
+{
+  "confirmedTagIds": [11, 27],
+  "customTagNames": ["출근룩"],
+  "matchPercentage": 70
+}
+```
+
+body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입력 태그 합계는 중복 제거 후 1~8개다.
+기존 body 없는 호출도 하위 호환으로 유지한다.
 
 ### Response `200 OK`
 
@@ -422,7 +434,8 @@ Request body는 없으며 분석 태그, `matchPercentage`, 이미지 상태를 
   "data": {
     "reportId": 501,
     "analysisTags": ["미니멀", "와이드핏", "베이지톤"],
-    "scoreVersion": "SIMILARITY_V1",
+    "matchPercentage": 70,
+    "scoreVersion": "SIMILARITY_THRESHOLD_V2",
     "recommendationStatus": "CURRENT",
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
@@ -466,8 +479,8 @@ Request body는 없으며 분석 태그, `matchPercentage`, 이미지 상태를 
 ### 생성·교체 규칙
 
 ```text
-1. 리포트 소유권, 분석 완료 상태, 표시 가능한 분석 태그를 검증한다.
-2. 현재 analysis result version과 정렬된 분석 태그 ID를 입력 snapshot으로 캡처한다.
+1. 리포트 소유권을 검증하고, body가 있으면 확정 태그와 매칭값을 write lock에서 멱등 반영한다.
+2. 현재 입력 revision, 매칭값, 정렬된 기본·직접 입력 태그 key를 snapshot으로 캡처한다.
 3. DB transaction 밖에서 쇼핑 API 후보 조회, 정규화, category mapping, 중복 제거,
    similarity score 계산을 수행한다.
 4. 짧은 write transaction에서 입력 version을 다시 비교한다.
@@ -476,7 +489,10 @@ Request body는 없으며 분석 태그, `matchPercentage`, 이미지 상태를 
 
 - 외부 호출을 DB transaction 안에서 수행하지 않는다.
 - 새 세트 저장에 성공하기 전 기존 세트를 삭제하지 않는다.
-- 입력 version이 달라지면 `RECOMMENDATION409_1`을 반환하고 기존 세트를 유지한다.
+- 입력 revision, 태그 key 또는 매칭값이 달라지면 `RECOMMENDATION409_1`을 반환하고 기존 세트를 유지한다.
+- body 요청은 `matchPercentage` 미만 후보를 materialization 전에 제외하고
+  `SIMILARITY_THRESHOLD_V2`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
+- body 없는 하위 호환 요청은 임계값 필터 없이 `SIMILARITY_V1`을 유지한다.
 - 외부 공급자가 모두 실패하면 `PRODUCT503_1`이며 기존 세트를 유지한다.
 - materialize할 수 없는 후보는 현재 세트에서 제외하고 warning을 남긴다.
 - 후보가 모두 저장 정책상 materialize 불가하면 `PRODUCT503_3`이며 기존 세트를 유지한다.
@@ -631,6 +647,7 @@ body는 없다.
 | `VALIDATION_ERROR` | `COMMON400_2` | 400 | 필드 형식·범위·필수값 위반 |
 | `ANALYSIS_REPORT_NOT_FOUND` | `ANALYSIS404_1` | 404 | 리포트가 없거나 현재 회원 소유가 아님 |
 | `ANALYSIS_NOT_READY` | `ANALYSIS409_1` | 409 | 추천 입력으로 사용할 수 없는 분석 상태 |
+| `TAG_NOT_FOUND` | `TAG404_1` | 404 | 확정 요청의 기본 태그 ID가 존재하지 않음 |
 | `PRODUCT_NOT_FOUND` | `PRODUCT404_1` | 404 | 내부 Product가 없음 |
 | `PRODUCT_REFERENCE_INVALID` | `PRODUCT422_1` | 422 | candidate token 서명·형식·만료 오류 |
 | `PRODUCT_REFERENCE_UNSUPPORTED` | `PRODUCT422_2` | 422 | 안정 identity와 허용 snapshot 전략이 모두 없음 |
@@ -697,13 +714,14 @@ Controller와 Service는 Shopify 등 공급자 이름을 DTO 계약에 노출하
 | 상품 검색 응답 | `ProductSearchResponse` |
 | 외부 후보 materialize | `ProductReferenceCreateRequest`, `ProductReferenceResponse` |
 | 상품 상세 응답 | `ProductDetailResponse` |
+| 추천 생성 요청 | `RecommendationGenerateRequest` |
 | 추천 생성 응답 | `RecommendationResultResponse` |
 | 추천 그룹 | `RecommendationGroupResponse` |
 | 저장 상품 응답/목록 | `SavedProductResponse`, `SavedProductListResponse` |
 | 이미지 업로드 URL 요청/응답 | `ImageUploadRequest`, `ImageUploadResponse` |
 
-추천 생성은 body가 없으므로 별도 Request DTO를 만들지 않는다. Controller는 Entity나 외부 provider
-response를 직접 반환하지 않는다.
+추천 생성 body는 선택 사항이며 body를 보내는 경우 `RecommendationGenerateRequest`의 세 필드를
+모두 제공한다. Controller는 Entity나 외부 provider response를 직접 반환하지 않는다.
 
 ---
 
@@ -719,8 +737,8 @@ response를 직접 반환하지 않는다.
 ### Analysis
 
 - 실제 Controller prefix와 소유자 조회 계약은 현재 Analysis 구현을 따른다.
-- Recommendation은 완료된 기존 분석 결과와 ReportTag를 읽기 전용 입력으로 사용한다.
-- 추천 생성 API는 태그·매칭값을 교체하지 않으며 Analysis 저장 책임을 가져오지 않는다.
+- body 없는 Recommendation 요청은 기존 분석 결과와 ReportTag를 읽기 전용 입력으로 사용한다.
+- body가 있는 추천 생성 API는 확정 기본 태그·직접 입력 태그·매칭값을 리포트 입력으로 멱등 교체한다.
 - 분석 결과 version을 외부 호출 전후에 비교해 늦게 끝난 요청이 새 입력을 덮어쓰지 못하게 한다.
 - 이미지 URL을 외부 공급자가 읽어야 한다면 storage 계층의 read stream 또는 짧은 signed URL
   계약을 쇼핑 API Adapter 구현 이슈에서 명시한다.
@@ -734,7 +752,9 @@ response를 직접 반환하지 않는다.
 - [ ] 요청 DTO validation과 공통 응답 envelope가 검증됨
 - [ ] 상품 검색 GET이 DB write를 하지 않음
 - [ ] candidate token 변조·만료·재사용 정책이 검증됨
-- [ ] 추천 생성이 AnalysisReport와 ReportTag를 변경하지 않음
+- [ ] body 없는 추천 생성이 AnalysisReport와 ReportTag를 변경하지 않음
+- [ ] body 추천 생성이 기본·직접 입력 태그와 매칭값을 멱등 확정함
+- [ ] 0~100 임계값 경계와 임계값 미만 후보의 materialization 제외가 검증됨
 - [ ] 유사도 정규화와 `finalScore=similarityScore`가 순수 단위 테스트로 검증됨
 - [ ] 8개 그룹 순서, 그룹별 Top 10, 빈 그룹 포함이 검증됨
 - [ ] 외부 호출이 DB transaction 밖에서 실행됨
@@ -881,14 +901,14 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 
 ### `GET /api/v1/analyses/{reportId}`
 
-본인의 삭제되지 않은 리포트 상세와 확정 태그, 추천 그룹을 반환한다. private 이미지 URL은
-10분 유효한 CloudFront signed URL이다.
+본인의 삭제되지 않은 리포트 상세와 확정 기본·직접 입력 태그, 추천 그룹을 반환한다. private
+이미지 URL은 10분 유효한 CloudFront signed URL이다.
 
 ### `POST /api/v1/analyses/{reportId}/recommendations`
 
-Issue #111 구현은 기존 분석 결과를 읽어 추천 현재 세트를 생성한다. Request body는 없으며
-분석 태그와 `matchPercentage`를 변경하지 않는다. legacy PATCH는 제거되었고 세부 생성·교체
-계약은 7절을 따른다.
+Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body가 있으면 확정 기본·직접 입력
+태그와 `matchPercentage`를 멱등 반영한 뒤 추천 현재 세트를 생성한다. legacy PATCH는 제거되었고
+세부 생성·교체 계약은 7절을 따른다.
 
 ### `DELETE /api/v1/analyses/{reportId}`
 

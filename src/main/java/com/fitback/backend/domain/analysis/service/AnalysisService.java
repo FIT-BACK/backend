@@ -7,6 +7,7 @@ import com.fitback.backend.domain.analysis.dto.AnalysisListResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisSummaryResponse;
 import com.fitback.backend.domain.analysis.dto.SuggestedTagResponse;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
+import com.fitback.backend.domain.analysis.entity.ReportCustomTag;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.service.ImageUploadService;
@@ -17,6 +18,7 @@ import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -150,9 +152,7 @@ public class AnalysisService {
     }
 
     private AnalysisSummaryResponse toSummaryResponse(AnalysisReport report) {
-        List<String> tagNames = report.getDisplayTags().stream()
-                .map(Tag::getTagName)
-                .toList();
+        List<String> tagNames = recommendationTagNames(report);
         return new AnalysisSummaryResponse(report.getId(), resolveImageUrl(report), tagNames);
     }
 
@@ -160,9 +160,7 @@ public class AnalysisService {
             AnalysisReport report,
             RecommendationResultResponse recommendationResult
     ) {
-        List<String> tagNames = report.getDisplayTags().stream()
-                .map(Tag::getTagName)
-                .toList();
+        List<String> tagNames = recommendationTagNames(report);
         return new AnalysisDetailResponse(
                 report.getId(),
                 resolveImageUrl(report),
@@ -172,6 +170,17 @@ public class AnalysisService {
                 recommendationResult.scoreVersion(),
                 recommendationResult.recommendationGroups()
         );
+    }
+
+    private List<String> recommendationTagNames(AnalysisReport report) {
+        List<String> tagNames = new ArrayList<>();
+        report.getDisplayTags().stream()
+                .map(Tag::getTagName)
+                .forEach(tagNames::add);
+        report.getCustomTags().stream()
+                .map(ReportCustomTag::getDisplayName)
+                .forEach(tagNames::add);
+        return List.copyOf(tagNames);
     }
 
     private AnalysisCreateResponse toCreateResponse(AnalysisReport report) {

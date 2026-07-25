@@ -6,6 +6,7 @@ import java.util.List;
 public record RecommendationCreateResponse(
         Long reportId,
         List<String> analysisTags,
+        Integer matchPercentage,
         String scoreVersion,
         RecommendationStatus recommendationStatus,
         List<RecommendationGroupResponse> recommendationGroups,

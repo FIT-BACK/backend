@@ -20,6 +20,7 @@ import com.fitback.backend.domain.product.service.model.ProductSearchResult;
 import com.fitback.backend.domain.product.service.model.ProviderProductRef;
 import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
 import com.fitback.backend.domain.recommendation.dto.RecommendationCreateResponse;
+import com.fitback.backend.domain.recommendation.dto.RecommendationGenerateRequest;
 import com.fitback.backend.domain.recommendation.dto.RecommendationGroupResponse;
 import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
 import com.fitback.backend.domain.recommendation.entity.RecommendationStatus;
@@ -46,6 +47,9 @@ class RecommendationServiceTest {
     private RecommendationInputReader inputReader;
 
     @Mock
+    private RecommendationInputCommandService inputCommandService;
+
+    @Mock
     private ProductCatalogPort productCatalogPort;
 
     @Mock
@@ -66,6 +70,7 @@ class RecommendationServiceTest {
     void setUp() {
         recommendationService = new RecommendationService(
                 inputReader,
+                inputCommandService,
                 productCatalogPort,
                 candidateMapper,
                 materializationService,
@@ -187,6 +192,74 @@ class RecommendationServiceTest {
 
         verify(setWriter).replaceCurrentSet(input, "SIMILARITY_V1", List.of());
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
+    }
+
+    @Test
+    void recordsCurrentEmptySetWhenEveryCandidateIsBelowThreshold() {
+        RecommendationGenerateRequest request = new RecommendationGenerateRequest(
+                List.of(10L),
+                List.of(),
+                100
+        );
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                2,
+                100,
+                List.of(new TagInput(10L, "Fixture"))
+        );
+        when(inputCommandService.confirmAndRead(1L, 501L, request)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenReturn(new ProductSearchResult(
+                        List.of(candidate(1, "0.90", true)),
+                        null
+                ));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        RecommendationCreateResponse response = recommendationService.generate(
+                1L,
+                501L,
+                request
+        );
+
+        verify(materializationService, never()).materializeForRecommendation(any());
+        verify(setWriter).replaceCurrentSet(
+                input,
+                "SIMILARITY_THRESHOLD_V2",
+                List.of()
+        );
+        assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
+        assertThat(response.scoreVersion()).isEqualTo("SIMILARITY_THRESHOLD_V2");
+    }
+
+    @Test
+    void thresholdOneHundredIncludesOnlyPerfectScoreCandidate() {
+        RecommendationGenerateRequest request = new RecommendationGenerateRequest(
+                List.of(10L),
+                List.of(),
+                100
+        );
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                2,
+                100,
+                List.of(new TagInput(10L, "Fixture"))
+        );
+        ExternalProductCandidate perfect = candidate(1, "1.00", true);
+        ExternalProductCandidate below = candidate(2, "0.99", true);
+        when(inputCommandService.confirmAndRead(1L, 501L, request)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenReturn(new ProductSearchResult(List.of(perfect, below), null));
+        when(candidateMapper.category(perfect)).thenReturn(ProductCategory.TOP);
+        when(materializationService.materializeForRecommendation(perfect))
+                .thenReturn(new RecommendationMaterializationResult(1L, true));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L, request);
+
+        verify(materializationService).materializeForRecommendation(perfect);
+        verify(materializationService, never()).materializeForRecommendation(below);
     }
 
     private static RecommendationInputSnapshot input() {
