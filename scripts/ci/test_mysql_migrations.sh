@@ -75,6 +75,22 @@ for database in fitback fitback_existing_refresh_token; do
   done
 done
 
+docker exec "$container_name" mysql -uroot -e \
+  "CREATE DATABASE fitback_mismatched_social_uid;
+   CREATE TABLE fitback_mismatched_social_uid.member (
+     member_id BIGINT NOT NULL PRIMARY KEY,
+     login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL',
+     social_uid VARCHAR(100) NULL,
+     CONSTRAINT UK_MEMBER_PROVIDER_UID UNIQUE (social_uid)
+   );"
+
+if docker exec -i "$container_name" mysql -uroot fitback_mismatched_social_uid \
+  < src/main/resources/db/migration/V9__add_member_social_uid.sql \
+  >/dev/null 2>&1; then
+  echo 'V9 accepted a mismatched UK_MEMBER_PROVIDER_UID constraint.' >&2
+  exit 1
+fi
+
 expected_product_contract="$(printf '%s\n' \
   'availability:NO:varchar' \
   'category:YES:varchar' \

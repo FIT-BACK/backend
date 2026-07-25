@@ -32,7 +32,8 @@ SET @sql = CASE
         'ALTER TABLE member ADD CONSTRAINT UK_MEMBER_PROVIDER_UID UNIQUE (login_provider, social_uid)'
     WHEN @uk_columns = 'login_provider,social_uid' THEN
         'DO 1'
+    -- 같은 이름의 잘못된 제약이 있으면 중복 제약 오류로 마이그레이션 중단
     ELSE
-        'SELECT 1 FROM UK_MEMBER_PROVIDER_UID_SCHEMA_MISMATCH'
+        'ALTER TABLE member ADD CONSTRAINT UK_MEMBER_PROVIDER_UID UNIQUE (login_provider, social_uid)'
     END;
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
