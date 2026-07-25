@@ -284,6 +284,87 @@ for database in fitback fitback_existing_refresh_token; do
   validate_recommendation_contract "$database"
 done
 
+validate_report_custom_tag_contract() {
+  local database="$1"
+  local custom_tag_columns
+  local custom_tag_constraints
+  local custom_tag_foreign_key
+  local custom_tag_name_check
+  local normalized_custom_tag_name_check
+
+  custom_tag_columns="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'report_custom_tag'
+        ORDER BY ORDINAL_POSITION;")"
+
+  if [ "$custom_tag_columns" != "$(printf '%s\n' \
+    'report_custom_tag_id:NO:bigint' \
+    'report_id:NO:bigint' \
+    'display_name:NO:varchar' \
+    'normalized_name:NO:varchar' \
+    'created_at:NO:datetime')" ]; then
+    echo "Unexpected report_custom_tag columns in $database:" >&2
+    printf '%s\n' "$custom_tag_columns" >&2
+    exit 1
+  fi
+
+  custom_tag_constraints="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONSTRAINT_NAME
+        FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'report_custom_tag'
+          AND CONSTRAINT_NAME IN (
+            'UK_REPORT_CUSTOM_TAG_NAME',
+            'FK_REPORT_CUSTOM_TAG_REPORT',
+            'CK_REPORT_CUSTOM_TAG_NAME'
+          )
+        ORDER BY CONSTRAINT_NAME;")"
+
+  if [ "$custom_tag_constraints" != "$(printf '%s\n' \
+    'CK_REPORT_CUSTOM_TAG_NAME' \
+    'FK_REPORT_CUSTOM_TAG_REPORT' \
+    'UK_REPORT_CUSTOM_TAG_NAME')" ]; then
+    echo "Unexpected report_custom_tag constraints in $database:" >&2
+    printf '%s\n' "$custom_tag_constraints" >&2
+    exit 1
+  fi
+
+  custom_tag_foreign_key="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(DELETE_RULE, ':', UPDATE_RULE)
+        FROM information_schema.REFERENTIAL_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = '$database'
+          AND TABLE_NAME = 'report_custom_tag'
+          AND CONSTRAINT_NAME = 'FK_REPORT_CUSTOM_TAG_REPORT';")"
+
+  if [ "$custom_tag_foreign_key" != 'CASCADE:RESTRICT' ]; then
+    echo "Unexpected report_custom_tag foreign key in $database: $custom_tag_foreign_key" >&2
+    exit 1
+  fi
+
+  custom_tag_name_check="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT LOWER(CHECK_CLAUSE)
+        FROM information_schema.CHECK_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = '$database'
+          AND CONSTRAINT_NAME = 'CK_REPORT_CUSTOM_TAG_NAME';")"
+  normalized_custom_tag_name_check="$(printf '%s\n' "$custom_tag_name_check" \
+    | tr -d '`()[:space:]')"
+  if [ "$normalized_custom_tag_name_check" \
+      != 'char_lengthtrimdisplay_namebetween1and50' ]; then
+    echo "Unexpected report_custom_tag name check in $database: $custom_tag_name_check" >&2
+    exit 1
+  fi
+}
+
+for database in fitback fitback_existing_refresh_token; do
+  validate_report_custom_tag_contract "$database"
+done
+
 validate_saved_product_contract() {
   local database="$1"
   local saved_product_columns

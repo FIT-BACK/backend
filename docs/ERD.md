@@ -6,9 +6,9 @@
 | --- | --- |
 | 기준일 | 2026-07-26 |
 | 적용 범위 | 추천 결과 생성, 상품 검색·상세, 쇼핑 API 연동, 추천 상품 저장, 카테고리별 그룹핑, 기존 이미지 metadata |
-| 기준 코드 | 현재 `develop`과 Issue `#114`의 `Member`, `AnalysisReport`, `Tag`, `Product`, `ProductTag`, `RecommendedItem`, `SavedProduct` |
-| 연동 참고 | Recommendation은 기존 Analysis 결과를 읽기 전용 입력으로 사용 |
-| 문서 성격 | Issue `#98` 데이터 계약을 Issue `#114` 구현 상태와 동기화 |
+| 기준 코드 | 현재 `develop`과 Issue `#119`의 `Member`, `AnalysisReport`, `ReportCustomTag`, `Tag`, `Product`, `ProductTag`, `RecommendedItem`, `SavedProduct` |
+| 연동 참고 | Recommendation은 기존 분석 입력을 읽거나 요청의 확정 태그·매칭값을 멱등 반영 |
+| 문서 성격 | Issue `#98` 데이터 계약을 Issue `#119` 구현 상태와 동기화 |
 
 이 문서는 임시 ERD의 `products`, `recommendations`, `product_saves`,
 `product_style_tags` 개념을 현재 단수형 테이블명과 JPA 모델에 맞춘다. 현재 코드와 다른 항목은
@@ -24,11 +24,11 @@
 - `analysis_requests` 대신 현재 Entity의 `analysis_report(report_id)`를 사용한다.
 - `style_tags` 대신 현재 Entity의 `tag(tag_id)`를 사용한다.
 - Recommendation/Product 테이블은 단수형 `product`, `product_tag`, `recommended_item`,
-  `saved_product`를 사용한다.
+  `saved_product`, `report_custom_tag`를 사용한다.
 - `SavedProduct`는 추천 결과 행이 아니라 사용자가 직접 선택한 상품 저장 관계다.
 - Request에서 `member_id`를 받지 않고 인증 principal의 회원을 사용한다.
 - 추천 결과의 소유권은 연결된 `AnalysisReport.member`로 판정한다.
-- 원상품 후보·기준 가격 확정과 분석 태그 변경은 이번 데이터 계약에 포함하지 않는다.
+- 원상품 후보·기준 가격 확정과 별도 리포트 저장 모델은 이번 데이터 계약에 포함하지 않는다.
 
 ### 1.2 외부 상품 identity와 snapshot
 
@@ -70,9 +70,10 @@ providerIdentityKey = SHA-256(
 - 리포트마다 추천 이력 없이 현재 세트 하나만 유지한다.
 - 같은 리포트 재생성은 짧은 write transaction에서 기존 `recommended_item`을 교체한다.
 - 외부 API 호출은 write transaction 밖에서 수행한다.
-- `analysis_report.recommendation_input_revision`은 Analysis 도메인이 분석 결과나 ReportTag를
-  변경할 때 증가시키며 Recommendation은 읽기만 한다.
-- 추천 요청은 외부 호출 전 입력 revision을 캡처하고 저장 직전에 다시 비교한다.
+- `analysis_report.recommendation_input_revision`은 분석 결과 또는 추천 확정 입력의 기본 태그,
+  직접 입력 태그, 매칭값이 실제로 변경될 때 증가한다.
+- 같은 정규화 입력을 다시 확정하면 revision을 증가시키지 않는다.
+- 추천 요청은 외부 호출 전 입력 revision, 태그 key, 매칭값을 캡처하고 저장 직전에 다시 비교한다.
 - 값이 다르면 새 세트를 저장하지 않고 기존 세트를 유지한다.
 - 성공 결과는 사용한 `result_input_revision`, `result_score_version`, 생성 시각을 기록한다.
 - 추천 생성·교체와 `saved_product` 생명주기는 서로 독립적이다.
@@ -90,7 +91,7 @@ providerIdentityKey = SHA-256(
 | `ProductStorageMode` | `product.storage_mode VARCHAR(20)` | `SNAPSHOT`, `IDENTITY_ONLY` |
 | `ProductAvailability` | `product.availability VARCHAR(30)` | `AVAILABLE`, `UNAVAILABLE`, `TEMPORARILY_UNRESOLVED`, `UNKNOWN` |
 | `ProductCategory` | category 컬럼 `VARCHAR(30)` | `OUTER`, `TOP`, `BOTTOM`, `DRESS`, `SHOES`, `BAG`, `ACCESSORY`, `OTHER` |
-| `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(30)` | `SIMILARITY_V1` |
+| `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(30)` | `SIMILARITY_V1`, `SIMILARITY_THRESHOLD_V2` |
 | `ProductTagSource` | `product_tag.source VARCHAR(20)` | `PROVIDER`, `AI`, `RULE`, `MANUAL` |
 | `ImageUploadPurpose` | API request enum | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
 | `ImagePurpose` | `image.purpose VARCHAR(30)` 호환 저장 enum | 릴리스 A writer: `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `PROFILE`; reader/domain check: `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `LOOKBOOK_MATCHED`, `PROFILE`, `ANALYSIS`, `LOOKBOOK` |
@@ -110,6 +111,7 @@ erDiagram
     MEMBER ||--o{ SAVED_PRODUCT : saves
     MEMBER ||--o{ IMAGE : owns
     ANALYSIS_REPORT ||--o{ RECOMMENDED_ITEM : has_current_set
+    ANALYSIS_REPORT ||--o{ REPORT_CUSTOM_TAG : has_custom_input
     IMAGE o|--o{ ANALYSIS_REPORT : used_as_original
     PRODUCT ||--o{ RECOMMENDED_ITEM : recommended_as
     PRODUCT ||--o{ SAVED_PRODUCT : saved_as
@@ -170,6 +172,14 @@ erDiagram
         DECIMAL final_score
         VARCHAR score_version
         VARCHAR reason_codes
+        DATETIME created_at
+    }
+
+    REPORT_CUSTOM_TAG {
+        BIGINT report_custom_tag_id PK
+        BIGINT report_id FK
+        VARCHAR display_name
+        VARCHAR normalized_name
         DATETIME created_at
     }
 
@@ -257,7 +267,7 @@ CK_PRODUCT_PRICE_VALUE(
 | `category` | `VARCHAR(30)` | N | 생성 시점 내부 category |
 | `similarity_score` | `DECIMAL(5,2)` | N | 0~100 정규화 점수 |
 | `final_score` | `DECIMAL(5,2)` | N | 이번 범위에서는 similarity와 동일 |
-| `score_version` | `VARCHAR(30)` | N | `SIMILARITY_V1` |
+| `score_version` | `VARCHAR(30)` | N | `SIMILARITY_V1` 또는 `SIMILARITY_THRESHOLD_V2` |
 | `reason_codes` | `VARCHAR(500)` | N | 정렬된 내부 code 목록 |
 | `created_at` | `DATETIME(6)` | N | 생성 시각 |
 
@@ -281,7 +291,26 @@ CHK_RECOMMENDED_INPUT_REVISION(input_revision >= 1)
 `reason_codes`는 공급자 자유 텍스트가 아니라 `HIGH_SIMILARITY`처럼 서버가 정의한 code만 저장한다.
 다국어 문장은 API 계층이 code로 조립한다.
 
-### 4.3 `saved_product`
+### 4.3 `report_custom_tag`
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `report_custom_tag_id` | `BIGINT` | N | PK, auto increment |
+| `report_id` | `BIGINT` | N | FK, 직접 입력 태그 소유 리포트 |
+| `display_name` | `VARCHAR(50)` | N | NFKC 정규화 후 화면 표시명 |
+| `normalized_name` | `VARCHAR(50)` | N | 소문자 정규화 중복 판정 key |
+| `created_at` | `DATETIME(6)` | N | 생성 시각 |
+
+```text
+UK_REPORT_CUSTOM_TAG_NAME(report_id, normalized_name)
+FK_REPORT_CUSTOM_TAG_REPORT(report_id)
+  -> analysis_report(report_id) ON DELETE CASCADE ON UPDATE RESTRICT
+CK_REPORT_CUSTOM_TAG_NAME(CHAR_LENGTH(TRIM(display_name)) BETWEEN 1 AND 50)
+```
+
+직접 입력 태그는 전역 `tag` 사전에 자동 등록하지 않고 리포트 입력으로만 보존한다.
+
+### 4.4 `saved_product`
 
 | 컬럼 | 타입 | NULL | 키/설명 |
 | --- | --- | --- | --- |
@@ -302,7 +331,7 @@ FK_SAVED_PRODUCT_PRODUCT(product_id)
 - 생성·삭제는 복합 PK를 기준으로 멱등 처리한다.
 - 추천 세트 교체, 품절, 공급자 장애가 저장 관계를 삭제하지 않는다.
 
-### 4.4 `product_tag`
+### 4.5 `product_tag`
 
 | 컬럼 | 타입 | NULL | 키/설명 |
 | --- | --- | --- | --- |
@@ -323,7 +352,7 @@ FK_PRODUCT_TAG_TAG(tag_id)
 CHK_PRODUCT_TAG_CONFIDENCE(confidence IS NULL OR confidence BETWEEN 0 AND 1)
 ```
 
-### 4.5 기존 `analysis_report` 확장
+### 4.6 기존 `analysis_report` 확장
 
 | 컬럼 | 타입 | NULL | 설명 |
 | --- | --- | --- | --- |
@@ -354,8 +383,9 @@ CHK_ANALYSIS_RESULT_METADATA(
 )
 ```
 
-Recommendation은 입력 revision을 증가시키거나 분석 태그를 바꾸지 않는다. 저장 직전에 현재
-revision과 요청 snapshot을 비교하며 같을 때만 현재 추천 세트와 result metadata를 교체한다.
+Recommendation의 body 요청은 확정 입력이 실제로 달라질 때만 입력 revision을 증가시킨다.
+저장 직전에 현재 revision, 태그 key, 매칭값을 요청 snapshot과 비교하며 같을 때만 현재 추천
+세트와 result metadata를 교체한다.
 항목이 0개여도 metadata를 남겨 미생성과 빈 성공 결과를 구분한다.
 
 ```text
@@ -382,7 +412,7 @@ result_input_revision != recommendation_input_revision -> STALE
 
 | 부모 삭제 | 자식 처리 | 근거 |
 | --- | --- | --- |
-| `analysis_report` 물리 삭제 | recommended item `CASCADE` | 리포트 소유 결과 |
+| `analysis_report` 물리 삭제 | recommended item, report custom tag `CASCADE` | 리포트 소유 결과·입력 |
 | `member` 삭제 | saved product `CASCADE` | 회원 개인 저장 관계 |
 | `product` 삭제 | product tag `CASCADE` | 상품 부속 태그 |
 | `product` 삭제 | recommendation, saved product `RESTRICT` | 추천 근거와 사용자 저장 보존 |
@@ -430,11 +460,13 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 
 - Issue #111과 V6 migration에서 Analysis가 소유하는 `recommendationInputRevision`과
   마지막 추천 결과 metadata를 추가한다.
-- Recommendation 생성은 이 version을 읽고 비교할 뿐 증가시키지 않는다.
+- Issue #119와 V11 migration에서 직접 입력 태그를 리포트별로 추가하고, Recommendation body가
+  기본·직접 입력 태그와 매칭값을 멱등 확정하도록 한다.
 
 ### 7.5 신규 Entity
 
 - Issue #114에서 `SavedProduct`와 `SavedProductId`를 구현한다.
+- Issue #119에서 `ReportCustomTag`를 구현한다.
 - 추천 실행 이력은 요구사항이 생길 때 별도 migration으로 추가한다.
 
 ---
@@ -446,8 +478,9 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 - 회원 ID는 `AuthMember` principal에서만 얻는다.
 - 모든 Product/Recommendation API는 인증 필수다.
 - 타인 리포트와 존재하지 않는 리포트는 모두 404로 처리한다.
-- Recommendation은 기존 `analysis_report`와 `report_tag`를 읽기 전용 입력으로 사용한다.
-- 추천 생성 API는 태그, 매칭값, 이미지 상태를 변경하지 않는다.
+- body 없는 Recommendation은 기존 `analysis_report`와 `report_tag`를 읽기 전용 입력으로 사용한다.
+- body가 있으면 기본 태그, 직접 입력 태그, 매칭값을 하나의 입력으로 멱등 교체한다.
+- 추천 생성 API는 이미지 상태를 변경하지 않는다.
 - 외부 호출 뒤 입력 version이 바뀌면 새 세트를 저장하지 않는다.
 
 ### 구현 검증
@@ -455,7 +488,8 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 - [ ] MySQL과 H2에서 금액·점수·enum 문자열 mapping이 동일함
 - [ ] provider identity hash와 materialization 멱등성이 검증됨
 - [ ] 상품 검색 GET이 Product를 자동 저장하지 않음
-- [ ] 추천 생성 전후 AnalysisReport와 ReportTag가 변경되지 않음
+- [ ] body 없는 추천 생성 전후 AnalysisReport와 ReportTag가 변경되지 않음
+- [ ] body 추천 생성의 기본·직접 태그와 매칭값 변경 및 동일 입력 멱등성이 검증됨
 - [ ] 유사도 점수와 동점 정렬이 결정적임
 - [ ] 8개 그룹 순서, 그룹별 Top 10, 빈 그룹 포함이 검증됨
 - [ ] 입력 version 변경 후 늦게 끝난 요청이 현재 세트를 덮어쓰지 못함
