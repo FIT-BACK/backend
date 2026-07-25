@@ -5,8 +5,6 @@ import com.fitback.backend.domain.analysis.dto.AnalysisCreateResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisDetailResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisListResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisSummaryResponse;
-import com.fitback.backend.domain.analysis.dto.ConfirmTagsRequest;
-import com.fitback.backend.domain.analysis.dto.RecommendationGroupResponse;
 import com.fitback.backend.domain.analysis.dto.SuggestedTagResponse;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
@@ -14,16 +12,12 @@ import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
 import com.fitback.backend.domain.tag.entity.Tag;
-import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +40,6 @@ public class AnalysisService {
 
     private final AnalysisReportRepository analysisReportRepository;
     private final MemberRepository memberRepository;
-    private final TagRepository tagRepository;
     private final ImageStorage imageStorage;
     private final AiTagAnalyzer aiTagAnalyzer;
     private final RecommendationResultProvider recommendationResultProvider;
@@ -142,21 +135,7 @@ public class AnalysisService {
     @Transactional(readOnly = true)
     public AnalysisDetailResponse getReport(Long memberId, Long reportId) {
         AnalysisReport report = findOwnedReport(memberId, reportId);
-        return toDetailResponse(report, recommendationResultProvider.findByReportId(reportId));
-    }
-
-    @Transactional
-    public AnalysisDetailResponse confirmTags(
-            Long memberId,
-            Long reportId,
-            ConfirmTagsRequest request
-    ) {
-        AnalysisReport report = findOwnedReport(memberId, reportId);
-        List<Tag> confirmedTags = findTagsInRequestOrder(request.confirmedTagIds());
-        report.confirmTags(confirmedTags, request.matchPercentage());
-        List<RecommendationGroupResponse> recommendationGroups =
-                recommendationResultProvider.generateFor(report);
-        return toDetailResponse(report, recommendationGroups);
+        return toDetailResponse(report, recommendationResultProvider.findFor(report));
     }
 
     @Transactional
@@ -170,20 +149,6 @@ public class AnalysisService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_REPORT_NOT_FOUND));
     }
 
-    private List<Tag> findTagsInRequestOrder(List<Long> requestedTagIds) {
-        if (requestedTagIds == null || requestedTagIds.isEmpty()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST);
-        }
-
-        Set<Long> uniqueTagIds = new LinkedHashSet<>(requestedTagIds);
-        Map<Long, Tag> tagsById = new LinkedHashMap<>();
-        tagRepository.findAllById(uniqueTagIds).forEach(tag -> tagsById.put(tag.getId(), tag));
-        if (tagsById.size() != uniqueTagIds.size()) {
-            throw new BusinessException(ErrorCode.TAG_NOT_FOUND);
-        }
-        return uniqueTagIds.stream().map(tagsById::get).toList();
-    }
-
     private AnalysisSummaryResponse toSummaryResponse(AnalysisReport report) {
         List<String> tagNames = report.getDisplayTags().stream()
                 .map(Tag::getTagName)
@@ -193,7 +158,7 @@ public class AnalysisService {
 
     private AnalysisDetailResponse toDetailResponse(
             AnalysisReport report,
-            List<RecommendationGroupResponse> recommendationGroups
+            RecommendationResultResponse recommendationResult
     ) {
         List<String> tagNames = report.getDisplayTags().stream()
                 .map(Tag::getTagName)
@@ -203,7 +168,9 @@ public class AnalysisService {
                 resolveImageUrl(report),
                 report.getMatchPercentage(),
                 tagNames,
-                recommendationGroups
+                recommendationResult.recommendationStatus(),
+                recommendationResult.scoreVersion(),
+                recommendationResult.recommendationGroups()
         );
     }
 

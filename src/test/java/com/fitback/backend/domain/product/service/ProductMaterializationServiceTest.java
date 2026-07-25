@@ -9,7 +9,9 @@ import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.product.dto.ProductReferenceResponse;
 import com.fitback.backend.domain.product.entity.Product;
+import com.fitback.backend.domain.product.service.model.ExternalProductCandidate;
 import com.fitback.backend.domain.product.service.model.ProductAvailability;
+import com.fitback.backend.domain.product.service.model.ProductSnapshot;
 import com.fitback.backend.domain.product.service.model.ProviderCapabilities;
 import com.fitback.backend.domain.product.service.model.ProviderProductRef;
 import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
@@ -77,5 +79,146 @@ class ProductMaterializationServiceTest {
         ));
         verify(productCatalogPort, never()).lookup(providerRef);
         verifyNoInteractions(candidateMapper);
+    }
+
+    @Test
+    void materializesRecommendationCandidateAndRefreshesExistingSnapshot() {
+        ProductCatalogPort productCatalogPort = mock(ProductCatalogPort.class);
+        CandidateTokenService candidateTokenService = mock(CandidateTokenService.class);
+        ProductIdentityHasher identityHasher = mock(ProductIdentityHasher.class);
+        ProductCandidateMapper candidateMapper = mock(ProductCandidateMapper.class);
+        ProductPersistenceService persistenceService = mock(ProductPersistenceService.class);
+        ProviderProductRef providerRef = ProviderProductRef.stable(
+                "fixture",
+                "product-1",
+                "variant-1",
+                "merchant-1"
+        );
+        ExternalProductCandidate candidate = new ExternalProductCandidate(
+                providerRef,
+                "Fixture Product",
+                null,
+                "tops/shirts",
+                null,
+                null,
+                null,
+                Instant.parse("2026-07-24T00:00:00Z")
+        );
+        ProviderCapabilities capabilities = new ProviderCapabilities(
+                "fixture",
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                Duration.ofHours(1),
+                true
+        );
+        ProductSnapshot snapshot = mock(ProductSnapshot.class);
+        Product existingProduct = mock(Product.class);
+        when(productCatalogPort.capabilities()).thenReturn(capabilities);
+        when(identityHasher.hash(providerRef)).thenReturn("identity-key");
+        when(candidateMapper.snapshot(
+                providerRef,
+                candidate,
+                Instant.parse("2026-07-24T01:00:00Z")
+        )).thenReturn(snapshot);
+        when(existingProduct.getId()).thenReturn(42L);
+        when(persistenceService.materializeStable(providerRef, "identity-key", snapshot))
+                .thenReturn(new ProductPersistenceService.MaterializationResult(
+                        existingProduct,
+                        false
+                ));
+        ProductMaterializationService service = new ProductMaterializationService(
+                productCatalogPort,
+                candidateTokenService,
+                identityHasher,
+                candidateMapper,
+                persistenceService,
+                Clock.fixed(Instant.parse("2026-07-24T00:00:00Z"), ZoneOffset.UTC)
+        );
+
+        ProductMaterializationService.RecommendationMaterializationResult result =
+                service.materializeForRecommendation(candidate);
+
+        assertThat(result.productId()).isEqualTo(42L);
+        assertThat(result.created()).isFalse();
+        verify(persistenceService).refresh(42L, snapshot);
+    }
+
+    @Test
+    void materializesNewRecommendationCandidateWithoutRefreshing() {
+        ProductCatalogPort productCatalogPort = mock(ProductCatalogPort.class);
+        CandidateTokenService candidateTokenService = mock(CandidateTokenService.class);
+        ProductIdentityHasher identityHasher = mock(ProductIdentityHasher.class);
+        ProductCandidateMapper candidateMapper = mock(ProductCandidateMapper.class);
+        ProductPersistenceService persistenceService = mock(ProductPersistenceService.class);
+        ProviderProductRef providerRef = ProviderProductRef.stable(
+                "fixture",
+                "product-1",
+                "variant-1",
+                "merchant-1"
+        );
+        ExternalProductCandidate candidate = new ExternalProductCandidate(
+                providerRef,
+                "Fixture Product",
+                null,
+                "tops/shirts",
+                null,
+                null,
+                null,
+                Instant.parse("2026-07-24T00:00:00Z")
+        );
+        ProviderCapabilities capabilities = new ProviderCapabilities(
+                "fixture",
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                Duration.ofHours(1),
+                true
+        );
+        ProductSnapshot snapshot = mock(ProductSnapshot.class);
+        Product createdProduct = mock(Product.class);
+        when(productCatalogPort.capabilities()).thenReturn(capabilities);
+        when(identityHasher.hash(providerRef)).thenReturn("identity-key");
+        when(candidateMapper.snapshot(
+                providerRef,
+                candidate,
+                Instant.parse("2026-07-24T01:00:00Z")
+        )).thenReturn(snapshot);
+        when(createdProduct.getId()).thenReturn(42L);
+        when(persistenceService.materializeStable(providerRef, "identity-key", snapshot))
+                .thenReturn(new ProductPersistenceService.MaterializationResult(
+                        createdProduct,
+                        true
+                ));
+        ProductMaterializationService service = new ProductMaterializationService(
+                productCatalogPort,
+                candidateTokenService,
+                identityHasher,
+                candidateMapper,
+                persistenceService,
+                Clock.fixed(Instant.parse("2026-07-24T00:00:00Z"), ZoneOffset.UTC)
+        );
+
+        ProductMaterializationService.RecommendationMaterializationResult result =
+                service.materializeForRecommendation(candidate);
+
+        assertThat(result.productId()).isEqualTo(42L);
+        assertThat(result.created()).isTrue();
+        verify(persistenceService, never()).refresh(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        );
     }
 }

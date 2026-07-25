@@ -90,7 +90,42 @@ public class ProductMaterializationService {
         );
     }
 
+    public RecommendationMaterializationResult materializeForRecommendation(
+            ExternalProductCandidate candidate
+    ) {
+        ProviderProductRef providerRef = candidate.providerRef();
+        ProviderCapabilities capabilities = productCatalogPort.capabilities();
+        if (!providerRef.provider().equals(capabilities.provider())
+                || !providerRef.stable()
+                || !capabilities.canPersistResult()) {
+            throw new BusinessException(ErrorCode.PRODUCT_REFERENCE_UNSUPPORTED);
+        }
+
+        String providerIdentityKey = identityHasher.hash(providerRef);
+        ProductSnapshot snapshot = candidateMapper.snapshot(
+                providerRef,
+                candidate,
+                snapshotExpiresAt(capabilities.maxTtl())
+        );
+        ProductPersistenceService.MaterializationResult result =
+                persistenceService.materializeStable(
+                        providerRef,
+                        providerIdentityKey,
+                        snapshot
+                );
+        if (!result.created()) {
+            persistenceService.refresh(result.product().getId(), snapshot);
+        }
+        return new RecommendationMaterializationResult(
+                result.product().getId(),
+                result.created()
+        );
+    }
+
     private Instant snapshotExpiresAt(Duration maxTtl) {
         return maxTtl == null ? null : clock.instant().plus(maxTtl);
+    }
+
+    public record RecommendationMaterializationResult(Long productId, boolean created) {
     }
 }

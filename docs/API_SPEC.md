@@ -9,7 +9,7 @@
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
 | 연동 참고 | Auth `#20`의 `AuthMember` principal과 현재 `AnalysisReport`의 분석 결과를 입력으로 사용 |
-| 문서 성격 | Issue `#98` 기준 계약. 실제 Controller·Service·Entity 변경은 후속 기능 이슈에서 진행 |
+| 문서 성격 | Issue `#98` 기준 계약과 후속 기능 Issue `#106`, `#111` 구현 상태 반영 |
 
 이 문서는 제공된 임시 API 명세의 URI와 화면 흐름을 최대한 유지하면서 현재 backend 구조와
 확정된 Recommendation/Product 정책을 구체화한다. 이 범위 밖 Auth, Member, Tag, Trend,
@@ -125,6 +125,8 @@ OTHER
 - 추천 요청은 `confirmedTagIds`, `matchPercentage`, `memberId`를 받지 않는다.
 - 추천 생성 과정에서 `ReportTag`, 분석 결과, 이미지 상태를 변경하지 않는다.
 - 표시 가능한 분석 태그가 없거나 분석이 완료되지 않은 리포트는 추천을 생성하지 않는다.
+- 현재 `AnalysisReport`에는 별도 완료 status가 없으므로 Issue #111 구현은 삭제되지 않은
+  소유 리포트에 표시 가능한 태그가 1개 이상 있는지를 추천 입력 준비 완료 기준으로 사용한다.
 - 원상품 후보 탐색, 원상품 선택, 기준 가격 확정은 이번 Recommendation/Product 범위가 아니다.
 
 ### 2.3 유사도 점수
@@ -133,7 +135,12 @@ OTHER
 - `finalScore`는 이번 범위에서 `similarityScore`와 같다.
 - 상품 가격은 검색·상세·찜 화면 표시용이며 추천 점수나 가성비 문구에 사용하지 않는다.
 - 공급자 raw score를 그대로 내부 점수로 저장하지 않는다.
-- 공급자별 normalization과 분석 태그 fallback은 쇼핑 API Adapter 구현 이슈에서 contract test로 고정한다.
+- `SIMILARITY_V1`은 Adapter가 제공한 0~1 score를 0~100으로 변환하고 소수 둘째 자리에서
+  `HALF_UP`으로 저장한다.
+- score가 없으면 상품명·브랜드·카테고리에 분석 태그가 포함된 후보는 70점, 일치하지 않는
+  후보는 0점으로 계산한다.
+- 80점 이상은 `HIGH_SIMILARITY`, 분석 태그 문자열이 일치하면 `TAG_MATCH`, 그 외에는
+  `PROVIDER_SIMILARITY` reason code를 사용하며 code 목록은 정렬해 저장한다.
 
 ### 2.4 동점 정렬
 
@@ -396,14 +403,12 @@ candidate token, 안정 provider identity의 멱등 materialize와 상세 live l
 
 ## 7. 추천 결과 생성
 
-### 목표 계약 — `POST /api/v1/analyses/{reportId}/recommendations`
+### `POST /api/v1/analyses/{reportId}/recommendations`
 
-후속 기능 이슈에서 인증 회원의 기존 분석 결과를 읽어 현재 추천 세트를 생성하거나 교체한다.
-목표 Request body는 없으며 분석 태그, `matchPercentage`, 이미지 상태를 변경하지 않는다.
-
-이 절은 후속 기능 이슈에서 구현할 **목표 계약**이다. 현재 `develop`의 legacy
-`PATCH /api/v1/analyses/{reportId}/recommendations`와 `ConfirmTagsRequest`는 이 문서만으로
-변경되지 않으며, Controller·Service·테스트를 함께 전환한 뒤 이 POST 계약을 제공한다.
+Issue #111에서 인증 회원의 기존 분석 결과를 읽어 현재 추천 세트를 생성하거나 교체한다.
+Request body는 없으며 분석 태그, `matchPercentage`, 이미지 상태를 변경하지 않는다.
+기존 `PATCH /api/v1/analyses/{reportId}/recommendations`와 `ConfirmTagsRequest` 공개 계약은
+제거되었다.
 
 ### Response `200 OK`
 
@@ -477,6 +482,9 @@ candidate token, 안정 provider identity의 멱등 materialize와 상세 live l
 - 후보가 모두 저장 정책상 materialize 불가하면 `PRODUCT503_3`이며 기존 세트를 유지한다.
 - 각 그룹은 최대 5개이며 8개 그룹을 고정 순서로 반환한다.
 - 추천 세트 교체는 `SavedProduct`를 변경하지 않는다.
+- 일부 태그 query가 실패하면 `PROVIDER_PARTIAL_FAILURE`, 저장 불가 후보를 제외하면
+  `MATERIALIZATION_SKIPPED` warning과 `partial=true`를 반환한다.
+- 저장 상품 기능 구현 전까지 추천 응답의 `isSaved`는 `false`다.
 
 ---
 
@@ -637,7 +645,7 @@ body는 없다.
 - 상품 가격은 표시 데이터이며 가격 없음·통화 차이는 추천 생성 오류가 아니다.
 - 저장 상품 DELETE는 관계가 없어도 성공한다.
 - provider 오류 응답에는 API key, 원문 요청 URL, candidate token, 외부 원문 body를 넣지 않는다.
-- domain ErrorCode 구현 전에는 이 표의 식별자와 wire code를 동시에 임의 변경하지 않는다.
+- domain `ErrorCode`와 이 표의 식별자·wire code를 함께 동기화한다.
 
 ---
 
@@ -874,11 +882,11 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 본인의 삭제되지 않은 리포트 상세와 확정 태그, 추천 그룹을 반환한다. private 이미지 URL은
 10분 유효한 CloudFront signed URL이다.
 
-### 목표 계약 — `POST /api/v1/analyses/{reportId}/recommendations`
+### `POST /api/v1/analyses/{reportId}/recommendations`
 
-후속 기능 이슈의 목표 계약이다. 기존 분석 결과를 읽어 추천 현재 세트를 생성한다. Request
-body는 없으며 분석 태그와 `matchPercentage`를 변경하지 않는다. 현재 legacy PATCH 구현과
-전환 조건을 포함한 세부 계약은 7절을 따른다.
+Issue #111 구현은 기존 분석 결과를 읽어 추천 현재 세트를 생성한다. Request body는 없으며
+분석 태그와 `matchPercentage`를 변경하지 않는다. legacy PATCH는 제거되었고 세부 생성·교체
+계약은 7절을 따른다.
 
 ### `DELETE /api/v1/analyses/{reportId}`
 

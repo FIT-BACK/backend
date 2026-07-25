@@ -43,6 +43,7 @@ class AnalysisReportTest {
         report.confirmTags(List.of(minimal, beige), 85);
 
         assertThat(report.getMatchPercentage()).isEqualTo(85);
+        assertThat(report.getRecommendationInputRevision()).isEqualTo(2);
         assertThat(report.getReportTags())
                 .extracting(ReportTag::getTag, ReportTag::getSource, ReportTag::isConfirmed)
                 .containsExactly(
