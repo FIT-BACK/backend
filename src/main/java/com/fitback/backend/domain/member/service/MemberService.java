@@ -2,6 +2,7 @@ package com.fitback.backend.domain.member.service;
 
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.entity.WithdrawalEmailBlock;
 import com.fitback.backend.domain.member.init.WithdrawnMember;
@@ -40,6 +41,7 @@ public class MemberService {
     private final AnalysisReportRepository analysisReportRepository;
     private final ClosetSaveRepository closetSaveRepository;
     private final LookbookRepository lookbookRepository;
+    private final LookbookLikeRepository lookbookLikeRepository;
 
     private final PasswordEncoder passwordEncoder;
 
@@ -130,6 +132,12 @@ public class MemberService {
             existingBlock.get().renew(blockedUntil);
         } else {
             withdrawalEmailBlockRepository.save(WithdrawalEmailBlock.create(hashedEmail, blockedUntil));
+        }
+
+        //회원 삭제 시 lookbook_like가 cascade 삭제되므로, 삭제 전에 좋아요 수를 먼저 보정
+        List<Long> likedLookbookIds = lookbookLikeRepository.findLookbookIdsByMemberId(deleteMember.getId());
+        if (!likedLookbookIds.isEmpty()) {
+            lookbookRepository.decrementLikeCountByIds(likedLookbookIds);
         }
 
         //룩북은 삭제하지 않고 탈퇴 회원 계정으로 익명화 (member 삭제 전에)
