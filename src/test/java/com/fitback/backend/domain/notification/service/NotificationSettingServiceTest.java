@@ -96,7 +96,7 @@ class NotificationSettingServiceTest {
         verify(notificationSettingRepository).save(any(MemberNotificationSetting.class));
     }
 
-    //수정 - 모든 필드가 null이면 BAD_REQUEST, 설정 조회조차 안 함
+    //수정 - 모든 필드가 null이면 알림 설정 검증 오류, 설정 조회조차 안 함
     @Test
     void updateEmptyRequestBadRequestTest(){
         Member member = createTestMember(1L);
@@ -106,7 +106,7 @@ class NotificationSettingServiceTest {
 
         assertThatThrownBy(() -> notificationSettingService.updateNotificationSettings(authMember, request))
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
-                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST));
+                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.NOTIFICATION_SETTING_EMPTY));
 
         //400 차단이 get-or-create보다 먼저
         verify(notificationSettingRepository, never()).findById(anyLong());

@@ -51,6 +51,7 @@ public class MemberRequest {
             String currentPassword,
 
             @NotBlank(message = "새 비밀번호는 필수 입력값 입니다.")
+            @Size(min = 8, max = 64, message = "새 비밀번호는 8~64자여야 합니다.")
             String newPassword
     ){}
 

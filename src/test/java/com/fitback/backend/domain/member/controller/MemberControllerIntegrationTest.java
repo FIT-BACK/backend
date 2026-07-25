@@ -420,6 +420,19 @@ class MemberControllerIntegrationTest {
                 .andExpect(jsonPath("$.code").value("COMMON400_2"));
     }
 
+    //비밀번호 변경 - 새 비밀번호가 8자 미만이면 검증 오류 400
+    @Test
+    void changePasswordTooShortTest() throws Exception {
+        String token = signUpAndGetAccessToken("shortpw@fitback.com", "password123");
+
+        mockMvc.perform(patch("/api/v1/members/me/password")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("currentPassword", "password123", "newPassword", "short"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+    }
+
     // ---------- onboarding ----------
 
     //온보딩 성공 - 프로필과 태그 저장

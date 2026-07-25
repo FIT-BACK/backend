@@ -50,7 +50,7 @@ public class NotificationSettingService {
     ) {
         //수정할 필드가 하나도 없으면 400
         if (dto.isEmpty()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST);
+            throw new BusinessException(ErrorCode.NOTIFICATION_SETTING_EMPTY);
         }
 
         Member member = authMember.getMember();

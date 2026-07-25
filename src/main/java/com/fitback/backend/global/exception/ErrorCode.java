@@ -26,6 +26,8 @@ public enum ErrorCode {
     MEMBER_TAG_NOT_FOUND(HttpStatus.BAD_REQUEST, "MEMBER400_3", "존재하지 않는 태그가 포함되어 있습니다."),
     REJOIN_BLOCKED(HttpStatus.FORBIDDEN, "MEMBER403_1", "탈퇴 후 30일 동안 재가입할 수 없습니다."),
 
+    NOTIFICATION_SETTING_EMPTY(HttpStatus.BAD_REQUEST, "NOTIFICATION400_1", "변경할 알림 설정 값이 없습니다."),
+
     IMAGE_UNSUPPORTED_CONTENT_TYPE(
             HttpStatus.BAD_REQUEST,
             "IMAGE400_1",
