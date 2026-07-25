@@ -92,7 +92,7 @@ class EntityInvariantTest {
     }
 
     @Test
-    void recommendedItemRejectsNullRequiredValuesImmediately() {
+    void recommendedItemValidatesRequiredValuesAndRankRange() {
         AnalysisReport report = AnalysisReport.create(member(), "https://example.com/report.jpg", 85);
         Product product = product(new BigDecimal("10000.00"));
 
