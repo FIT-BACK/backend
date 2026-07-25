@@ -23,6 +23,10 @@ public class InMemoryTempTokenStore implements TempTokenStore {
     private final ScheduledExecutorService cleanupExecutor;
 
     public InMemoryTempTokenStore(@Value("${app.oauth.temp-token-ttl}") long ttlMillis) {
+        if (ttlMillis <= 0) {
+            throw new IllegalArgumentException("임시 토큰 TTL은 0보다 커야 합니다.");
+        }
+
         this.ttl = Duration.ofMillis(ttlMillis);
         this.cleanupExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "temp-token-cleanup");

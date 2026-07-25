@@ -7,8 +7,20 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 class InMemoryTempTokenStoreTest {
+
+    //0 이하의 TTL 설정은 cleanup 스케줄러 생성 전에 거절
+    @Test
+    void nonPositiveTtlThrowsIllegalArgumentExceptionTest() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> new InMemoryTempTokenStore(0))
+                .withMessage("임시 토큰 TTL은 0보다 커야 합니다.");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> new InMemoryTempTokenStore(-1))
+                .withMessage("임시 토큰 TTL은 0보다 커야 합니다.");
+    }
 
     //issue 후 consume하면 저장한 payload 그대로 반환
     @Test
