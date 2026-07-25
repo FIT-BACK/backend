@@ -687,7 +687,7 @@ class MemberServiceTest {
         when(memberRepository.findById(1L)).thenReturn(Optional.of(deleteMember));
         when(memberRepository.findByEmail(WithdrawnMember.EMAIL)).thenReturn(Optional.of(withdrawnMember));
         when(hmacUtil.hashHex("user@fitback.com")).thenReturn("hashed-email");
-        when(withdrawnEmailBlockRepository.findByEmailHash("hashed-email")).thenReturn(Optional.empty());
+        when(withdrawalEmailBlockRepository.findByEmailHash("hashed-email")).thenReturn(Optional.empty());
 
         memberService.deleteAccount(authMember);
 
