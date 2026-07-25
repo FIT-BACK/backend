@@ -120,11 +120,23 @@ class EntityInvariantTest {
                 List.of("HIGH_SIMILARITY")
         ))
                 .isInstanceOf(NullPointerException.class);
+        RecommendedItem rankTen = RecommendedItem.create(
+                report,
+                product,
+                1,
+                10,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        );
+        assertThat(rankTen.getRankNo()).isEqualTo(10);
         assertThatThrownBy(() -> RecommendedItem.create(
                 report,
                 product,
                 1,
-                6,
+                11,
                 ProductCategory.TOP,
                 new BigDecimal("90.00"),
                 new BigDecimal("90.00"),
