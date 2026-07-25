@@ -246,7 +246,10 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V6__add_recommendation_result_contract.sql`,
 `V7__add_withdrawal_block_and_notification_tables.sql`,
 `V8__add_member_delete_cascades.sql`,
-`V9__add_member_social_uid.sql`을 순서대로 적용하고 Hibernate
+`V9__add_saved_product.sql`,
+`V10__expand_recommendation_rank_to_ten.sql`,
+`V11__add_report_custom_tag.sql`,
+`V12__add_member_social_uid.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
 
@@ -290,7 +293,7 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | rollback 자체 실패 | mock test | 비정상 종료 코드 반환 |
 | 활성화 실패 및 INT/TERM | mock test | 직전 release 복원 |
 | DB/JWT/HMAC/Kakao 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
-| Flyway V1~V9 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환, 이미지 old/new purpose/status, 상품 provider·추천 결과 계약, 회원 알림/탈퇴 cascade, 카카오 `social_uid` 계약 확인 |
+| Flyway V1~V12 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환, 이미지 old/new purpose/status, 상품 provider·추천 결과·저장 계약, 회원 알림/탈퇴 cascade, 카카오 `social_uid` 계약 확인 |
 
 검증 명령:
 

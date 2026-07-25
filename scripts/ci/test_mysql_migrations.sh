@@ -60,7 +60,7 @@ seed_baseline_schema fitback "member_id BIGINT NOT NULL PRIMARY KEY, login_provi
 seed_baseline_schema fitback_existing_refresh_token "member_id BIGINT NOT NULL PRIMARY KEY, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL', refresh_token VARCHAR(512) NULL"
 
 for database in fitback fitback_existing_refresh_token; do
-  for migration in src/main/resources/db/migration/V*.sql; do
+  while IFS= read -r migration; do
     if [ "$(basename "$migration")" = 'V4__update_image_upload_policy.sql' ]; then
       printf '%s\n' \
         "INSERT INTO member (member_id) VALUES (9001);" \
@@ -72,7 +72,7 @@ for database in fitback fitback_existing_refresh_token; do
         | docker exec -i "$container_name" mysql -uroot "$database"
     fi
     docker exec -i "$container_name" mysql -uroot "$database" < "$migration"
-  done
+  done < <(printf '%s\n' src/main/resources/db/migration/V*.sql | sort -V)
 done
 
 docker exec "$container_name" mysql -uroot -e \
@@ -85,9 +85,9 @@ docker exec "$container_name" mysql -uroot -e \
    );"
 
 if docker exec -i "$container_name" mysql -uroot fitback_mismatched_social_uid \
-  < src/main/resources/db/migration/V9__add_member_social_uid.sql \
+  < src/main/resources/db/migration/V12__add_member_social_uid.sql \
   >/dev/null 2>&1; then
-  echo 'V9 accepted a mismatched UK_MEMBER_PROVIDER_UID constraint.' >&2
+  echo 'V12 accepted a mismatched UK_MEMBER_PROVIDER_UID constraint.' >&2
   exit 1
 fi
 
@@ -177,6 +177,8 @@ validate_recommendation_contract() {
   local analysis_metadata
   local recommendation_constraints
   local expected_recommendation_constraints
+  local recommendation_rank_check
+  local normalized_recommendation_rank_check
 
   recommendation_contract="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
@@ -278,10 +280,203 @@ validate_recommendation_contract() {
     printf '%s\n' "$recommendation_constraints" >&2
     exit 1
   fi
+
+  recommendation_rank_check="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT LOWER(CHECK_CLAUSE)
+        FROM information_schema.CHECK_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = '$database'
+          AND CONSTRAINT_NAME = 'CK_RECOMMENDED_RANK';")"
+
+  normalized_recommendation_rank_check="$(printf '%s\n' "$recommendation_rank_check" \
+    | tr -d '`()[:space:]')"
+  if [ "$normalized_recommendation_rank_check" != 'rank_nobetween1and10' ]; then
+    echo "Unexpected recommendation rank check in $database: $recommendation_rank_check" >&2
+    exit 1
+  fi
 }
 
 for database in fitback fitback_existing_refresh_token; do
   validate_recommendation_contract "$database"
+done
+
+validate_report_custom_tag_contract() {
+  local database="$1"
+  local custom_tag_columns
+  local custom_tag_constraints
+  local custom_tag_foreign_key
+  local custom_tag_name_check
+  local normalized_custom_tag_name_check
+
+  custom_tag_columns="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'report_custom_tag'
+        ORDER BY ORDINAL_POSITION;")"
+
+  if [ "$custom_tag_columns" != "$(printf '%s\n' \
+    'report_custom_tag_id:NO:bigint' \
+    'report_id:NO:bigint' \
+    'display_name:NO:varchar' \
+    'normalized_name:NO:varchar' \
+    'created_at:NO:datetime')" ]; then
+    echo "Unexpected report_custom_tag columns in $database:" >&2
+    printf '%s\n' "$custom_tag_columns" >&2
+    exit 1
+  fi
+
+  custom_tag_constraints="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONSTRAINT_NAME
+        FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'report_custom_tag'
+          AND CONSTRAINT_NAME IN (
+            'UK_REPORT_CUSTOM_TAG_NAME',
+            'FK_REPORT_CUSTOM_TAG_REPORT',
+            'CK_REPORT_CUSTOM_TAG_NAME'
+          )
+        ORDER BY CONSTRAINT_NAME;")"
+
+  if [ "$custom_tag_constraints" != "$(printf '%s\n' \
+    'CK_REPORT_CUSTOM_TAG_NAME' \
+    'FK_REPORT_CUSTOM_TAG_REPORT' \
+    'UK_REPORT_CUSTOM_TAG_NAME')" ]; then
+    echo "Unexpected report_custom_tag constraints in $database:" >&2
+    printf '%s\n' "$custom_tag_constraints" >&2
+    exit 1
+  fi
+
+  custom_tag_foreign_key="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(DELETE_RULE, ':', UPDATE_RULE)
+        FROM information_schema.REFERENTIAL_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = '$database'
+          AND TABLE_NAME = 'report_custom_tag'
+          AND CONSTRAINT_NAME = 'FK_REPORT_CUSTOM_TAG_REPORT';")"
+
+  if [ "$custom_tag_foreign_key" != 'CASCADE:RESTRICT' ]; then
+    echo "Unexpected report_custom_tag foreign key in $database: $custom_tag_foreign_key" >&2
+    exit 1
+  fi
+
+  custom_tag_name_check="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT LOWER(CHECK_CLAUSE)
+        FROM information_schema.CHECK_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = '$database'
+          AND CONSTRAINT_NAME = 'CK_REPORT_CUSTOM_TAG_NAME';")"
+  normalized_custom_tag_name_check="$(printf '%s\n' "$custom_tag_name_check" \
+    | tr -d '`()[:space:]')"
+  if [ "$normalized_custom_tag_name_check" \
+      != 'char_lengthtrimdisplay_namebetween1and50' ]; then
+    echo "Unexpected report_custom_tag name check in $database: $custom_tag_name_check" >&2
+    exit 1
+  fi
+}
+
+for database in fitback fitback_existing_refresh_token; do
+  validate_report_custom_tag_contract "$database"
+done
+
+validate_saved_product_contract() {
+  local database="$1"
+  local saved_product_columns
+  local saved_product_constraints
+  local saved_product_indexes
+  local relationship_count
+  local product_count
+
+  saved_product_columns="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'saved_product'
+        ORDER BY ORDINAL_POSITION;")"
+
+  if [ "$saved_product_columns" != "$(printf '%s\n' \
+    'member_id:NO:bigint' \
+    'product_id:NO:bigint' \
+    'created_at:NO:datetime')" ]; then
+    echo "Unexpected saved_product columns in $database:" >&2
+    printf '%s\n' "$saved_product_columns" >&2
+    exit 1
+  fi
+
+  saved_product_constraints="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(rc.CONSTRAINT_NAME, ':', rc.DELETE_RULE)
+        FROM information_schema.REFERENTIAL_CONSTRAINTS rc
+        WHERE rc.CONSTRAINT_SCHEMA = '$database'
+          AND rc.TABLE_NAME = 'saved_product'
+        ORDER BY rc.CONSTRAINT_NAME;")"
+
+  if [ "$saved_product_constraints" != "$(printf '%s\n' \
+    'FK_SAVED_PRODUCT_MEMBER:CASCADE' \
+    'FK_SAVED_PRODUCT_PRODUCT:RESTRICT')" ]; then
+    echo "Unexpected saved_product foreign keys in $database:" >&2
+    printf '%s\n' "$saved_product_constraints" >&2
+    exit 1
+  fi
+
+  saved_product_indexes="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT DISTINCT INDEX_NAME
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'saved_product'
+          AND INDEX_NAME IN ('PRIMARY', 'IDX_SAVED_PRODUCT_MEMBER_CURSOR')
+        ORDER BY INDEX_NAME;")"
+
+  if [ "$saved_product_indexes" != "$(printf '%s\n' \
+    'IDX_SAVED_PRODUCT_MEMBER_CURSOR' \
+    'PRIMARY')" ]; then
+    echo "Unexpected saved_product indexes in $database:" >&2
+    printf '%s\n' "$saved_product_indexes" >&2
+    exit 1
+  fi
+
+  docker exec "$container_name" mysql -uroot "$database" -e \
+    "DELETE FROM recommended_item WHERE product_id = 1;
+     INSERT INTO member (member_id) VALUES (9101);
+     INSERT INTO saved_product (member_id, product_id) VALUES (9101, 1);"
+
+  if docker exec "$container_name" mysql -uroot "$database" -e \
+    "INSERT INTO saved_product (member_id, product_id) VALUES (9101, 1);" \
+    >/dev/null 2>&1; then
+    echo "saved_product accepted a duplicate relationship in $database." >&2
+    exit 1
+  fi
+
+  if docker exec "$container_name" mysql -uroot "$database" -e \
+    "DELETE FROM product WHERE product_id = 1;" \
+    >/dev/null 2>&1; then
+    echo "saved_product did not restrict deletion of referenced product in $database." >&2
+    exit 1
+  fi
+
+  docker exec "$container_name" mysql -uroot "$database" -e \
+    "DELETE FROM member WHERE member_id = 9101;"
+  relationship_count="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*) FROM $database.saved_product
+        WHERE member_id = 9101 AND product_id = 1;")"
+  product_count="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*) FROM $database.product WHERE product_id = 1;")"
+
+  if [ "$relationship_count" != '0' ] || [ "$product_count" != '1' ]; then
+    echo "Unexpected saved_product delete lifecycle in $database:" >&2
+    echo "relationship_count=$relationship_count product_count=$product_count" >&2
+    exit 1
+  fi
+}
+
+for database in fitback fitback_existing_refresh_token; do
+  validate_saved_product_contract "$database"
 done
 
 actual_contract="$(docker exec "$container_name" mysql -uroot \

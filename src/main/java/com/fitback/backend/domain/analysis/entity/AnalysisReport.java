@@ -81,6 +81,11 @@ public class AnalysisReport extends BaseTimeEntity {
     @OrderBy("id ASC")
     private final List<ReportTag> reportTags = new ArrayList<>();
 
+    @Getter(AccessLevel.NONE)
+    @OneToMany(mappedBy = "report", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id ASC")
+    private final List<ReportCustomTag> customTags = new ArrayList<>();
+
     private AnalysisReport(Member member, String imageUrl, Integer matchPercentage) {
         this.member = Objects.requireNonNull(member, "member must not be null");
         this.imageUrl = Objects.requireNonNull(imageUrl, "imageUrl must not be null");
@@ -121,7 +126,11 @@ public class AnalysisReport extends BaseTimeEntity {
                 ? DEFAULT_MATCH_PERCENTAGE
                 : matchPercentage;
         validateMatchPercentage(nextMatchPercentage);
+        if (Objects.equals(this.matchPercentage, nextMatchPercentage)) {
+            return;
+        }
         this.matchPercentage = nextMatchPercentage;
+        this.recommendationInputRevision++;
     }
 
     public void addAiSuggestedTag(Tag tag) {
@@ -134,8 +143,17 @@ public class AnalysisReport extends BaseTimeEntity {
     }
 
     public void confirmTags(List<Tag> confirmedTags, Integer matchPercentage) {
+        confirmRecommendationInput(confirmedTags, List.of(), matchPercentage);
+    }
+
+    public void confirmRecommendationInput(
+            List<Tag> confirmedTags,
+            List<String> customTagNames,
+            Integer matchPercentage
+    ) {
         validateMatchPercentage(matchPercentage);
         Objects.requireNonNull(confirmedTags, "confirmedTags must not be null");
+        Objects.requireNonNull(customTagNames, "customTagNames must not be null");
 
         Map<Long, ReportTag> currentTags = reportTags.stream()
                 .collect(LinkedHashMap::new,
@@ -146,6 +164,28 @@ public class AnalysisReport extends BaseTimeEntity {
                         (tags, tag) -> tags.putIfAbsent(tag.getId(), tag),
                         LinkedHashMap::putAll);
         Set<Long> confirmedTagIds = new LinkedHashSet<>(uniqueConfirmedTags.keySet());
+        Map<String, ReportCustomTag> uniqueCustomTags = customTagNames.stream()
+                .map(name -> ReportCustomTag.create(this, name))
+                .collect(LinkedHashMap::new,
+                        (tags, tag) -> tags.putIfAbsent(tag.getNormalizedName(), tag),
+                        LinkedHashMap::putAll);
+        Set<Long> currentConfirmedTagIds = reportTags.stream()
+                .filter(ReportTag::isConfirmed)
+                .map(reportTag -> reportTag.getTag().getId())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<String> currentCustomTagNames = customTags.stream()
+                .map(ReportCustomTag::getNormalizedName)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        boolean sameKnownTags = reportTags.size() == confirmedTagIds.size()
+                && currentConfirmedTagIds.equals(confirmedTagIds);
+        boolean sameCustomTags = currentCustomTagNames.equals(
+                new LinkedHashSet<>(uniqueCustomTags.keySet())
+        );
+        if (sameKnownTags
+                && sameCustomTags
+                && Objects.equals(this.matchPercentage, matchPercentage)) {
+            return;
+        }
 
         reportTags.removeIf(reportTag -> !confirmedTagIds.contains(reportTag.getTag().getId()));
         for (Tag tag : uniqueConfirmedTags.values()) {
@@ -156,6 +196,8 @@ public class AnalysisReport extends BaseTimeEntity {
                 reportTag.confirm();
             }
         }
+        customTags.clear();
+        customTags.addAll(uniqueCustomTags.values());
         this.matchPercentage = matchPercentage;
         this.recommendationInputRevision++;
     }
@@ -185,6 +227,10 @@ public class AnalysisReport extends BaseTimeEntity {
 
     public List<ReportTag> getReportTags() {
         return List.copyOf(reportTags);
+    }
+
+    public List<ReportCustomTag> getCustomTags() {
+        return List.copyOf(customTags);
     }
 
     public List<Tag> getDisplayTags() {

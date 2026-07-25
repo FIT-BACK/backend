@@ -20,6 +20,7 @@ import com.fitback.backend.domain.product.service.model.ProductSearchResult;
 import com.fitback.backend.domain.product.service.model.ProviderProductRef;
 import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
 import com.fitback.backend.domain.recommendation.dto.RecommendationCreateResponse;
+import com.fitback.backend.domain.recommendation.dto.RecommendationGenerateRequest;
 import com.fitback.backend.domain.recommendation.dto.RecommendationGroupResponse;
 import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
 import com.fitback.backend.domain.recommendation.entity.RecommendationStatus;
@@ -46,6 +47,9 @@ class RecommendationServiceTest {
     private RecommendationInputReader inputReader;
 
     @Mock
+    private RecommendationInputCommandService inputCommandService;
+
+    @Mock
     private ProductCatalogPort productCatalogPort;
 
     @Mock
@@ -66,6 +70,7 @@ class RecommendationServiceTest {
     void setUp() {
         recommendationService = new RecommendationService(
                 inputReader,
+                inputCommandService,
                 productCatalogPort,
                 candidateMapper,
                 materializationService,
@@ -76,16 +81,21 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void deduplicatesAndSelectsTopFivePerCategoryDeterministically() {
+    void deduplicatesAndSelectsTopTenPerCategoryDeterministically() {
         RecommendationInputSnapshot input = input();
         List<ExternalProductCandidate> candidates = List.of(
-                candidate(1, "0.10", true),
-                candidate(2, "0.70", true),
-                candidate(3, "0.60", true),
-                candidate(4, "0.50", true),
-                candidate(5, "0.40", true),
-                candidate(6, "0.30", true),
-                candidate(2, "0.70", true)
+                candidate(1, "0.01", true),
+                candidate(2, "0.99", true),
+                candidate(3, "0.90", true),
+                candidate(4, "0.80", true),
+                candidate(5, "0.70", true),
+                candidate(6, "0.60", true),
+                candidate(7, "0.50", true),
+                candidate(8, "0.40", true),
+                candidate(9, "0.30", true),
+                candidate(10, "0.20", true),
+                candidate(11, "0.10", true),
+                candidate(2, "0.99", true)
         );
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(any(ProductSearchQuery.class)))
@@ -121,7 +131,12 @@ class RecommendationServiceTest {
                         org.assertj.core.groups.Tuple.tuple(3L, 2),
                         org.assertj.core.groups.Tuple.tuple(4L, 3),
                         org.assertj.core.groups.Tuple.tuple(5L, 4),
-                        org.assertj.core.groups.Tuple.tuple(6L, 5)
+                        org.assertj.core.groups.Tuple.tuple(6L, 5),
+                        org.assertj.core.groups.Tuple.tuple(7L, 6),
+                        org.assertj.core.groups.Tuple.tuple(8L, 7),
+                        org.assertj.core.groups.Tuple.tuple(9L, 8),
+                        org.assertj.core.groups.Tuple.tuple(10L, 9),
+                        org.assertj.core.groups.Tuple.tuple(11L, 10)
                 );
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
         assertThat(response.partial()).isFalse();
@@ -177,6 +192,74 @@ class RecommendationServiceTest {
 
         verify(setWriter).replaceCurrentSet(input, "SIMILARITY_V1", List.of());
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
+    }
+
+    @Test
+    void recordsCurrentEmptySetWhenEveryCandidateIsBelowThreshold() {
+        RecommendationGenerateRequest request = new RecommendationGenerateRequest(
+                List.of(10L),
+                List.of(),
+                100
+        );
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                2,
+                100,
+                List.of(new TagInput(10L, "Fixture"))
+        );
+        when(inputCommandService.confirmAndRead(1L, 501L, request)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenReturn(new ProductSearchResult(
+                        List.of(candidate(1, "0.90", true)),
+                        null
+                ));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        RecommendationCreateResponse response = recommendationService.generate(
+                1L,
+                501L,
+                request
+        );
+
+        verify(materializationService, never()).materializeForRecommendation(any());
+        verify(setWriter).replaceCurrentSet(
+                input,
+                "SIMILARITY_THRESHOLD_V2",
+                List.of()
+        );
+        assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
+        assertThat(response.scoreVersion()).isEqualTo("SIMILARITY_THRESHOLD_V2");
+    }
+
+    @Test
+    void thresholdOneHundredIncludesOnlyPerfectScoreCandidate() {
+        RecommendationGenerateRequest request = new RecommendationGenerateRequest(
+                List.of(10L),
+                List.of(),
+                100
+        );
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                2,
+                100,
+                List.of(new TagInput(10L, "Fixture"))
+        );
+        ExternalProductCandidate perfect = candidate(1, "1.00", true);
+        ExternalProductCandidate below = candidate(2, "0.99", true);
+        when(inputCommandService.confirmAndRead(1L, 501L, request)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenReturn(new ProductSearchResult(List.of(perfect, below), null));
+        when(candidateMapper.category(perfect)).thenReturn(ProductCategory.TOP);
+        when(materializationService.materializeForRecommendation(perfect))
+                .thenReturn(new RecommendationMaterializationResult(1L, true));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L, request);
+
+        verify(materializationService).materializeForRecommendation(perfect);
+        verify(materializationService, never()).materializeForRecommendation(below);
     }
 
     private static RecommendationInputSnapshot input() {

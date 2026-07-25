@@ -4,6 +4,7 @@ import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.analysis.service.RecommendationResultProvider;
 import com.fitback.backend.domain.product.entity.Product;
+import com.fitback.backend.domain.product.repository.SavedProductRepository;
 import com.fitback.backend.domain.product.service.ProductResponseMapper;
 import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.recommendation.dto.RecommendationGroupResponse;
@@ -15,7 +16,9 @@ import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepos
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,15 +29,18 @@ public class RecommendationQueryService implements RecommendationResultProvider 
     private final AnalysisReportRepository analysisReportRepository;
     private final RecommendedItemRepository recommendedItemRepository;
     private final ProductResponseMapper productResponseMapper;
+    private final SavedProductRepository savedProductRepository;
 
     public RecommendationQueryService(
             AnalysisReportRepository analysisReportRepository,
             RecommendedItemRepository recommendedItemRepository,
-            ProductResponseMapper productResponseMapper
+            ProductResponseMapper productResponseMapper,
+            SavedProductRepository savedProductRepository
     ) {
         this.analysisReportRepository = analysisReportRepository;
         this.recommendedItemRepository = recommendedItemRepository;
         this.productResponseMapper = productResponseMapper;
+        this.savedProductRepository = savedProductRepository;
     }
 
     @Override
@@ -58,13 +64,17 @@ public class RecommendationQueryService implements RecommendationResultProvider 
             List<RecommendedItem> items
     ) {
         RecommendationStatus status = status(report);
+        Set<Long> savedProductIds = findSavedProductIds(report, items);
         List<RecommendationGroupResponse> groups = java.util.Arrays.stream(ProductCategory.values())
                 .map(category -> new RecommendationGroupResponse(
                         category,
                         items.stream()
                                 .filter(item -> item.getCategory() == category)
                                 .sorted(Comparator.comparing(RecommendedItem::getRankNo))
-                                .map(this::toResponse)
+                                .map(item -> toResponse(
+                                        item,
+                                        savedProductIds.contains(item.getProduct().getId())
+                                ))
                                 .toList()
                 ))
                 .toList();
@@ -77,7 +87,24 @@ public class RecommendationQueryService implements RecommendationResultProvider 
         );
     }
 
-    private RecommendationItemResponse toResponse(RecommendedItem item) {
+    private Set<Long> findSavedProductIds(
+            AnalysisReport report,
+            List<RecommendedItem> items
+    ) {
+        List<Long> productIds = items.stream()
+                .map(item -> item.getProduct().getId())
+                .distinct()
+                .toList();
+        if (productIds.isEmpty()) {
+            return Set.of();
+        }
+        return new HashSet<>(savedProductRepository.findSavedProductIds(
+                report.getMember().getId(),
+                productIds
+        ));
+    }
+
+    private RecommendationItemResponse toResponse(RecommendedItem item, boolean saved) {
         Product product = item.getProduct();
         return new RecommendationItemResponse(
                 product.getId(),
@@ -91,7 +118,7 @@ public class RecommendationQueryService implements RecommendationResultProvider 
                 item.getFinalScore(),
                 item.getReasonCodeList(),
                 product.getAvailability(),
-                false
+                saved
         );
     }
 

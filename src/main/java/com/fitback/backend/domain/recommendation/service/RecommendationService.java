@@ -12,6 +12,7 @@ import com.fitback.backend.domain.product.service.model.ProductSearchResult;
 import com.fitback.backend.domain.product.service.model.ProviderProductRef;
 import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
 import com.fitback.backend.domain.recommendation.dto.RecommendationCreateResponse;
+import com.fitback.backend.domain.recommendation.dto.RecommendationGenerateRequest;
 import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
 import com.fitback.backend.domain.recommendation.service.RecommendationScorer.Score;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
@@ -32,13 +33,15 @@ import org.springframework.stereotype.Service;
 public class RecommendationService {
 
     static final String SCORE_VERSION = "SIMILARITY_V1";
+    static final String THRESHOLD_SCORE_VERSION = "SIMILARITY_THRESHOLD_V2";
 
     private static final int SEARCH_PAGE_SIZE = 20;
-    private static final int MAX_ITEMS_PER_CATEGORY = 5;
+    private static final int MAX_ITEMS_PER_CATEGORY = 10;
     private static final String PROVIDER_PARTIAL_FAILURE = "PROVIDER_PARTIAL_FAILURE";
     private static final String MATERIALIZATION_SKIPPED = "MATERIALIZATION_SKIPPED";
 
     private final RecommendationInputReader inputReader;
+    private final RecommendationInputCommandService inputCommandService;
     private final ProductCatalogPort productCatalogPort;
     private final ProductCandidateMapper candidateMapper;
     private final ProductMaterializationService materializationService;
@@ -48,6 +51,7 @@ public class RecommendationService {
 
     public RecommendationService(
             RecommendationInputReader inputReader,
+            RecommendationInputCommandService inputCommandService,
             ProductCatalogPort productCatalogPort,
             ProductCandidateMapper candidateMapper,
             ProductMaterializationService materializationService,
@@ -56,6 +60,7 @@ public class RecommendationService {
             RecommendationQueryService queryService
     ) {
         this.inputReader = inputReader;
+        this.inputCommandService = inputCommandService;
         this.productCatalogPort = productCatalogPort;
         this.candidateMapper = candidateMapper;
         this.materializationService = materializationService;
@@ -65,25 +70,42 @@ public class RecommendationService {
     }
 
     public RecommendationCreateResponse generate(Long memberId, Long reportId) {
-        RecommendationInputSnapshot input = inputReader.read(memberId, reportId);
+        return generate(memberId, reportId, null);
+    }
+
+    public RecommendationCreateResponse generate(
+            Long memberId,
+            Long reportId,
+            RecommendationGenerateRequest request
+    ) {
+        boolean applyThreshold = request != null;
+        RecommendationInputSnapshot input = applyThreshold
+                ? inputCommandService.confirmAndRead(memberId, reportId, request)
+                : inputReader.read(memberId, reportId);
         CandidateCollection candidateCollection = collectCandidates(input.tagNames());
         Set<String> warnings = new TreeSet<>(candidateCollection.warnings());
-        List<MaterializedCandidate> materialized = materializeCandidates(
-                input.tagNames(),
+        List<ScoredCandidate> eligibleCandidates = scoreEligibleCandidates(
+                input,
                 candidateCollection.candidates(),
+                applyThreshold
+        );
+        List<MaterializedCandidate> materialized = materializeCandidates(
+                eligibleCandidates,
                 warnings
         );
-        if (!candidateCollection.candidates().isEmpty() && materialized.isEmpty()) {
+        if (!eligibleCandidates.isEmpty() && materialized.isEmpty()) {
             throw new BusinessException(ErrorCode.PRODUCT_PROVIDER_PERSISTENCE_UNSUPPORTED);
         }
 
-        List<RecommendationSelection> selections = selectTopFivePerCategory(materialized);
-        setWriter.replaceCurrentSet(input, SCORE_VERSION, selections);
+        List<RecommendationSelection> selections = selectTopItemsPerCategory(materialized);
+        String scoreVersion = applyThreshold ? THRESHOLD_SCORE_VERSION : SCORE_VERSION;
+        setWriter.replaceCurrentSet(input, scoreVersion, selections);
         RecommendationResultResponse result = queryService.findByReportId(memberId, reportId);
         return new RecommendationCreateResponse(
                 reportId,
                 input.tagNames(),
-                SCORE_VERSION,
+                input.matchPercentage(),
+                scoreVersion,
                 result.recommendationStatus(),
                 result.recommendationGroups(),
                 !warnings.isEmpty(),
@@ -116,14 +138,30 @@ public class RecommendationService {
         return new CandidateCollection(List.copyOf(candidatesByKey.values()), warnings);
     }
 
-    private List<MaterializedCandidate> materializeCandidates(
-            List<String> tagNames,
+    private List<ScoredCandidate> scoreEligibleCandidates(
+            RecommendationInputSnapshot input,
             List<ExternalProductCandidate> candidates,
+            boolean applyThreshold
+    ) {
+        BigDecimal threshold = BigDecimal.valueOf(input.matchPercentage());
+        return candidates.stream()
+                .map(candidate -> new ScoredCandidate(
+                        candidate,
+                        scorer.score(input.tagNames(), candidate)
+                ))
+                .filter(candidate -> !applyThreshold
+                        || candidate.score().similarityScore().compareTo(threshold) >= 0)
+                .toList();
+    }
+
+    private List<MaterializedCandidate> materializeCandidates(
+            List<ScoredCandidate> candidates,
             Set<String> warnings
     ) {
         List<MaterializedCandidate> materialized = new ArrayList<>();
-        for (ExternalProductCandidate candidate : candidates) {
-            Score score = scorer.score(tagNames, candidate);
+        for (ScoredCandidate scoredCandidate : candidates) {
+            ExternalProductCandidate candidate = scoredCandidate.candidate();
+            Score score = scoredCandidate.score();
             try {
                 RecommendationMaterializationResult result =
                         materializationService.materializeForRecommendation(candidate);
@@ -145,7 +183,7 @@ public class RecommendationService {
         return materialized;
     }
 
-    private static List<RecommendationSelection> selectTopFivePerCategory(
+    private static List<RecommendationSelection> selectTopItemsPerCategory(
             List<MaterializedCandidate> candidates
     ) {
         Comparator<MaterializedCandidate> order = Comparator
@@ -217,6 +255,12 @@ public class RecommendationService {
     private record CandidateCollection(
             List<ExternalProductCandidate> candidates,
             List<String> warnings
+    ) {
+    }
+
+    private record ScoredCandidate(
+            ExternalProductCandidate candidate,
+            Score score
     ) {
     }
 

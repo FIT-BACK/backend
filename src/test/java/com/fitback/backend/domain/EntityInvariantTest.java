@@ -92,7 +92,7 @@ class EntityInvariantTest {
     }
 
     @Test
-    void recommendedItemRejectsNullRequiredValuesImmediately() {
+    void recommendedItemValidatesRequiredValuesAndRankRange() {
         AnalysisReport report = AnalysisReport.create(member(), "https://example.com/report.jpg", 85);
         Product product = product(new BigDecimal("10000.00"));
 
@@ -120,11 +120,23 @@ class EntityInvariantTest {
                 List.of("HIGH_SIMILARITY")
         ))
                 .isInstanceOf(NullPointerException.class);
+        RecommendedItem rankTen = RecommendedItem.create(
+                report,
+                product,
+                1,
+                10,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        );
+        assertThat(rankTen.getRankNo()).isEqualTo(10);
         assertThatThrownBy(() -> RecommendedItem.create(
                 report,
                 product,
                 1,
-                6,
+                11,
                 ProductCategory.TOP,
                 new BigDecimal("90.00"),
                 new BigDecimal("90.00"),

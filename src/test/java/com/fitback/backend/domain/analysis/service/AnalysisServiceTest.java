@@ -207,6 +207,7 @@ class AnalysisServiceTest {
         Member member = member(1L);
         Tag minimal = tag(10L, "미니멀");
         AnalysisReport report = report(501L, member, minimal);
+        report.confirmRecommendationInput(List.of(minimal), List.of("출근룩"), 70);
         RecommendationGroupResponse recommendationGroup = new RecommendationGroupResponse(
                 ProductCategory.TOP,
                 List.of()
@@ -226,7 +227,7 @@ class AnalysisServiceTest {
         AnalysisDetailResponse response = analysisService.getReport(1L, 501L);
 
         assertThat(response.reportId()).isEqualTo(501L);
-        assertThat(response.tags()).containsExactly("미니멀");
+        assertThat(response.tags()).containsExactly("미니멀", "출근룩");
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
         assertThat(response.scoreVersion()).isEqualTo("SIMILARITY_V1");
         assertThat(response.recommendationGroups()).containsExactly(recommendationGroup);

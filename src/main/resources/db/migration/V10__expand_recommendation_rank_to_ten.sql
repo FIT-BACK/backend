@@ -1,0 +1,6 @@
+ALTER TABLE recommended_item
+    DROP CHECK CK_RECOMMENDED_RANK;
+
+ALTER TABLE recommended_item
+    ADD CONSTRAINT CK_RECOMMENDED_RANK
+        CHECK (rank_no BETWEEN 1 AND 10);
