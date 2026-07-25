@@ -39,6 +39,9 @@ printf '%s\n' \
   'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL);' \
   'CREATE TABLE product (product_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, external_product_id VARCHAR(100) NULL, name VARCHAR(255) NOT NULL, brand_name VARCHAR(100) NULL, seller_name VARCHAR(100) NOT NULL, price INT NOT NULL, average_price INT NULL, category VARCHAR(50) NOT NULL, season VARCHAR(20) NULL, gender VARCHAR(10) NULL, purchase_url VARCHAR(2048) NOT NULL, image_url VARCHAR(2048) NOT NULL, source_api VARCHAR(50) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL);' \
   "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
+  "INSERT INTO analysis_report (report_id, member_id, image_url, match_percentage) VALUES (7001, 8001, 'https://example.com/analysis.jpg', 70);" \
+  'CREATE TABLE recommended_item (recommend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, report_id BIGINT NOT NULL, product_id BIGINT NOT NULL, `rank` INT NOT NULL, category VARCHAR(50) NOT NULL, similarity_score INT NOT NULL, is_value_match BOOLEAN NOT NULL, created_at DATETIME(6) NOT NULL);' \
+  "INSERT INTO recommended_item (report_id, product_id, \`rank\`, category, similarity_score, is_value_match, created_at) VALUES (7001, 1, 1, '상의', 90, TRUE, NOW());" \
   | docker exec -i "$container_name" mysql -uroot fitback
 
 printf '%s\n' \
@@ -46,6 +49,9 @@ printf '%s\n' \
   'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL);' \
   'CREATE TABLE product (product_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, external_product_id VARCHAR(100) NULL, name VARCHAR(255) NOT NULL, brand_name VARCHAR(100) NULL, seller_name VARCHAR(100) NOT NULL, price INT NOT NULL, average_price INT NULL, category VARCHAR(50) NOT NULL, season VARCHAR(20) NULL, gender VARCHAR(10) NULL, purchase_url VARCHAR(2048) NOT NULL, image_url VARCHAR(2048) NOT NULL, source_api VARCHAR(50) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL);' \
   "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
+  "INSERT INTO analysis_report (report_id, member_id, image_url, match_percentage) VALUES (7001, 8001, 'https://example.com/analysis.jpg', 70);" \
+  'CREATE TABLE recommended_item (recommend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, report_id BIGINT NOT NULL, product_id BIGINT NOT NULL, `rank` INT NOT NULL, category VARCHAR(50) NOT NULL, similarity_score INT NOT NULL, is_value_match BOOLEAN NOT NULL, created_at DATETIME(6) NOT NULL);' \
+  "INSERT INTO recommended_item (report_id, product_id, \`rank\`, category, similarity_score, is_value_match, created_at) VALUES (7001, 1, 1, '상의', 90, TRUE, NOW());" \
   | docker exec -i "$container_name" mysql -uroot fitback_existing_refresh_token
 
 for database in fitback fitback_existing_refresh_token; do
@@ -140,6 +146,121 @@ validate_product_contract() {
 
 for database in fitback fitback_existing_refresh_token; do
   validate_product_contract "$database"
+done
+
+validate_recommendation_contract() {
+  local database="$1"
+  local recommendation_contract
+  local expected_recommendation_contract
+  local legacy_recommendation
+  local analysis_metadata
+  local recommendation_constraints
+  local expected_recommendation_constraints
+
+  recommendation_contract="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'recommended_item'
+          AND COLUMN_NAME IN (
+            'recommended_item_id',
+            'input_revision',
+            'rank_no',
+            'category',
+            'similarity_score',
+            'final_score',
+            'score_version',
+            'reason_codes'
+          )
+        ORDER BY COLUMN_NAME;")"
+
+  expected_recommendation_contract="$(printf '%s\n' \
+    'category:NO:varchar' \
+    'final_score:NO:decimal' \
+    'input_revision:NO:int' \
+    'rank_no:NO:int' \
+    'reason_codes:NO:varchar' \
+    'recommended_item_id:NO:bigint' \
+    'score_version:NO:varchar' \
+    'similarity_score:NO:decimal')"
+
+  if [ "$recommendation_contract" != "$expected_recommendation_contract" ]; then
+    echo "Unexpected recommendation migration contract in $database:" >&2
+    printf '%s\n' "$recommendation_contract" >&2
+    exit 1
+  fi
+
+  legacy_recommendation="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+          input_revision, ':',
+          rank_no, ':',
+          category, ':',
+          similarity_score, ':',
+          final_score, ':',
+          score_version, ':',
+          reason_codes
+        )
+        FROM $database.recommended_item
+        WHERE recommended_item_id = 1;")"
+
+  if [ "$legacy_recommendation" != '1:1:TOP:90.00:90.00:SIMILARITY_V1:LEGACY_RESULT' ]; then
+    echo "Unexpected legacy recommendation backfill in $database: $legacy_recommendation" >&2
+    exit 1
+  fi
+
+  analysis_metadata="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+          recommendation_input_revision, ':',
+          IF(result_input_revision IS NULL, 'NULL', result_input_revision), ':',
+          IF(result_score_version IS NULL, 'NULL', result_score_version), ':',
+          IF(recommendation_generated_at IS NULL, 'NULL', 'SET')
+        )
+        FROM $database.analysis_report
+        WHERE report_id = 7001;")"
+
+  if [ "$analysis_metadata" != '1:1:SIMILARITY_V1:SET' ]; then
+    echo "Unexpected analysis recommendation metadata in $database: $analysis_metadata" >&2
+    exit 1
+  fi
+
+  recommendation_constraints="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONSTRAINT_NAME
+        FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'recommended_item'
+          AND CONSTRAINT_NAME IN (
+            'UK_RECOMMENDED_REPORT_PRODUCT',
+            'UK_RECOMMENDED_REPORT_CATEGORY_RANK',
+            'CK_RECOMMENDED_INPUT_REVISION',
+            'CK_RECOMMENDED_RANK',
+            'CK_RECOMMENDED_CATEGORY',
+            'CK_RECOMMENDED_SIMILARITY_SCORE',
+            'CK_RECOMMENDED_FINAL_SCORE'
+          )
+        ORDER BY CONSTRAINT_NAME;")"
+
+  expected_recommendation_constraints="$(printf '%s\n' \
+    'CK_RECOMMENDED_CATEGORY' \
+    'CK_RECOMMENDED_FINAL_SCORE' \
+    'CK_RECOMMENDED_INPUT_REVISION' \
+    'CK_RECOMMENDED_RANK' \
+    'CK_RECOMMENDED_SIMILARITY_SCORE' \
+    'UK_RECOMMENDED_REPORT_CATEGORY_RANK' \
+    'UK_RECOMMENDED_REPORT_PRODUCT')"
+
+  if [ "$recommendation_constraints" != "$expected_recommendation_constraints" ]; then
+    echo "Unexpected recommendation constraints in $database:" >&2
+    printf '%s\n' "$recommendation_constraints" >&2
+    exit 1
+  fi
+}
+
+for database in fitback fitback_existing_refresh_token; do
+  validate_recommendation_contract "$database"
 done
 
 actual_contract="$(docker exec "$container_name" mysql -uroot \
