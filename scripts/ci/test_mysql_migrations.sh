@@ -327,13 +327,21 @@ validate_saved_product_contract() {
   fi
 
   docker exec "$container_name" mysql -uroot "$database" -e \
-    "INSERT INTO member (member_id) VALUES (9101);
+    "DELETE FROM recommended_item WHERE product_id = 1;
+     INSERT INTO member (member_id) VALUES (9101);
      INSERT INTO saved_product (member_id, product_id) VALUES (9101, 1);"
 
   if docker exec "$container_name" mysql -uroot "$database" -e \
     "INSERT INTO saved_product (member_id, product_id) VALUES (9101, 1);" \
     >/dev/null 2>&1; then
     echo "saved_product accepted a duplicate relationship in $database." >&2
+    exit 1
+  fi
+
+  if docker exec "$container_name" mysql -uroot "$database" -e \
+    "DELETE FROM product WHERE product_id = 1;" \
+    >/dev/null 2>&1; then
+    echo "saved_product did not restrict deletion of referenced product in $database." >&2
     exit 1
   fi
 
