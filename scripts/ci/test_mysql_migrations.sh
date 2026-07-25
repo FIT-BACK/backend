@@ -270,7 +270,11 @@ done
 
 actual_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
-  -e "SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE)
+  -e "SELECT CASE
+          WHEN TABLE_NAME = 'member' AND COLUMN_NAME = 'social_uid'
+            THEN CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE, ':', COLUMN_TYPE)
+          ELSE CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE)
+        END
       FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = 'fitback'
         AND (
@@ -312,7 +316,7 @@ expected_contract="$(printf '%s\n' \
   'marketing_consent_history.marketing_consent_history_id=NO' \
   'marketing_consent_history.member_id=NO' \
   'member.refresh_token=YES' \
-  'member.social_uid=YES' \
+  'member.social_uid=YES:varchar(100)' \
   'member_notification_setting.analysis_complete_enabled=NO' \
   'member_notification_setting.lookbook_liked_enabled=NO' \
   'member_notification_setting.marketing_enabled=NO' \
