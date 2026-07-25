@@ -8,7 +8,7 @@
 2. GitHub OIDC로 AWS IAM 역할을 위임받아 ECR의 `git-${GITHUB_SHA}` 태그를 조회하고, 없을 때만 푸시한다. 같은 SHA를 다시 실행하면 기존 불변 태그를 재사용한다.
 3. ECR에서 `sha256` digest를 확인해 변경 불가능한 이미지 참조를 생성한다.
 4. `EC2_INSTANCE_ID` 저장소 변수가 설정된 경우에만 SSM Run Command로 EC2 배포를 실행한다.
-5. EC2는 고유한 release 디렉터리에서 Parameter Store의 DB, JWT, HMAC, Kakao OAuth 값을 읽고 Compose stack을 갱신한다.
+5. EC2는 고유한 release 디렉터리에서 Parameter Store의 DB, JWT, HMAC, Kakao OAuth, CloudFront 개인 키 값을 읽고 Compose stack을 갱신한다.
 6. Nginx와 backend health check가 실패하면 직전 release 전체로 rollback한다.
 7. `PUBLIC_BASE_URL`이 설정되어 있으면 CloudFront HTTPS 주소에서 Nginx와 backend readiness를 다시 확인한다.
 
@@ -306,7 +306,7 @@ GRADLE_USER_HOME=/tmp/fitback-gradle-home ./gradlew clean build
 3. `/nginx-health`, backend container health, `/actuator/health/readiness` 순서로 확인한다.
 4. 자동 rollback이 실패한 경우 직전 release 디렉터리에서 비밀값을 출력하지 않고 `remote_deploy.sh`의 rollback 실패 원인을 확인한다.
 5. 같은 정상 SHA를 `workflow_dispatch`로 다시 실행해 ECR 태그 재사용과 SSM 배포를 복구 경로로 사용할 수 있다.
-6. 로그나 이슈에는 DB URL/user/password, Kakao secret, Parameter Store 복호화 값, 인증 토큰을 붙이지 않는다.
+6. 로그나 이슈에는 DB URL/user/password, Kakao secret, CloudFront 개인 키, Parameter Store 복호화 값, 인증 토큰을 붙이지 않는다.
 
 SSM 배포 완료 후 CloudFront 외부 검증은 원본과 무관한 CloudFront 장애나 일시적인 네트워크 오류로 정상 release를 되돌리지 않도록 비차단 경고로 처리한다. 경고가 발생하면 현재 release는 유지하며 위 순서로 CloudFront와 원본 상태를 확인한 뒤 같은 main SHA를 다시 실행한다.
 
