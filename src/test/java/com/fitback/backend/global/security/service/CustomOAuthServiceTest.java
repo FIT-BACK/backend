@@ -17,7 +17,9 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -85,5 +87,41 @@ class CustomOAuthServiceTest {
                 .isInstanceOfSatisfying(OAuth2AuthenticationException.class, exception ->
                         assertThat(exception.getError().getErrorCode())
                                 .isEqualTo(ErrorCode.SOCIAL_ID_REQUIRED.getCode()));
+    }
+
+    //카카오 계정 정보가 없으면 이메일 필수 오류로 OAuth 실패 처리
+    @Test
+    void loadUserWithoutKakaoAccountThrowsOAuthExceptionTest() {
+        OAuth2User oAuth2User = mock(OAuth2User.class);
+        when(oAuth2User.getAttribute("id")).thenReturn(12345L);
+        when(oAuth2User.getAttribute("kakao_account")).thenReturn(null);
+
+        CustomOAuthService customOAuthService =
+                new TestCustomOAuthService(kakaoMemberRegistrationService, oAuth2User);
+
+        assertThatThrownBy(() -> customOAuthService.loadUser(userRequest))
+                .isInstanceOfSatisfying(OAuth2AuthenticationException.class, exception ->
+                        assertThat(exception.getError().getErrorCode())
+                                .isEqualTo(ErrorCode.SOCIAL_EMAIL_REQUIRED.getCode()));
+
+        verify(kakaoMemberRegistrationService, never()).findOrRegister(anyString(), anyString());
+    }
+
+    //카카오 계정에 이메일이 없으면 이메일 필수 오류로 OAuth 실패 처리
+    @Test
+    void loadUserWithoutKakaoEmailThrowsOAuthExceptionTest() {
+        OAuth2User oAuth2User = mock(OAuth2User.class);
+        when(oAuth2User.getAttribute("id")).thenReturn(12345L);
+        when(oAuth2User.getAttribute("kakao_account")).thenReturn(Map.of());
+
+        CustomOAuthService customOAuthService =
+                new TestCustomOAuthService(kakaoMemberRegistrationService, oAuth2User);
+
+        assertThatThrownBy(() -> customOAuthService.loadUser(userRequest))
+                .isInstanceOfSatisfying(OAuth2AuthenticationException.class, exception ->
+                        assertThat(exception.getError().getErrorCode())
+                                .isEqualTo(ErrorCode.SOCIAL_EMAIL_REQUIRED.getCode()));
+
+        verify(kakaoMemberRegistrationService, never()).findOrRegister(anyString(), anyString());
     }
 }

@@ -6,6 +6,7 @@ import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.service.RejoinBlockChecker;
 import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.ErrorCode;
+import com.fitback.backend.global.security.exception.OAuthExceptionFactory;
 import com.fitback.backend.global.util.LowercaseNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -37,12 +38,12 @@ public class KakaoMemberRegistrationService {
 
         //같은 email의 기존 계정이 있다면 가입 막기
         if (memberRepository.existsByEmail(normalizedEmail)) {
-            throw CustomOAuthService.oauthException(ErrorCode.EMAIL_ALREADY_EXISTS);
+            throw OAuthExceptionFactory.create(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         //탈퇴 후 30일 재가입 차단
         if (rejoinBlockChecker.isRejoinBlocked(normalizedEmail)) {
-            throw CustomOAuthService.oauthException(ErrorCode.REJOIN_BLOCKED);
+            throw OAuthExceptionFactory.create(ErrorCode.REJOIN_BLOCKED);
         }
 
         //임시 닉네임 부여
@@ -65,9 +66,6 @@ public class KakaoMemberRegistrationService {
     }
 
     private OAuth2AuthenticationException duplicateSignupException(DataIntegrityViolationException exception) {
-        OAuth2AuthenticationException oauthException =
-                CustomOAuthService.oauthException(ErrorCode.EMAIL_ALREADY_EXISTS);
-        oauthException.initCause(exception);
-        return oauthException;
+        return OAuthExceptionFactory.create(ErrorCode.EMAIL_ALREADY_EXISTS, exception);
     }
 }

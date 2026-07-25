@@ -127,9 +127,11 @@ class KakaoMemberRegistrationServiceTest {
                 .thenThrow(new DataIntegrityViolationException("duplicate kakao member"));
 
         assertThatThrownBy(() -> kakaoMemberRegistrationService.findOrRegister("race@fitback.com", "12345"))
-                .isInstanceOfSatisfying(OAuth2AuthenticationException.class, exception ->
-                        assertThat(exception.getError().getErrorCode())
-                                .isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS.getCode()));
+                .isInstanceOfSatisfying(OAuth2AuthenticationException.class, exception -> {
+                    assertThat(exception.getError().getErrorCode())
+                            .isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS.getCode());
+                    assertThat(exception).hasCauseInstanceOf(DataIntegrityViolationException.class);
+                });
 
         verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
     }
