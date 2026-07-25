@@ -20,6 +20,7 @@ import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.util.HmacUtil;
+import com.fitback.backend.global.util.LowercaseNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -123,7 +124,8 @@ public class MemberService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR));
 
         //동일 이메일 30일 재가입 방지
-        String hashedEmail = hmacUtil.hashHex(deleteMember.getEmail());
+        String normalizedEmail = LowercaseNormalizer.normalize(deleteMember.getEmail());
+        String hashedEmail = hmacUtil.hashHex(normalizedEmail);
         LocalDateTime blockedUntil = LocalDateTime.now().plusDays(30);
 
         //기존 차단 기록이 있으면 갱신, 없으면 신규 저장 (email_hash UNIQUE 충돌 방지)
