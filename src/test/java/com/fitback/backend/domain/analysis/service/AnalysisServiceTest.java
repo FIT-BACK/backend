@@ -11,12 +11,7 @@ import com.fitback.backend.domain.analysis.dto.AnalysisByImageRequest;
 import com.fitback.backend.domain.analysis.dto.AnalysisCreateResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisDetailResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisListResponse;
-import com.fitback.backend.domain.analysis.dto.ConfirmTagsRequest;
-import com.fitback.backend.domain.analysis.dto.RecommendationGroupResponse;
-import com.fitback.backend.domain.analysis.dto.RecommendationItemResponse;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
-import com.fitback.backend.domain.analysis.entity.ReportTag;
-import com.fitback.backend.domain.analysis.entity.ReportTagSource;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImagePurpose;
@@ -25,9 +20,12 @@ import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.product.service.model.ProductCategory;
+import com.fitback.backend.domain.recommendation.dto.RecommendationGroupResponse;
+import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
+import com.fitback.backend.domain.recommendation.entity.RecommendationStatus;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
-import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
@@ -55,9 +53,6 @@ class AnalysisServiceTest {
     private MemberRepository memberRepository;
 
     @Mock
-    private TagRepository tagRepository;
-
-    @Mock
     private ImageStorage imageStorage;
 
     @Mock
@@ -81,7 +76,6 @@ class AnalysisServiceTest {
         analysisService = new AnalysisService(
                 analysisReportRepository,
                 memberRepository,
-                tagRepository,
                 imageStorage,
                 aiTagAnalyzer,
                 recommendationResultProvider,
@@ -179,34 +173,6 @@ class AnalysisServiceTest {
     }
 
     @Test
-    void confirmsOnlyExistingTagsAndPreservesAiSource() {
-        Member member = member(1L);
-        Tag minimal = tag(10L, "미니멀");
-        Tag wideFit = tag(20L, "와이드핏");
-        Tag beige = tag(30L, "베이지톤");
-        AnalysisReport report = report(501L, member, minimal, wideFit);
-        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
-                .thenReturn(Optional.of(report));
-        when(tagRepository.findAllById(any())).thenReturn(List.of(minimal, beige));
-        when(recommendationResultProvider.generateFor(report)).thenReturn(List.of());
-
-        AnalysisDetailResponse response = analysisService.confirmTags(
-                1L,
-                501L,
-                new ConfirmTagsRequest(List.of(10L, 30L), 85)
-        );
-
-        assertThat(response.matchPercentage()).isEqualTo(85);
-        assertThat(response.tags()).containsExactly("미니멀", "베이지톤");
-        assertThat(report.getReportTags())
-                .extracting(ReportTag::getTag, ReportTag::getSource, ReportTag::isConfirmed)
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(minimal, ReportTagSource.AI, true),
-                        org.assertj.core.groups.Tuple.tuple(beige, ReportTagSource.USER, true)
-                );
-    }
-
-    @Test
     void listsReportsWithCursorMetadata() {
         Member member = member(1L);
         Tag minimal = tag(10L, "미니멀");
@@ -242,46 +208,28 @@ class AnalysisServiceTest {
         Tag minimal = tag(10L, "미니멀");
         AnalysisReport report = report(501L, member, minimal);
         RecommendationGroupResponse recommendationGroup = new RecommendationGroupResponse(
-                "상의",
-                List.of(new RecommendationItemResponse(
-                        1,
-                        "https://example.com/item.jpg",
-                        "오버핏 셔츠",
-                        "무신사",
-                        28900,
-                        "https://example.com/purchase"
-                ))
+                ProductCategory.TOP,
+                List.of()
+        );
+        RecommendationResultResponse recommendationResult =
+                new RecommendationResultResponse(
+                        RecommendationStatus.CURRENT,
+                        "SIMILARITY_V1",
+                        List.of(recommendationGroup),
+                        false,
+                        List.of()
         );
         when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
                 .thenReturn(Optional.of(report));
-        when(recommendationResultProvider.findByReportId(501L))
-                .thenReturn(List.of(recommendationGroup));
+        when(recommendationResultProvider.findFor(report)).thenReturn(recommendationResult);
 
         AnalysisDetailResponse response = analysisService.getReport(1L, 501L);
 
         assertThat(response.reportId()).isEqualTo(501L);
         assertThat(response.tags()).containsExactly("미니멀");
+        assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
+        assertThat(response.scoreVersion()).isEqualTo("SIMILARITY_V1");
         assertThat(response.recommendationGroups()).containsExactly(recommendationGroup);
-    }
-
-    @Test
-    void rejectsConfirmationWhenAnyTagDoesNotExist() {
-        Member member = member(1L);
-        Tag minimal = tag(10L, "미니멀");
-        AnalysisReport report = report(501L, member, minimal);
-        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
-                .thenReturn(Optional.of(report));
-        when(tagRepository.findAllById(any())).thenReturn(List.of(minimal));
-
-        assertThatThrownBy(() -> analysisService.confirmTags(
-                1L,
-                501L,
-                new ConfirmTagsRequest(List.of(10L, 999L), 70)
-        ))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.TAG_NOT_FOUND);
-        verify(recommendationResultProvider, never()).generateFor(any());
     }
 
     @Test
