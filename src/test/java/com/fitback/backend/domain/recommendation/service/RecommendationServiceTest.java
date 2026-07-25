@@ -76,16 +76,21 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void deduplicatesAndSelectsTopFivePerCategoryDeterministically() {
+    void deduplicatesAndSelectsTopTenPerCategoryDeterministically() {
         RecommendationInputSnapshot input = input();
         List<ExternalProductCandidate> candidates = List.of(
-                candidate(1, "0.10", true),
-                candidate(2, "0.70", true),
-                candidate(3, "0.60", true),
-                candidate(4, "0.50", true),
-                candidate(5, "0.40", true),
-                candidate(6, "0.30", true),
-                candidate(2, "0.70", true)
+                candidate(1, "0.01", true),
+                candidate(2, "0.99", true),
+                candidate(3, "0.90", true),
+                candidate(4, "0.80", true),
+                candidate(5, "0.70", true),
+                candidate(6, "0.60", true),
+                candidate(7, "0.50", true),
+                candidate(8, "0.40", true),
+                candidate(9, "0.30", true),
+                candidate(10, "0.20", true),
+                candidate(11, "0.10", true),
+                candidate(2, "0.99", true)
         );
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(any(ProductSearchQuery.class)))
@@ -121,7 +126,12 @@ class RecommendationServiceTest {
                         org.assertj.core.groups.Tuple.tuple(3L, 2),
                         org.assertj.core.groups.Tuple.tuple(4L, 3),
                         org.assertj.core.groups.Tuple.tuple(5L, 4),
-                        org.assertj.core.groups.Tuple.tuple(6L, 5)
+                        org.assertj.core.groups.Tuple.tuple(6L, 5),
+                        org.assertj.core.groups.Tuple.tuple(7L, 6),
+                        org.assertj.core.groups.Tuple.tuple(8L, 7),
+                        org.assertj.core.groups.Tuple.tuple(9L, 8),
+                        org.assertj.core.groups.Tuple.tuple(10L, 9),
+                        org.assertj.core.groups.Tuple.tuple(11L, 10)
                 );
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
         assertThat(response.partial()).isFalse();

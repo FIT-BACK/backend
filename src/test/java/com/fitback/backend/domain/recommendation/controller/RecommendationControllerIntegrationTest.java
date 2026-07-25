@@ -1,6 +1,8 @@
 package com.fitback.backend.domain.recommendation.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -82,6 +84,10 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.scoreVersion").value("SIMILARITY_V1"))
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
                 .andExpect(jsonPath("$.data.recommendationGroups.length()").value(8))
+                .andExpect(jsonPath(
+                        "$.data.recommendationGroups[*].items.length()",
+                        everyItem(lessThanOrEqualTo(10))
+                ))
                 .andExpect(jsonPath("$.data.recommendationGroups[0].category").value("OUTER"))
                 .andExpect(jsonPath("$.data.recommendationGroups[0].items").isEmpty())
                 .andExpect(jsonPath("$.data.recommendationGroups[1].category").value("TOP"))

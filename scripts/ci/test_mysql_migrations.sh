@@ -60,7 +60,7 @@ seed_baseline_schema fitback 'member_id BIGINT NOT NULL PRIMARY KEY'
 seed_baseline_schema fitback_existing_refresh_token 'member_id BIGINT NOT NULL PRIMARY KEY, refresh_token VARCHAR(512) NULL'
 
 for database in fitback fitback_existing_refresh_token; do
-  for migration in src/main/resources/db/migration/V*.sql; do
+  while IFS= read -r migration; do
     if [ "$(basename "$migration")" = 'V4__update_image_upload_policy.sql' ]; then
       printf '%s\n' \
         "INSERT INTO member (member_id) VALUES (9001);" \
@@ -72,7 +72,7 @@ for database in fitback fitback_existing_refresh_token; do
         | docker exec -i "$container_name" mysql -uroot "$database"
     fi
     docker exec -i "$container_name" mysql -uroot "$database" < "$migration"
-  done
+  done < <(printf '%s\n' src/main/resources/db/migration/V*.sql | sort -V)
 done
 
 expected_product_contract="$(printf '%s\n' \
@@ -161,6 +161,8 @@ validate_recommendation_contract() {
   local analysis_metadata
   local recommendation_constraints
   local expected_recommendation_constraints
+  local recommendation_rank_check
+  local normalized_recommendation_rank_check
 
   recommendation_contract="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
@@ -260,6 +262,20 @@ validate_recommendation_contract() {
   if [ "$recommendation_constraints" != "$expected_recommendation_constraints" ]; then
     echo "Unexpected recommendation constraints in $database:" >&2
     printf '%s\n' "$recommendation_constraints" >&2
+    exit 1
+  fi
+
+  recommendation_rank_check="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT LOWER(CHECK_CLAUSE)
+        FROM information_schema.CHECK_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = '$database'
+          AND CONSTRAINT_NAME = 'CK_RECOMMENDED_RANK';")"
+
+  normalized_recommendation_rank_check="$(printf '%s\n' "$recommendation_rank_check" \
+    | tr -d '`()[:space:]')"
+  if [ "$normalized_recommendation_rank_check" != 'rank_nobetween1and10' ]; then
+    echo "Unexpected recommendation rank check in $database: $recommendation_rank_check" >&2
     exit 1
   fi
 }

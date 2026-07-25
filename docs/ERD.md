@@ -97,7 +97,7 @@ providerIdentityKey = SHA-256(
 | `ImageStatus` | `image.status VARCHAR(20)` 호환 저장 enum | 릴리스 A writer: `PENDING`; reader/domain check: `PENDING`, `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
 | `ImageVisibility` | `image.visibility VARCHAR(20)` | `PRIVATE`, `PUBLIC` |
 
-카테고리는 위 순서로 노출하고 각 추천 그룹은 최대 5개이며 빈 그룹도 반환한다. 외부 공급자의
+카테고리는 위 순서로 노출하고 각 추천 그룹은 최대 10개이며 빈 그룹도 반환한다. 외부 공급자의
 카테고리 원문은 내부 enum 컬럼에 직접 저장하지 않고 Adapter에서 매핑한다.
 
 ---
@@ -253,7 +253,7 @@ CK_PRODUCT_PRICE_VALUE(
 | `report_id` | `BIGINT` | N | FK, 추천 소유 리포트 |
 | `product_id` | `BIGINT` | N | FK, materialize된 Product |
 | `input_revision` | `INT` | N | 생성에 사용한 분석 결과 version |
-| `rank_no` | `INT` | N | category 안의 1~5 순위 |
+| `rank_no` | `INT` | N | category 안의 1~10 순위 |
 | `category` | `VARCHAR(30)` | N | 생성 시점 내부 category |
 | `similarity_score` | `DECIMAL(5,2)` | N | 0~100 정규화 점수 |
 | `final_score` | `DECIMAL(5,2)` | N | 이번 범위에서는 similarity와 동일 |
@@ -269,7 +269,7 @@ FK_RECOMMENDED_REPORT(report_id)
   -> analysis_report(report_id) ON DELETE CASCADE ON UPDATE RESTRICT
 FK_RECOMMENDED_PRODUCT(product_id)
   -> product(product_id) ON DELETE RESTRICT ON UPDATE RESTRICT
-CHK_RECOMMENDED_RANK(rank_no BETWEEN 1 AND 5)
+CHK_RECOMMENDED_RANK(rank_no BETWEEN 1 AND 10)
 CHK_RECOMMENDED_SCORE(
   similarity_score BETWEEN 0 AND 100
   AND final_score BETWEEN 0 AND 100
@@ -457,7 +457,7 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 - [ ] 상품 검색 GET이 Product를 자동 저장하지 않음
 - [ ] 추천 생성 전후 AnalysisReport와 ReportTag가 변경되지 않음
 - [ ] 유사도 점수와 동점 정렬이 결정적임
-- [ ] 8개 그룹 순서, 그룹별 Top 5, 빈 그룹 포함이 검증됨
+- [ ] 8개 그룹 순서, 그룹별 Top 10, 빈 그룹 포함이 검증됨
 - [ ] 입력 version 변경 후 늦게 끝난 요청이 현재 세트를 덮어쓰지 못함
 - [ ] 추천 항목 0개 성공과 미생성이 metadata로 구분됨
 - [x] `saved_product` 복합 key로 PUT/DELETE가 멱등임
