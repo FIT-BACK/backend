@@ -175,6 +175,9 @@ compose_in() {
   DB_PASSWORD="$db_password" \
   JWT_SECRET_KEY="$jwt_secret_key" \
   HMAC_SECRET_KEY="$hmac_secret_key" \
+  KAKAO_REST_API_KEY="$kakao_rest_api_key" \
+  KAKAO_REST_API_SECRET="$kakao_rest_api_secret" \
+  FRONT_REDIRECT_URI="$front_redirect_uri" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$cloudfront_private_key_base64" \
     docker compose \
     --project-directory "$release_dir" \
@@ -278,6 +281,9 @@ db_user="$(get_parameter 'db-user')"
 db_password="$(get_parameter 'db-password')"
 jwt_secret_key="$(get_parameter 'jwt-secret-key')"
 hmac_secret_key="$(get_parameter 'hmac-secret-key')"
+kakao_rest_api_key="$(get_parameter 'kakao-rest-api-key')"
+kakao_rest_api_secret="$(get_parameter 'kakao-rest-api-secret')"
+front_redirect_uri="$(get_parameter 'front-redirect-uri')"
 cloudfront_private_key_base64="$(get_parameter 'cloudfront-private-key')"
 
 require_single_line 'db-url' "$db_url"
@@ -285,7 +291,15 @@ require_single_line 'db-user' "$db_user"
 require_single_line 'db-password' "$db_password"
 require_single_line 'jwt-secret-key' "$jwt_secret_key"
 require_single_line 'hmac-secret-key' "$hmac_secret_key"
+require_single_line 'kakao-rest-api-key' "$kakao_rest_api_key"
+require_single_line 'kakao-rest-api-secret' "$kakao_rest_api_secret"
+require_single_line 'front-redirect-uri' "$front_redirect_uri"
 require_single_line 'cloudfront-private-key' "$cloudfront_private_key_base64"
+
+if [[ ! "$front_redirect_uri" =~ ^https://[^[:space:]]+$ ]]; then
+  echo 'front-redirect-uri must be an HTTPS URL.' >&2
+  exit 1
+fi
 
 if [[ ! "$cloudfront_private_key_base64" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
   echo 'cloudfront-private-key must contain a Base64-encoded private key.' >&2

@@ -101,6 +101,9 @@ jobs:
             IMAGE_CDN_BASE_URL
             CLOUDFRONT_KEY_PAIR_ID
             CLOUDFRONT_PRIVATE_KEY_BASE64
+            KAKAO_REST_API_KEY
+            KAKAO_REST_API_SECRET
+            FRONT_REDIRECT_URI
             SPRING_FLYWAY_ENABLED
           ]
           missing_validation_env = required_validation_env.reject do |name|
