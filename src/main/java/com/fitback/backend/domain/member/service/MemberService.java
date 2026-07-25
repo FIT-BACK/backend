@@ -101,7 +101,7 @@ public class MemberService {
         Member member = authMember.getMember();
 
         Long savedCount = closetSaveRepository.countByMemberId(member.getId());
-        Long analysisCount = analysisReportRepository.countByMemberId(member.getId());
+        Long analysisCount = analysisReportRepository.countByMemberIdAndDeletedAtIsNull(member.getId());
         Long uploadCount = lookbookRepository.countByMemberId(member.getId());
 
         //현재 회원의 관심 태그 (fetch join으로 N+1 방지)

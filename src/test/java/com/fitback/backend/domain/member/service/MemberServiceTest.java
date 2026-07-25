@@ -357,7 +357,7 @@ class MemberServiceTest {
         MemberTag memberTag = MemberTag.create(member, tag);
 
         when(closetSaveRepository.countByMemberId(1L)).thenReturn(3L);
-        when(analysisReportRepository.countByMemberId(1L)).thenReturn(5L);
+        when(analysisReportRepository.countByMemberIdAndDeletedAtIsNull(1L)).thenReturn(5L);
         when(lookbookRepository.countByMemberId(1L)).thenReturn(7L);
         when(memberTagRepository.findByMemberIdFetchTag(1L)).thenReturn(List.of(memberTag));
 

@@ -11,7 +11,7 @@ public interface AnalysisReportRepository extends JpaRepository<AnalysisReport, 
 
     boolean existsByOriginalImageId(String imageId);
 
-    long countByMemberId(Long memberId);
+    long countByMemberIdAndDeletedAtIsNull(Long memberId);
 
     @EntityGraph(attributePaths = {"reportTags", "reportTags.tag"})
     Optional<AnalysisReport> findByIdAndMemberIdAndDeletedAtIsNull(Long reportId, Long memberId);
