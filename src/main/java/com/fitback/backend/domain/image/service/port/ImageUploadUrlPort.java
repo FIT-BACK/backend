@@ -1,6 +1,6 @@
 package com.fitback.backend.domain.image.service.port;
 
-import java.time.Duration;
+import java.time.Instant;
 
 public interface ImageUploadUrlPort {
 
@@ -8,6 +8,6 @@ public interface ImageUploadUrlPort {
             String objectKey,
             String contentType,
             long fileSize,
-            Duration expiration
+            Instant expiresAt
     );
 }

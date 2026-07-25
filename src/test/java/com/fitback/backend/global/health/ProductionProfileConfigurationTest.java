@@ -57,6 +57,11 @@ class ProductionProfileConfigurationTest {
                     .isEqualTo("TESTKEY");
             assertThat(environment.getProperty("image.storage.cloudfront-private-key-base64"))
                     .isEqualTo("dGVzdC1rZXk=");
+            assertThat(environment.getProperty("shopping.provider")).isEqualTo("fixture");
+            assertThat(environment.getProperty("shopping.shopify.enabled", Boolean.class))
+                    .isFalse();
+            assertThat(environment.getProperty("shopping.candidate-token.ttl"))
+                    .isEqualTo("PT10M");
         });
     }
 

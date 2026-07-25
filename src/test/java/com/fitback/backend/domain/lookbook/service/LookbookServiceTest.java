@@ -1,0 +1,811 @@
+package com.fitback.backend.domain.lookbook.service;
+
+import static com.fitback.backend.domain.lookbook.LookbookImageFixtures.readyImage;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.entity.ImagePurpose;
+import com.fitback.backend.domain.image.entity.ImageStatus;
+import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
+import com.fitback.backend.domain.lookbook.dto.LookbookRequest;
+import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
+import com.fitback.backend.domain.lookbook.entity.Lookbook;
+import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
+import com.fitback.backend.domain.lookbook.entity.LookbookReport;
+import com.fitback.backend.domain.lookbook.entity.LookbookReportReason;
+import com.fitback.backend.domain.lookbook.entity.LookbookTag;
+import com.fitback.backend.domain.lookbook.repository.LookbookImageRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookReportRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
+import com.fitback.backend.domain.member.entity.LoginProvider;
+import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.member.entity.MemberRole;
+import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.domain.tag.entity.TagType;
+import com.fitback.backend.domain.tag.repository.TagRepository;
+import com.fitback.backend.global.exception.BusinessException;
+import com.fitback.backend.global.exception.ErrorCode;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.IntStream;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
+
+@ExtendWith(MockitoExtension.class)
+class LookbookServiceTest {
+
+    @Mock
+    private LookbookRepository lookbookRepository;
+
+    @Mock
+    private LookbookImageRepository lookbookImageRepository;
+
+    @Mock
+    private LookbookTagRepository lookbookTagRepository;
+
+    @Mock
+    private LookbookLikeRepository lookbookLikeRepository;
+
+    @Mock
+    private TagRepository tagRepository;
+
+    @Mock
+    private LookbookLikeCommandService lookbookLikeCommandService;
+
+    @Mock
+    private LookbookReportCommandService lookbookReportCommandService;
+
+    @Mock
+    private LookbookReportRepository lookbookReportRepository;
+
+    @Mock
+    private ImageAccessUrlProvider imageAccessUrlProvider;
+
+    @InjectMocks
+    private LookbookService lookbookService;
+
+    private Member member;
+    private Tag minimalTag;
+    private Tag streetTag;
+    private Image originalImage;
+    private Image matchedImage;
+    private Image updatedOriginalImage;
+    private Image updatedMatchedImage;
+
+    @BeforeEach
+    void setUp() {
+        member = Member.create("member@fitback.com", "fitback", "password", LoginProvider.EMAIL);
+        ReflectionTestUtils.setField(member, "id", 1L);
+
+        minimalTag = Tag.create("미니멀", TagType.DETAIL);
+        ReflectionTestUtils.setField(minimalTag, "id", 10L);
+        streetTag = Tag.create("스트릿", TagType.DETAIL);
+        ReflectionTestUtils.setField(streetTag, "id", 20L);
+
+        originalImage = readyImage("original", member, ImagePurpose.LOOKBOOK_ORIGINAL);
+        matchedImage = readyImage("matched", member, ImagePurpose.LOOKBOOK_MATCHED);
+        updatedOriginalImage = readyImage(
+                "updated-original",
+                member,
+                ImagePurpose.LOOKBOOK_ORIGINAL
+        );
+        updatedMatchedImage = readyImage(
+                "updated-matched",
+                member,
+                ImagePurpose.LOOKBOOK_MATCHED
+        );
+        lenient().when(lookbookImageRepository.findAllOwnedImages(
+                List.of("original", "matched"),
+                1L
+        )).thenReturn(List.of(originalImage, matchedImage));
+        lenient().when(lookbookImageRepository.findAllOwnedImages(
+                List.of("updated-original", "updated-matched"),
+                1L
+        )).thenReturn(List.of(updatedOriginalImage, updatedMatchedImage));
+        lenient().when(imageAccessUrlProvider.createReadUrl(any(Image.class)))
+                .thenAnswer(invocation -> {
+                    Image image = invocation.getArgument(0);
+                    return "https://s3.example.com/" + image.getId() + ".jpg";
+                });
+    }
+
+    @Test
+    void createLookbookSavesLookbookAndTagRelations() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L, 20L));
+        when(tagRepository.findAllById(List.of(10L, 20L)))
+                .thenReturn(List.of(minimalTag, streetTag));
+        when(lookbookRepository.save(any(Lookbook.class))).thenAnswer(invocation -> {
+            Lookbook lookbook = invocation.getArgument(0);
+            ReflectionTestUtils.setField(lookbook, "id", 100L);
+            return lookbook;
+        });
+
+        LookbookResponse.LookbookCreate response = lookbookService.createLookbook(member, request);
+
+        assertThat(response.lookbookId()).isEqualTo(100L);
+        verify(lookbookTagRepository).saveAll(anyList());
+        verify(lookbookImageRepository).activateReadyImages(
+                eq(List.of("original", "matched")),
+                eq(ImageStatus.READY),
+                eq(ImageStatus.ACTIVE),
+                any(Instant.class)
+        );
+    }
+
+    @Test
+    void createLookbookAcceptsFutureGenericLookbookPurpose() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L));
+        Image genericOriginal = readyImage("original", member, ImagePurpose.LOOKBOOK);
+        Image genericMatched = readyImage("matched", member, ImagePurpose.LOOKBOOK);
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("original", "matched"),
+                1L
+        )).thenReturn(List.of(genericOriginal, genericMatched));
+        when(lookbookRepository.save(any(Lookbook.class))).thenAnswer(invocation -> {
+            Lookbook lookbook = invocation.getArgument(0);
+            ReflectionTestUtils.setField(lookbook, "id", 100L);
+            return lookbook;
+        });
+
+        LookbookResponse.LookbookCreate response = lookbookService.createLookbook(member, request);
+
+        assertThat(response.lookbookId()).isEqualTo(100L);
+    }
+
+    @Test
+    void createLookbookFailsWhenTagDoesNotExist() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L, 999L));
+        when(tagRepository.findAllById(List.of(10L, 999L)))
+                .thenReturn(List.of(minimalTag));
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND);
+                    assertThat(exception.getMessage()).contains("999");
+                });
+        verify(lookbookRepository, never()).save(any());
+        verify(lookbookTagRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    void createLookbookRejectsDuplicateTagIds() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L, 20L, 10L));
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("태그 ID는 중복될 수 없습니다.");
+                });
+        verify(tagRepository, never()).findAllById(anyList());
+        verify(lookbookRepository, never()).save(any());
+    }
+
+    @Test
+    void createLookbookRejectsImageNotOwnedByMember() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L));
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("original", "matched"),
+                1L
+        )).thenReturn(List.of(originalImage));
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.IMAGE_NOT_FOUND)
+                );
+        verify(lookbookRepository, never()).save(any());
+    }
+
+    @Test
+    void createLookbookRejectsImageWithWrongPurpose() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L));
+        Image invalidMatchedImage = readyImage(
+                "matched",
+                member,
+                ImagePurpose.ANALYSIS
+        );
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("original", "matched"),
+                1L
+        )).thenReturn(List.of(originalImage, invalidMatchedImage));
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.IMAGE_INVALID_STATE)
+                );
+        verify(lookbookRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = ImageStatus.class,
+            names = {
+                "PENDING", "PENDING_UPLOAD", "DELETING",
+                "DELETE_FAILED", "DELETED", "REJECTED"
+            }
+    )
+    void createLookbookRejectsUnavailableImageStatus(ImageStatus unavailableStatus) {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L));
+        ReflectionTestUtils.setField(matchedImage, "status", unavailableStatus);
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.IMAGE_INVALID_STATE)
+                );
+        verify(lookbookRepository, never()).save(any());
+    }
+
+    @Test
+    void createLookbookAllowsActiveImages() {
+        LookbookRequest.LookbookCreate request = createRequest(List.of(10L));
+        ReflectionTestUtils.setField(originalImage, "status", ImageStatus.ACTIVE);
+        ReflectionTestUtils.setField(matchedImage, "status", ImageStatus.ACTIVE);
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookRepository.save(any(Lookbook.class))).thenAnswer(invocation -> {
+            Lookbook lookbook = invocation.getArgument(0);
+            ReflectionTestUtils.setField(lookbook, "id", 100L);
+            return lookbook;
+        });
+
+        LookbookResponse.LookbookCreate response = lookbookService.createLookbook(member, request);
+
+        assertThat(response.lookbookId()).isEqualTo(100L);
+        verify(lookbookImageRepository).activateReadyImages(
+                eq(List.of("original", "matched")),
+                eq(ImageStatus.READY),
+                eq(ImageStatus.ACTIVE),
+                any(Instant.class)
+        );
+    }
+
+    @Test
+    void updateLookbookReplacesContentAndTags() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 22, 12, 0));
+        LookbookRequest.LookbookUpdate request = createUpdateRequest(List.of(20L, 10L));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(lookbook));
+        when(tagRepository.findAllById(List.of(20L, 10L)))
+                .thenReturn(List.of(minimalTag, streetTag));
+
+        LookbookResponse.LookbookUpdate response = lookbookService.updateLookbook(
+                100L,
+                member,
+                request
+        );
+
+        assertThat(response.lookbookId()).isEqualTo(100L);
+        assertThat(lookbook.getOriginalImage()).isEqualTo(updatedOriginalImage);
+        assertThat(lookbook.getMatchedImage()).isEqualTo(updatedMatchedImage);
+        assertThat(lookbook.getPurchaseUrl()).isNull();
+        assertThat(lookbook.getComment()).isNull();
+        verify(lookbookTagRepository).deleteAllByLookbookId(100L);
+        verify(lookbookTagRepository).saveAll(anyList());
+        verify(lookbookImageRepository).activateReadyImages(
+                eq(List.of("updated-original", "updated-matched")),
+                eq(ImageStatus.READY),
+                eq(ImageStatus.ACTIVE),
+                any(Instant.class)
+        );
+    }
+
+    @Test
+    void updateLookbookRejectsMemberWhoIsNotOwner() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 22, 12, 0));
+        Member otherMember = Member.create(
+                "other@fitback.com",
+                "other",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(otherMember, "id", 2L);
+        LookbookRequest.LookbookUpdate request = createUpdateRequest(List.of(10L));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(lookbook));
+
+        assertThatThrownBy(() -> lookbookService.updateLookbook(100L, otherMember, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN);
+                    assertThat(exception.getMessage()).isEqualTo("룩북 수정 권한이 없습니다.");
+                });
+        verify(tagRepository, never()).findAllById(anyList());
+        verify(lookbookTagRepository, never()).deleteAllByLookbookId(any());
+        verify(lookbookTagRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    void updateLookbookFailsWhenLookbookIsDeletedOrMissing() {
+        LookbookRequest.LookbookUpdate request = createUpdateRequest(List.of(10L));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> lookbookService.updateLookbook(100L, member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
+                );
+        verify(lookbookTagRepository, never()).deleteAllByLookbookId(any());
+    }
+
+    @Test
+    void reportLookbookReturnsCreatedReportId() {
+        Member reporter = Member.create(
+                "reporter@fitback.com",
+                "reporter",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(reporter, "id", 2L);
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 23, 12, 0));
+        LookbookReport report = LookbookReport.create(
+                lookbook,
+                reporter,
+                LookbookReportReason.INAPPROPRIATE_IMAGE
+        );
+        ReflectionTestUtils.setField(report, "id", 101L);
+        LookbookRequest.LookbookReport request = new LookbookRequest.LookbookReport(
+                LookbookReportReason.INAPPROPRIATE_IMAGE
+        );
+        when(lookbookReportCommandService.createReport(
+                100L,
+                reporter,
+                LookbookReportReason.INAPPROPRIATE_IMAGE
+        )).thenReturn(report);
+
+        LookbookResponse.LookbookReport response = lookbookService.reportLookbook(
+                100L,
+                reporter,
+                request
+        );
+
+        assertThat(response.reportId()).isEqualTo(101L);
+    }
+
+    @Test
+    void reportLookbookConvertsDuplicateConstraintViolationToBadRequest() {
+        Member reporter = Member.create(
+                "duplicate-reporter@fitback.com",
+                "duplicate-reporter",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(reporter, "id", 2L);
+        LookbookRequest.LookbookReport request = new LookbookRequest.LookbookReport(
+                LookbookReportReason.OTHER
+        );
+        when(lookbookReportCommandService.createReport(100L, reporter, LookbookReportReason.OTHER))
+                .thenThrow(new DataIntegrityViolationException("duplicate report"));
+        when(lookbookReportRepository.existsByLookbookIdAndMemberId(100L, 2L))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> lookbookService.reportLookbook(100L, reporter, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST);
+                    assertThat(exception.getErrorCode().getCode()).isEqualTo("COMMON400_1");
+                    assertThat(exception.getMessage()).isEqualTo("이미 신고한 룩북입니다.");
+                });
+    }
+
+    @Test
+    void getLookbookDetailReturnsAuthorTagsLikedAndOwnerStatus() {
+        LocalDateTime createdAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        Lookbook lookbook = createPersistedLookbook(createdAt);
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
+                .thenReturn(List.of(
+                        LookbookTag.create(lookbook, minimalTag),
+                        LookbookTag.create(lookbook, streetTag)
+                ));
+        when(lookbookLikeRepository.existsByLookbookIdAndMemberId(100L, 1L))
+                .thenReturn(true);
+
+        LookbookResponse.LookbookDetail response = lookbookService.getLookbookDetail(100L, member);
+
+        assertThat(response.originalImageUrl()).isEqualTo("https://s3.example.com/original.jpg");
+        assertThat(response.matchedImageUrl()).isEqualTo("https://s3.example.com/matched.jpg");
+        assertThat(response.authorNickname()).isEqualTo("fitback");
+        assertThat(response.authorProfileImageUrl())
+                .isEqualTo("https://s3.example.com/profile.jpg");
+        assertThat(response.createdAt()).isEqualTo(createdAt);
+        assertThat(response.purchaseUrl()).isEqualTo("https://shop.example.com/item");
+        assertThat(response.comment()).isEqualTo("합리적인 가격으로 완성한 룩입니다.");
+        assertThat(response.tags())
+                .extracting(LookbookResponse.TagItem::tagId)
+                .containsExactly(10L, 20L);
+        assertThat(response.tags())
+                .extracting(LookbookResponse.TagItem::tagName)
+                .containsExactly("미니멀", "스트릿");
+        assertThat(response.likeCount()).isEqualTo(5);
+        assertThat(response.isLiked()).isTrue();
+        assertThat(response.isOwner()).isTrue();
+    }
+
+    @Test
+    void getLookbookDetailReturnsIsLikedFalseForAnonymousMember() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 16, 12, 0));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookDetail response = lookbookService.getLookbookDetail(100L, null);
+
+        assertThat(response.isLiked()).isFalse();
+        assertThat(response.isOwner()).isFalse();
+        verify(lookbookLikeRepository, never()).existsByLookbookIdAndMemberId(any(), any());
+    }
+
+    @Test
+    void getLookbookDetailReturnsIsOwnerFalseForAuthenticatedNonOwner() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 16, 12, 0));
+        Member otherMember = Member.create(
+                "other@fitback.com",
+                "other",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(otherMember, "id", 2L);
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookDetail response = lookbookService.getLookbookDetail(
+                100L,
+                otherMember
+        );
+
+        assertThat(response.isOwner()).isFalse();
+    }
+
+    @Test
+    void getLookbookDetailFailsWhenLookbookDoesNotExist() {
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> lookbookService.getLookbookDetail(999L, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND);
+                    assertThat(exception.getMessage()).isEqualTo("룩북을 찾을 수 없습니다.");
+                });
+    }
+
+    @Test
+    void deleteLookbookSoftDeletesOwnersLookbook() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 18, 12, 0));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+
+        lookbookService.deleteLookbook(100L, member);
+
+        assertThat(lookbook.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    void deleteLookbookAllowsAdminMember() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 18, 12, 0));
+        Member admin = Member.create("admin@fitback.com", "admin", "password", LoginProvider.EMAIL);
+        ReflectionTestUtils.setField(admin, "id", 2L);
+        admin.changeRole(MemberRole.ADMIN);
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+
+        lookbookService.deleteLookbook(100L, admin);
+
+        assertThat(lookbook.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    void deleteLookbookRejectsMemberWithoutPermission() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 18, 12, 0));
+        Member otherMember = Member.create(
+                "other@fitback.com",
+                "other",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(otherMember, "id", 2L);
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+
+        assertThatThrownBy(() -> lookbookService.deleteLookbook(100L, otherMember))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN)
+                );
+        assertThat(lookbook.getDeletedAt()).isNull();
+    }
+
+    @Test
+    void deleteLookbookFailsWhenLookbookIsAlreadyDeleted() {
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> lookbookService.deleteLookbook(100L, member))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
+                );
+    }
+
+    @Test
+    void likeLookbookReturnsChangedLikeCount() {
+        when(lookbookLikeCommandService.createLike(100L, member)).thenReturn(6);
+
+        LookbookResponse.LookbookLike response = lookbookService.likeLookbook(100L, member);
+
+        assertThat(response.isLiked()).isTrue();
+        assertThat(response.likeCount()).isEqualTo(6);
+    }
+
+    @Test
+    void likeLookbookReturnsCurrentCountWhenAlreadyLiked() {
+        when(lookbookLikeCommandService.createLike(100L, member))
+                .thenThrow(new DataIntegrityViolationException("duplicate like"));
+        when(lookbookLikeRepository.existsByLookbookIdAndMemberId(100L, 1L)).thenReturn(true);
+        when(lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(5));
+
+        LookbookResponse.LookbookLike response = lookbookService.likeLookbook(100L, member);
+
+        assertThat(response.isLiked()).isTrue();
+        assertThat(response.likeCount()).isEqualTo(5);
+    }
+
+    @Test
+    void likeLookbookRethrowsUnexpectedIntegrityViolation() {
+        DataIntegrityViolationException exception =
+                new DataIntegrityViolationException("unexpected constraint violation");
+        when(lookbookLikeCommandService.createLike(100L, member)).thenThrow(exception);
+        when(lookbookLikeRepository.existsByLookbookIdAndMemberId(100L, 1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> lookbookService.likeLookbook(100L, member))
+                .isSameAs(exception);
+    }
+
+    @Test
+    void deleteLookbookLikeReturnsChangedLikeCount() {
+        when(lookbookLikeCommandService.deleteLike(100L, member)).thenReturn(4);
+
+        LookbookResponse.LookbookUnlike response = lookbookService.deleteLookbookLike(100L, member);
+
+        assertThat(response.isLiked()).isFalse();
+        assertThat(response.likeCount()).isEqualTo(4);
+    }
+
+    @Test
+    void getLookbooksUsesRequestedPageSizeAndReturnsNextCursor() {
+        LocalDateTime latestCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        List<Lookbook> lookbookPage = IntStream.range(0, 6)
+                .mapToObj(index -> createListLookbook(
+                        100L - index,
+                        latestCreatedAt.minusMinutes(index)
+                ))
+                .toList();
+        List<Long> returnedLookbookIds = lookbookPage.subList(0, 5)
+                .stream()
+                .map(Lookbook::getId)
+                .toList();
+        when(lookbookRepository
+                .findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
+                eq(LookbookModerationStatus.VISIBLE),
+                any(Pageable.class)
+        ))
+                .thenReturn(lookbookPage);
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(returnedLookbookIds))
+                .thenReturn(List.of(LookbookTag.create(lookbookPage.get(0), minimalTag)));
+        when(lookbookLikeRepository.findLikedLookbookIds(1L, returnedLookbookIds))
+                .thenReturn(Set.of(100L));
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                null,
+                5,
+                "   ",
+                member
+        );
+
+        assertThat(response.items()).hasSize(5);
+        assertThat(response.items().get(0).lookbookId()).isEqualTo(100L);
+        assertThat(response.items().get(0).authorNickname()).isEqualTo("fitback");
+        assertThat(response.items().get(0).authorProfileImageUrl())
+                .isEqualTo("https://s3.example.com/profile.jpg");
+        assertThat(response.items().get(0).isLiked()).isTrue();
+        assertThat(response.items().get(0).tags()).containsExactly("미니멀");
+        assertThat(response.items().get(1).isLiked()).isFalse();
+        assertThat(response.nextCursor()).isEqualTo(96L);
+        assertThat(response.hasNext()).isTrue();
+        assertThat(response.pageSize()).isEqualTo(5);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(lookbookRepository)
+                .findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
+                        eq(LookbookModerationStatus.VISIBLE),
+                        pageableCaptor.capture()
+                );
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(6);
+    }
+
+    @Test
+    void getLookbooksReturnsLikedByMeFalseForAnonymousMember() {
+        Lookbook lookbook = createListLookbook(100L, LocalDateTime.of(2026, 7, 16, 12, 0));
+        when(lookbookRepository
+                .findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
+                eq(LookbookModerationStatus.VISIBLE),
+                any(Pageable.class)
+        ))
+                .thenReturn(List.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(100L)))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                null,
+                null,
+                null,
+                null
+        );
+
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).isLiked()).isFalse();
+        assertThat(response.nextCursor()).isNull();
+        assertThat(response.hasNext()).isFalse();
+        assertThat(response.pageSize()).isEqualTo(20);
+        verify(lookbookLikeRepository, never()).findLikedLookbookIds(any(), anyList());
+    }
+
+    @Test
+    void getLookbooksUsesTagFilteredCursorForNextPage() {
+        LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        Lookbook cursorLookbook = createListLookbook(100L, cursorCreatedAt);
+        cursorLookbook.softDelete();
+        Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
+        when(lookbookRepository.findCursorByIdAndTagName(100L, "미니멀"))
+                .thenReturn(Optional.of(cursorLookbook));
+        when(lookbookRepository.findNextPageByTagName(
+                eq("미니멀"),
+                eq(LookbookModerationStatus.VISIBLE),
+                eq(cursorCreatedAt),
+                eq(100L),
+                any(Pageable.class)
+        )).thenReturn(List.of(nextLookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(99L)))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                100L,
+                5,
+                " 미니멀 ",
+                null
+        );
+
+        assertThat(response.items())
+                .extracting(LookbookResponse.LookbookItem::lookbookId)
+                .containsExactly(99L);
+    }
+
+    @Test
+    void getLookbooksUsesSoftDeletedCursorForNextPage() {
+        LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        Lookbook cursorLookbook = createListLookbook(100L, cursorCreatedAt);
+        cursorLookbook.softDelete();
+        Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
+        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(cursorLookbook));
+        when(lookbookRepository.findNextPage(
+                eq(LookbookModerationStatus.VISIBLE),
+                eq(cursorCreatedAt),
+                eq(100L),
+                any(Pageable.class)
+        )).thenReturn(List.of(nextLookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(99L)))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                100L,
+                5,
+                null,
+                null
+        );
+
+        assertThat(response.items())
+                .extracting(LookbookResponse.LookbookItem::lookbookId)
+                .containsExactly(99L);
+        verify(lookbookRepository, never()).findByIdAndDeletedAtIsNull(100L);
+    }
+
+    @Test
+    void getLookbooksFiltersFirstPageByTag() {
+        Lookbook lookbook = createListLookbook(100L, LocalDateTime.of(2026, 7, 16, 12, 0));
+        when(lookbookRepository.findAllByTagName(
+                eq("미니멀"),
+                eq(LookbookModerationStatus.VISIBLE),
+                any(Pageable.class)
+        ))
+                .thenReturn(List.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(100L)))
+                .thenReturn(List.of(LookbookTag.create(lookbook, minimalTag)));
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                null,
+                20,
+                "미니멀",
+                null
+        );
+
+        assertThat(response.items())
+                .extracting(LookbookResponse.LookbookItem::lookbookId)
+                .containsExactly(100L);
+        assertThat(response.items().get(0).tags()).containsExactly("미니멀");
+    }
+
+    private LookbookRequest.LookbookCreate createRequest(List<Long> tagIds) {
+        return new LookbookRequest.LookbookCreate(
+                "original",
+                "matched",
+                "https://shop.example.com/item",
+                tagIds,
+                "합리적인 가격으로 완성한 룩입니다."
+        );
+    }
+
+    private LookbookRequest.LookbookUpdate createUpdateRequest(List<Long> tagIds) {
+        return new LookbookRequest.LookbookUpdate(
+                "updated-original",
+                "updated-matched",
+                "   ",
+                tagIds,
+                null
+        );
+    }
+
+    private Lookbook createPersistedLookbook(LocalDateTime createdAt) {
+        member.changeProfileImageUrl("https://s3.example.com/profile.jpg");
+        Lookbook lookbook = Lookbook.create(
+                member,
+                originalImage,
+                matchedImage,
+                "https://shop.example.com/item",
+                "합리적인 가격으로 완성한 룩입니다."
+        );
+        ReflectionTestUtils.setField(lookbook, "id", 100L);
+        ReflectionTestUtils.setField(lookbook, "likeCount", 5);
+        ReflectionTestUtils.setField(lookbook, "createdAt", createdAt);
+        return lookbook;
+    }
+
+    private Lookbook createListLookbook(Long lookbookId, LocalDateTime createdAt) {
+        member.changeProfileImageUrl("https://s3.example.com/profile.jpg");
+        Lookbook lookbook = Lookbook.create(
+                member,
+                readyImage(
+                        "original-" + lookbookId,
+                        member,
+                        ImagePurpose.LOOKBOOK_ORIGINAL
+                ),
+                readyImage(
+                        "matched-" + lookbookId,
+                        member,
+                        ImagePurpose.LOOKBOOK_MATCHED
+                ),
+                null,
+                null
+        );
+        ReflectionTestUtils.setField(lookbook, "id", lookbookId);
+        ReflectionTestUtils.setField(lookbook, "createdAt", createdAt);
+        return lookbook;
+    }
+}

@@ -33,6 +33,7 @@ public class ImageCleanupService {
         LocalDateTime createdBefore = LocalDateTime.now(clock).minusHours(24);
         List<ImageStatus> cleanupStatuses = List.of(
                 ImageStatus.PENDING,
+                ImageStatus.PENDING_UPLOAD,
                 ImageStatus.READY,
                 ImageStatus.REJECTED,
                 ImageStatus.DELETE_FAILED

@@ -14,7 +14,7 @@ class ImageLifecycleTest {
 
     @Test
     void completesAndActivatesAnalysisImage() {
-        Image image = image(member(1L));
+        Image image = image(member(1L), ImagePurpose.ANALYSIS_ORIGINAL);
 
         image.completeUpload(1024, "image/jpeg", LocalDateTime.of(2026, 7, 22, 9, 0));
         image.activateForAnalysis(1L, Instant.parse("2026-07-22T00:01:00Z"));
@@ -26,13 +26,24 @@ class ImageLifecycleTest {
 
     @Test
     void rejectsActivationForAnotherOwner() {
-        Image image = image(member(1L));
+        Image image = image(member(1L), ImagePurpose.ANALYSIS_ORIGINAL);
         image.completeUpload(1024, "image/jpeg", LocalDateTime.of(2026, 7, 22, 9, 0));
 
         assertThatThrownBy(() -> image.activateForAnalysis(
                 2L,
                 Instant.parse("2026-07-22T00:01:00Z")
         )).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void acceptsFuturePurposeAndPendingStatusDuringCompatibilityRelease() {
+        Image image = image(member(1L), ImagePurpose.ANALYSIS);
+        ReflectionTestUtils.setField(image, "status", ImageStatus.PENDING_UPLOAD);
+
+        image.completeUpload(1024, "image/jpeg", LocalDateTime.of(2026, 7, 22, 9, 0));
+        image.activateForAnalysis(1L, Instant.parse("2026-07-22T00:01:00Z"));
+
+        assertThat(image.getStatus()).isEqualTo(ImageStatus.ACTIVE);
     }
 
     @Test
@@ -49,12 +60,12 @@ class ImageLifecycleTest {
         )).isInstanceOf(IllegalArgumentException.class);
     }
 
-    private Image image(Member member) {
+    private Image image(Member member, ImagePurpose purpose) {
         return Image.createPending(
                 "image-id",
                 member,
                 "prod/images/analysis_original/2026/07/image.jpg",
-                ImagePurpose.ANALYSIS_ORIGINAL,
+                purpose,
                 "image/jpeg",
                 1024,
                 ImageVisibility.PRIVATE,

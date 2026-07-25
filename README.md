@@ -30,7 +30,15 @@ cp .env.example .env
 DB_URL=jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
 DB_USER=your_mysql_user
 DB_PASSWORD=your_mysql_password
+SHOPPING_PROVIDER=fixture
+SHOPIFY_ENABLED=false
+SHOPPING_CANDIDATE_TOKEN_TTL=PT10M
 ```
+
+쇼핑 공급자는 최종 공급자가 확정되기 전까지 `fixture`를 기본값으로 사용합니다.
+Shopify 런타임은 비활성화되어 있으므로 로컬 및 CI에서 Shopify 인증정보나 외부 API 호출이
+필요하지 않습니다. 상품 검색에서 발급하는 candidate token은 기본 10분 동안 유효하며
+`SHOPPING_CANDIDATE_TOKEN_TTL`에 ISO-8601 Duration 형식으로 설정합니다.
 
 ### 2. MySQL 데이터베이스 생성
 
@@ -55,6 +63,7 @@ CREATE DATABASE fitback;
 ```
 
 테스트 환경에서는 `application-test.yml`을 통해 H2 인메모리 DB를 사용합니다.
+쇼핑 공급자 contract test도 외부 네트워크 없이 fixture Adapter를 기준으로 실행합니다.
 
 ## Swagger
 
@@ -84,15 +93,32 @@ CloudFront 기본 도메인을 운영 HTTPS 주소로 사용합니다. EC2의 HT
 
 사용자 업로드 이미지는 비공개 S3 버킷에 저장하며, `https://d1p2ierkew26r1.cloudfront.net`에서 서명된 URL로만 조회합니다. S3 직접 접근과 서명 없는 CloudFront 접근은 허용하지 않습니다.
 
-인증된 사용자는 `POST /api/v1/images/presigned-uploads`에서 5분 유효한 Presigned PUT URL을
-발급받아 JPEG, PNG, WebP 이미지를 최대 5 MiB까지 S3로 직접 업로드할 수 있습니다. 발급 URL의
-요청 헤더와 업로드 후 처리 계약은 [API 명세](docs/API_SPEC.md)를 참고합니다.
+인증된 사용자는 `POST /api/v1/images/upload-requests`에서 5분 유효한 Presigned POST 정보를
+발급받아 JPEG, PNG, WebP 이미지를 최대 5 MiB까지 S3로 직접 업로드할 수 있습니다. S3 업로드는
+응답의 `uploadUrl`과 `uploadFields`를 `FormData`로 전송한 뒤 완료 API를 호출하는 방식입니다. 자세한
+계약은 [API 명세](docs/API_SPEC.md)를 참고합니다.
 
 ## Security
 
 JWT 기반 인증을 사용합니다. `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/auth/sign`, `/api/v1/auth/login`, `/api/v1/auth/token/refresh` 경로만 인증 없이 허용하며, 그 외 모든 API는 인증이 필요합니다.
 요청의 `Authorization: Bearer {accessToken}` 헤더는 `JwtAuthFilter`가 검증하여 인증 정보를 설정합니다.
 REST API 기준으로 CSRF, Form Login, HTTP Basic은 비활성화되어 있으며, 세션은 `STATELESS`로 사용합니다.
+
+로컬 프론트엔드 QA에서는 다음 Origin만 백엔드 CORS allowlist에 포함합니다.
+
+```text
+http://localhost:3000
+http://localhost:5173
+http://127.0.0.1:3000
+http://127.0.0.1:5173
+```
+
+JWT는 응답 본문과 `Authorization` 헤더로 전달하며 credential cookie는 허용하지 않습니다.
+배포 후에는 allowlist에 포함된 로컬 프론트엔드 Origin으로 로그인 OPTIONS preflight와 POST 응답의
+`Access-Control-Allow-Origin`을 확인합니다. Spring 애플리케이션 직접 경로는 성공하지만
+CloudFront 경유 요청만 실패하면 CloudFront의 Origin 요청 헤더 전달 및 OPTIONS 캐시 정책을
+별도로 확인합니다. 운영 프론트엔드 Origin 추가는 이 로컬 QA 허용 범위에 포함하지 않습니다.
+이 설정은 S3 이미지 업로드 CORS 또는 EC2 보안 그룹 설정과는 무관합니다.
 
 ## 브랜치 컨벤션
 

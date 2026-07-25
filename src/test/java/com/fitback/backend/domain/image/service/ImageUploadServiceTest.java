@@ -11,11 +11,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.image.dto.ImageCompleteResponse;
+import com.fitback.backend.domain.image.dto.ImageUploadPurpose;
 import com.fitback.backend.domain.image.dto.ImageUploadRequest;
 import com.fitback.backend.domain.image.dto.ImageUploadResponse;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImagePurpose;
 import com.fitback.backend.domain.image.entity.ImageStatus;
+import com.fitback.backend.domain.image.entity.ImageVisibility;
 import com.fitback.backend.domain.image.repository.ImageRepository;
 import com.fitback.backend.domain.image.service.port.ImageUploadUrl;
 import com.fitback.backend.domain.image.service.port.ImageUploadUrlPort;
@@ -28,6 +30,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -80,8 +83,9 @@ class ImageUploadServiceTest {
                 "password",
                 LoginProvider.EMAIL
         );
+        ReflectionTestUtils.setField(owner, "id", 42L);
         ImageUploadRequest request = new ImageUploadRequest(
-                ImagePurpose.ANALYSIS_ORIGINAL,
+                ImageUploadPurpose.ANALYSIS,
                 "IMAGE/JPEG",
                 3_145_728
         );
@@ -89,20 +93,22 @@ class ImageUploadServiceTest {
             String objectKey = invocation.getArgument(0);
             return new ImageUploadUrl(
                     "https://s3.example/upload",
-                    "PUT",
-                    Map.of("Content-Type", "image/jpeg"),
-                    "https://cdn.example/" + objectKey
+                    "POST",
+                    Map.of(
+                            "key", objectKey,
+                            "Content-Type", "image/jpeg",
+                            "policy", "encoded-policy"
+                    )
             );
         });
 
         ImageUploadResponse response = imageUploadService.createUpload(owner, request);
 
-        assertThat(response.uploadMethod()).isEqualTo("PUT");
+        assertThat(response.uploadMethod()).isEqualTo("POST");
         assertThat(response.expiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(5)));
-        assertThat(response.requiredHeaders()).containsEntry("Content-Type", "image/jpeg");
-        assertThat(response.imageUrl()).startsWith(
-                "https://cdn.example/prod/images/analysis_original/2026/07/"
-        );
+        assertThat(response.uploadFields())
+                .containsEntry("Content-Type", "image/jpeg")
+                .containsEntry("policy", "encoded-policy");
 
         ArgumentCaptor<Image> imageCaptor = ArgumentCaptor.forClass(Image.class);
         verify(imageRepository).save(imageCaptor.capture());
@@ -110,15 +116,18 @@ class ImageUploadServiceTest {
         assertThat(savedImage.getId()).isEqualTo(response.imageId());
         assertThat(savedImage.getOwner()).isSameAs(owner);
         assertThat(savedImage.getObjectKey()).matches(
-                "prod/images/analysis_original/2026/07/[0-9a-f-]{36}\\.jpg"
+                "images/analysis/42/2026/07/[0-9a-f-]{36}\\.jpg"
         );
+        assertThat(response.uploadFields())
+                .containsEntry("key", savedImage.getObjectKey());
+        assertThat(savedImage.getPurpose()).isEqualTo(ImagePurpose.ANALYSIS_ORIGINAL);
         assertThat(savedImage.getStatus()).isEqualTo(ImageStatus.PENDING);
         assertThat(savedImage.getContentType()).isEqualTo("image/jpeg");
         verify(imageUploadUrlPort).create(
                 any(),
                 eq("image/jpeg"),
                 eq(3_145_728L),
-                eq(Duration.ofMinutes(5))
+                eq(NOW.plus(Duration.ofMinutes(5)))
         );
     }
 
@@ -131,7 +140,7 @@ class ImageUploadServiceTest {
                 LoginProvider.EMAIL
         );
         ImageUploadRequest request = new ImageUploadRequest(
-                ImagePurpose.PROFILE,
+                ImageUploadPurpose.PROFILE,
                 "image/gif",
                 1024
         );
@@ -142,6 +151,114 @@ class ImageUploadServiceTest {
                                 .isEqualTo(ErrorCode.IMAGE_UNSUPPORTED_CONTENT_TYPE)
                 );
         verify(imageRepository, never()).save(any());
+    }
+
+    @Test
+    void mapsUploadPolicyGenerationFailureToImageError() {
+        Member owner = Member.create(
+                "presign-error@fitback.com",
+                "presign-error-user",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(owner, "id", 42L);
+        ImageUploadRequest request = new ImageUploadRequest(
+                ImageUploadPurpose.PROFILE,
+                "image/jpeg",
+                1024
+        );
+        when(imageUploadUrlPort.create(any(), any(), anyLong(), any()))
+                .thenThrow(new IllegalStateException("credential provider unavailable"));
+
+        assertThatThrownBy(() -> imageUploadService.createUpload(owner, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.IMAGE_PRESIGN_ERROR)
+                );
+        verify(imageRepository, never()).save(any());
+    }
+
+    @Test
+    void reissuesPostFieldsForPendingUploadWithoutChangingObjectKey() {
+        Member owner = Member.create(
+                "reissue@fitback.com",
+                "reissue-user",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(owner, "id", 42L);
+        Image image = Image.createPending(
+                "image-id",
+                owner,
+                "images/profile/42/2026/07/image-id.jpg",
+                ImagePurpose.PROFILE,
+                "image/jpeg",
+                1024,
+                ImageVisibility.PRIVATE,
+                NOW.plusSeconds(60)
+        );
+        when(imageRepository.findByIdAndOwnerId("image-id", 42L))
+                .thenReturn(Optional.of(image));
+        when(imageUploadUrlPort.create(
+                eq(image.getObjectKey()),
+                eq("image/jpeg"),
+                eq(1024L),
+                eq(NOW.plus(Duration.ofMinutes(5)))
+        )).thenReturn(new ImageUploadUrl(
+                "https://s3.example/upload",
+                "POST",
+                Map.of("key", image.getObjectKey(), "policy", "renewed-policy")
+        ));
+
+        ImageUploadResponse response = imageUploadService.reissueUpload(owner, "image-id");
+
+        assertThat(response.uploadMethod()).isEqualTo("POST");
+        assertThat(response.uploadFields())
+                .containsEntry("key", image.getObjectKey())
+                .containsEntry("policy", "renewed-policy");
+        assertThat(response.expiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(5)));
+        assertThat(image.getObjectKey())
+                .isEqualTo("images/profile/42/2026/07/image-id.jpg");
+        assertThat(image.getPresignedExpiresAt())
+                .isEqualTo(NOW.plus(Duration.ofMinutes(5)));
+    }
+
+    @Test
+    void reissuesFuturePendingUploadStatusDuringCompatibilityRelease() {
+        Member owner = Member.create(
+                "future-reissue@fitback.com",
+                "future-reissue-user",
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(owner, "id", 42L);
+        Image image = Image.createPending(
+                "future-image-id",
+                owner,
+                "images/profile/42/2026/07/future-image-id.jpg",
+                ImagePurpose.PROFILE,
+                "image/jpeg",
+                1024,
+                ImageVisibility.PRIVATE,
+                NOW.plusSeconds(60)
+        );
+        ReflectionTestUtils.setField(image, "status", ImageStatus.PENDING_UPLOAD);
+        when(imageRepository.findByIdAndOwnerId("future-image-id", 42L))
+                .thenReturn(Optional.of(image));
+        when(imageUploadUrlPort.create(any(), any(), anyLong(), any()))
+                .thenReturn(new ImageUploadUrl(
+                        "https://s3.example/upload",
+                        "POST",
+                        Map.of("key", image.getObjectKey(), "policy", "future-policy")
+                ));
+
+        ImageUploadResponse response = imageUploadService.reissueUpload(
+                owner,
+                "future-image-id"
+        );
+
+        assertThat(response.uploadMethod()).isEqualTo("POST");
+        assertThat(response.uploadFields()).containsEntry("policy", "future-policy");
     }
 
     @Test

@@ -10,7 +10,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitback.backend.domain.image.repository.ImageRepository;
 import com.fitback.backend.domain.image.service.port.ImageUploadUrl;
 import com.fitback.backend.domain.image.service.port.ImageUploadUrlPort;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +24,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,11 +36,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class ImageControllerIntegrationTest {
 
+    private static final Instant NOW = Instant.parse("2026-07-24T00:00:00Z");
+
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
     private ImageRepository imageRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -44,12 +53,12 @@ class ImageControllerIntegrationTest {
     void authenticatedMemberCreatesPresignedUpload() throws Exception {
         String accessToken = signUpAndGetAccessToken("image-api@fitback.com");
 
-        mockMvc.perform(post("/api/v1/images/presigned-uploads")
+        mockMvc.perform(post("/api/v1/images/upload-requests")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "purpose": "ANALYSIS_ORIGINAL",
+                                  "purpose": "ANALYSIS",
                                   "contentType": "image/jpeg",
                                   "fileSize": 3145728
                                 }
@@ -59,20 +68,29 @@ class ImageControllerIntegrationTest {
                 .andExpect(jsonPath("$.code").value("COMMON201_1"))
                 .andExpect(jsonPath("$.data.imageId").isNotEmpty())
                 .andExpect(jsonPath("$.data.uploadUrl").value("https://s3.example/upload"))
-                .andExpect(jsonPath("$.data.uploadMethod").value("PUT"))
-                .andExpect(jsonPath("$.data.requiredHeaders['Content-Type']").value("image/jpeg"))
-                .andExpect(jsonPath("$.data.imageUrl").value(
-                        org.hamcrest.Matchers.startsWith("https://cdn.example/")
-                ));
+                .andExpect(jsonPath("$.data.uploadMethod").value("POST"))
+                .andExpect(jsonPath("$.data.uploadFields['Content-Type']").value("image/jpeg"))
+                .andExpect(jsonPath("$.data.uploadFields.policy").value("encoded-policy"))
+                .andExpect(jsonPath("$.data.expiresAt").value("2026-07-24T00:05:00Z"))
+                .andExpect(jsonPath("$.data.requiredHeaders").doesNotExist())
+                .andExpect(jsonPath("$.data.imageUrl").doesNotExist());
 
         assertThat(imageRepository.count()).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT purpose FROM image",
+                String.class
+        )).isEqualTo("ANALYSIS_ORIGINAL");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM image",
+                String.class
+        )).isEqualTo("PENDING");
     }
 
     @Test
     void rejectsUnsupportedImageContentType() throws Exception {
         String accessToken = signUpAndGetAccessToken("image-type@fitback.com");
 
-        mockMvc.perform(post("/api/v1/images/presigned-uploads")
+        mockMvc.perform(post("/api/v1/images/upload-requests")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -90,7 +108,7 @@ class ImageControllerIntegrationTest {
     void rejectsFileLargerThanFiveMegabytes() throws Exception {
         String accessToken = signUpAndGetAccessToken("image-size@fitback.com");
 
-        mockMvc.perform(post("/api/v1/images/presigned-uploads")
+        mockMvc.perform(post("/api/v1/images/upload-requests")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -108,7 +126,7 @@ class ImageControllerIntegrationTest {
     void rejectsUnknownImagePurpose() throws Exception {
         String accessToken = signUpAndGetAccessToken("image-purpose@fitback.com");
 
-        mockMvc.perform(post("/api/v1/images/presigned-uploads")
+        mockMvc.perform(post("/api/v1/images/upload-requests")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -123,8 +141,44 @@ class ImageControllerIntegrationTest {
     }
 
     @Test
+    void rejectsLegacyPersistencePurposeFromPublicApi() throws Exception {
+        String accessToken = signUpAndGetAccessToken("legacy-image-purpose@fitback.com");
+
+        mockMvc.perform(post("/api/v1/images/upload-requests")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "purpose": "LOOKBOOK_MATCHED",
+                                  "contentType": "image/png",
+                                  "fileSize": 1024
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_1"));
+    }
+
+    @Test
+    void returnsImageErrorWhenPostPolicyGenerationFails() throws Exception {
+        String accessToken = signUpAndGetAccessToken("image-policy-error@fitback.com");
+
+        mockMvc.perform(post("/api/v1/images/upload-requests")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "purpose": "PROFILE",
+                                  "contentType": "image/jpeg",
+                                  "fileSize": 2048
+                                }
+                                """))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("IMAGE500_1"));
+    }
+
+    @Test
     void requiresAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/images/presigned-uploads")
+        mockMvc.perform(post("/api/v1/images/upload-requests")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -158,27 +212,39 @@ class ImageControllerIntegrationTest {
         @Bean
         @Primary
         ImageUploadUrlPort imageUploadUrlPort() {
-            return (objectKey, contentType, fileSize, expiration) -> testUploadUrl(
+            return (objectKey, contentType, fileSize, expiresAt) -> testUploadUrl(
                     objectKey,
                     contentType,
                     fileSize,
-                    expiration
+                    expiresAt
             );
+        }
+
+        @Bean
+        @Primary
+        Clock imageUploadClock() {
+            return Clock.fixed(NOW, ZoneOffset.UTC);
         }
 
         private ImageUploadUrl testUploadUrl(
                 String objectKey,
                 String contentType,
                 long fileSize,
-                Duration expiration
+                Instant expiresAt
         ) {
+            if (fileSize == 2048) {
+                throw new IllegalStateException("test policy generation failure");
+            }
             assertThat(fileSize).isEqualTo(3_145_728);
-            assertThat(expiration).isEqualTo(Duration.ofMinutes(5));
+            assertThat(expiresAt).isEqualTo(NOW.plus(Duration.ofMinutes(5)));
             return new ImageUploadUrl(
                     "https://s3.example/upload",
-                    "PUT",
-                    Map.of("Content-Type", contentType),
-                    "https://cdn.example/" + objectKey
+                    "POST",
+                    Map.of(
+                            "key", objectKey,
+                            "Content-Type", contentType,
+                            "policy", "encoded-policy"
+                    )
             );
         }
     }

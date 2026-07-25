@@ -1,6 +1,7 @@
 package com.fitback.backend.domain.image.service;
 
 import com.fitback.backend.domain.image.dto.ImageCompleteResponse;
+import com.fitback.backend.domain.image.dto.ImageUploadPurpose;
 import com.fitback.backend.domain.image.dto.ImageUploadRequest;
 import com.fitback.backend.domain.image.dto.ImageUploadResponse;
 import com.fitback.backend.domain.image.entity.Image;
@@ -18,10 +19,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ImageUploadService {
 
+    private static final Logger log = LoggerFactory.getLogger(ImageUploadService.class);
     private static final Duration UPLOAD_URL_EXPIRATION = Duration.ofMinutes(5);
     private static final Map<String, String> CONTENT_TYPE_EXTENSIONS = Map.of(
             "image/jpeg", "jpg",
@@ -46,22 +52,28 @@ public class ImageUploadService {
     @Transactional
     public ImageUploadResponse createUpload(Member owner, ImageUploadRequest request) {
         String contentType = normalizeContentType(request.contentType());
-        Instant now = clock.instant();
+        Instant now = clock.instant().truncatedTo(ChronoUnit.SECONDS);
         Instant expiresAt = now.plus(UPLOAD_URL_EXPIRATION);
         String imageId = UUID.randomUUID().toString();
-        String objectKey = createObjectKey(imageId, request.purpose(), contentType, now);
+        String objectKey = createObjectKey(
+                imageId,
+                owner.getId(),
+                request.purpose(),
+                contentType,
+                now
+        );
 
         Image image = Image.createPending(
                 imageId,
                 owner,
                 objectKey,
-                request.purpose(),
+                toStoredPurpose(request.purpose()),
                 contentType,
                 request.fileSize(),
                 ImageVisibility.PRIVATE,
                 expiresAt
         );
-        ImageUploadUrl uploadUrl = createUploadUrl(image);
+        ImageUploadUrl uploadUrl = createUploadUrl(image, expiresAt);
         imageRepository.save(image);
         return toResponse(image, uploadUrl, expiresAt);
     }
@@ -69,12 +81,14 @@ public class ImageUploadService {
     @Transactional
     public ImageUploadResponse reissueUpload(Member owner, String imageId) {
         Image image = findOwnedImage(owner.getId(), imageId);
-        if (image.getStatus() != ImageStatus.PENDING) {
+        if (!image.getStatus().isPendingUpload()) {
             throw new BusinessException(ErrorCode.IMAGE_INVALID_STATE);
         }
-        Instant expiresAt = clock.instant().plus(UPLOAD_URL_EXPIRATION);
+        Instant expiresAt = clock.instant()
+                .truncatedTo(ChronoUnit.SECONDS)
+                .plus(UPLOAD_URL_EXPIRATION);
         image.renewUpload(expiresAt);
-        return toResponse(image, createUploadUrl(image), expiresAt);
+        return toResponse(image, createUploadUrl(image, expiresAt), expiresAt);
     }
 
     public ImageCompleteResponse completeUpload(Member owner, String imageId) {
@@ -121,29 +135,48 @@ public class ImageUploadService {
         return contentType;
     }
 
-    private ImageUploadUrl createUploadUrl(Image image) {
-        return imageUploadUrlPort.create(
-                image.getObjectKey(),
-                image.getContentType(),
-                image.getFileSize(),
-                UPLOAD_URL_EXPIRATION
-        );
+    private ImageUploadUrl createUploadUrl(Image image, Instant expiresAt) {
+        try {
+            return imageUploadUrlPort.create(
+                    image.getObjectKey(),
+                    image.getContentType(),
+                    image.getFileSize(),
+                    expiresAt
+            );
+        } catch (RuntimeException exception) {
+            log.error(
+                    "Image upload information generation failed. imageId={}",
+                    image.getId(),
+                    exception
+            );
+            throw new BusinessException(ErrorCode.IMAGE_PRESIGN_ERROR);
+        }
     }
 
     private String createObjectKey(
             String imageId,
-            ImagePurpose purpose,
+            Long ownerId,
+            ImageUploadPurpose purpose,
             String contentType,
             Instant createdAt
     ) {
         ZonedDateTime date = createdAt.atZone(ZoneOffset.UTC);
-        return "prod/images/%s/%04d/%02d/%s.%s".formatted(
+        return "images/%s/%d/%04d/%02d/%s.%s".formatted(
                 purpose.name().toLowerCase(Locale.ROOT),
+                Objects.requireNonNull(ownerId, "owner id must not be null"),
                 date.getYear(),
                 date.getMonthValue(),
                 imageId,
                 CONTENT_TYPE_EXTENSIONS.get(contentType)
         );
+    }
+
+    private ImagePurpose toStoredPurpose(ImageUploadPurpose purpose) {
+        return switch (purpose) {
+            case ANALYSIS -> ImagePurpose.ANALYSIS_ORIGINAL;
+            case LOOKBOOK -> ImagePurpose.LOOKBOOK_ORIGINAL;
+            case PROFILE -> ImagePurpose.PROFILE;
+        };
     }
 
     private ImageUploadResponse toResponse(
@@ -155,9 +188,8 @@ public class ImageUploadService {
                 image.getId(),
                 uploadUrl.uploadUrl(),
                 uploadUrl.uploadMethod(),
-                uploadUrl.requiredHeaders(),
-                expiresAt,
-                uploadUrl.imageUrl()
+                uploadUrl.uploadFields(),
+                expiresAt
         );
     }
 }
