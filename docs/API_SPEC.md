@@ -20,7 +20,7 @@ Lookbook, Closet API는 해당 도메인의 명세를 따른다.
 | 요구 | API 반영 |
 | --- | --- |
 | 쇼핑몰 파트너 미확정 | partner 전용 ID·URI를 공개 계약에 넣지 않고 provider-neutral token/Product 사용 |
-| 비용 최소화 | pagination, Top 5, live lookup 최소화, fixture fallback을 전제로 함 |
+| 비용 최소화 | pagination, Top 10, live lookup 최소화, fixture fallback을 전제로 함 |
 | 추천 생성 | 기존 분석 결과를 읽어 similarity-only 추천 결과를 생성하며 분석 태그를 변경하지 않음 |
 | 추천 상품 저장(찜) | 추천 현재 세트와 분리된 `/members/me/saved-products` 정의 |
 | 범위 제한 | 원상품 후보 탐색·기준 가격 확정·공개 확정 태그 반영 API는 제외 |
@@ -114,7 +114,7 @@ OTHER
 ```
 
 - 추천 응답은 8개 그룹을 항상 포함한다.
-- 각 그룹은 최대 5개다.
+- 각 그룹은 최대 10개다.
 - 항목이 없는 그룹도 `items: []`로 반환한다.
 - 외부 카테고리는 Adapter에서 위 enum으로 매핑한다.
 - 매핑할 수 없는 구매 가능 패션 상품은 `OTHER`다.
@@ -480,7 +480,7 @@ Request body는 없으며 분석 태그, `matchPercentage`, 이미지 상태를 
 - 외부 공급자가 모두 실패하면 `PRODUCT503_1`이며 기존 세트를 유지한다.
 - materialize할 수 없는 후보는 현재 세트에서 제외하고 warning을 남긴다.
 - 후보가 모두 저장 정책상 materialize 불가하면 `PRODUCT503_3`이며 기존 세트를 유지한다.
-- 각 그룹은 최대 5개이며 8개 그룹을 고정 순서로 반환한다.
+- 각 그룹은 최대 10개이며 8개 그룹을 고정 순서로 반환한다.
 - 추천 세트 교체는 `SavedProduct`를 변경하지 않는다.
 - 일부 태그 query가 실패하면 `PROVIDER_PARTIAL_FAILURE`, 저장 불가 후보를 제외하면
   `MATERIALIZATION_SKIPPED` warning과 `partial=true`를 반환한다.
@@ -736,7 +736,7 @@ response를 직접 반환하지 않는다.
 - [ ] candidate token 변조·만료·재사용 정책이 검증됨
 - [ ] 추천 생성이 AnalysisReport와 ReportTag를 변경하지 않음
 - [ ] 유사도 정규화와 `finalScore=similarityScore`가 순수 단위 테스트로 검증됨
-- [ ] 8개 그룹 순서, 그룹별 Top 5, 빈 그룹 포함이 검증됨
+- [ ] 8개 그룹 순서, 그룹별 Top 10, 빈 그룹 포함이 검증됨
 - [ ] 외부 호출이 DB transaction 밖에서 실행됨
 - [ ] 저장 실패·분석 입력 변경 시 기존 현재 세트가 유지됨
 - [ ] 저장 상품 PUT/DELETE 멱등성과 추천 세트 독립성이 검증됨
