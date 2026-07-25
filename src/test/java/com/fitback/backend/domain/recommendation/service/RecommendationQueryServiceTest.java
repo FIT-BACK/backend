@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
+import com.fitback.backend.domain.product.repository.SavedProductRepository;
 import com.fitback.backend.domain.product.service.ProductResponseMapper;
 import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.recommendation.dto.RecommendationGroupResponse;
@@ -26,10 +27,13 @@ class RecommendationQueryServiceTest {
             mock(AnalysisReportRepository.class);
     private final RecommendedItemRepository recommendedItemRepository =
             mock(RecommendedItemRepository.class);
+    private final SavedProductRepository savedProductRepository =
+            mock(SavedProductRepository.class);
     private final RecommendationQueryService queryService = new RecommendationQueryService(
             analysisReportRepository,
             recommendedItemRepository,
-            mock(ProductResponseMapper.class)
+            mock(ProductResponseMapper.class),
+            savedProductRepository
     );
 
     @Test

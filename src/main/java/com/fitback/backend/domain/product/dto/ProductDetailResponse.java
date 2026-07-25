@@ -20,4 +20,22 @@ public record ProductDetailResponse(
         List<String> tags,
         boolean isSaved
 ) {
+
+    public ProductDetailResponse withSaved(boolean saved) {
+        return new ProductDetailResponse(
+                productId,
+                imageUrl,
+                name,
+                brandName,
+                sellerName,
+                category,
+                price,
+                purchaseUrl,
+                affiliateUrl,
+                availability,
+                dataStatus,
+                tags,
+                saved
+        );
+    }
 }

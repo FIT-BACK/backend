@@ -268,6 +268,104 @@ for database in fitback fitback_existing_refresh_token; do
   validate_recommendation_contract "$database"
 done
 
+validate_saved_product_contract() {
+  local database="$1"
+  local saved_product_columns
+  local saved_product_constraints
+  local saved_product_indexes
+  local relationship_count
+  local product_count
+
+  saved_product_columns="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'saved_product'
+        ORDER BY ORDINAL_POSITION;")"
+
+  if [ "$saved_product_columns" != "$(printf '%s\n' \
+    'member_id:NO:bigint' \
+    'product_id:NO:bigint' \
+    'created_at:NO:datetime')" ]; then
+    echo "Unexpected saved_product columns in $database:" >&2
+    printf '%s\n' "$saved_product_columns" >&2
+    exit 1
+  fi
+
+  saved_product_constraints="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(rc.CONSTRAINT_NAME, ':', rc.DELETE_RULE)
+        FROM information_schema.REFERENTIAL_CONSTRAINTS rc
+        WHERE rc.CONSTRAINT_SCHEMA = '$database'
+          AND rc.TABLE_NAME = 'saved_product'
+        ORDER BY rc.CONSTRAINT_NAME;")"
+
+  if [ "$saved_product_constraints" != "$(printf '%s\n' \
+    'FK_SAVED_PRODUCT_MEMBER:CASCADE' \
+    'FK_SAVED_PRODUCT_PRODUCT:RESTRICT')" ]; then
+    echo "Unexpected saved_product foreign keys in $database:" >&2
+    printf '%s\n' "$saved_product_constraints" >&2
+    exit 1
+  fi
+
+  saved_product_indexes="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT DISTINCT INDEX_NAME
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'saved_product'
+          AND INDEX_NAME IN ('PRIMARY', 'IDX_SAVED_PRODUCT_MEMBER_CURSOR')
+        ORDER BY INDEX_NAME;")"
+
+  if [ "$saved_product_indexes" != "$(printf '%s\n' \
+    'IDX_SAVED_PRODUCT_MEMBER_CURSOR' \
+    'PRIMARY')" ]; then
+    echo "Unexpected saved_product indexes in $database:" >&2
+    printf '%s\n' "$saved_product_indexes" >&2
+    exit 1
+  fi
+
+  docker exec "$container_name" mysql -uroot "$database" -e \
+    "DELETE FROM recommended_item WHERE product_id = 1;
+     INSERT INTO member (member_id) VALUES (9101);
+     INSERT INTO saved_product (member_id, product_id) VALUES (9101, 1);"
+
+  if docker exec "$container_name" mysql -uroot "$database" -e \
+    "INSERT INTO saved_product (member_id, product_id) VALUES (9101, 1);" \
+    >/dev/null 2>&1; then
+    echo "saved_product accepted a duplicate relationship in $database." >&2
+    exit 1
+  fi
+
+  if docker exec "$container_name" mysql -uroot "$database" -e \
+    "DELETE FROM product WHERE product_id = 1;" \
+    >/dev/null 2>&1; then
+    echo "saved_product did not restrict deletion of referenced product in $database." >&2
+    exit 1
+  fi
+
+  docker exec "$container_name" mysql -uroot "$database" -e \
+    "DELETE FROM member WHERE member_id = 9101;"
+  relationship_count="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*) FROM $database.saved_product
+        WHERE member_id = 9101 AND product_id = 1;")"
+  product_count="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*) FROM $database.product WHERE product_id = 1;")"
+
+  if [ "$relationship_count" != '0' ] || [ "$product_count" != '1' ]; then
+    echo "Unexpected saved_product delete lifecycle in $database:" >&2
+    echo "relationship_count=$relationship_count product_count=$product_count" >&2
+    exit 1
+  fi
+}
+
+for database in fitback fitback_existing_refresh_token; do
+  validate_saved_product_contract "$database"
+done
+
 actual_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE)

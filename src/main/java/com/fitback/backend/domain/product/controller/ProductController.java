@@ -3,6 +3,7 @@ package com.fitback.backend.domain.product.controller;
 import com.fitback.backend.domain.product.dto.ProductDetailResponse;
 import com.fitback.backend.domain.product.dto.ProductSearchResponse;
 import com.fitback.backend.domain.product.service.ProductDetailService;
+import com.fitback.backend.domain.product.service.SavedProductService;
 import com.fitback.backend.domain.product.service.ProductSearchService;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
@@ -24,6 +25,7 @@ public class ProductController {
 
     private final ProductSearchService productSearchService;
     private final ProductDetailService productDetailService;
+    private final SavedProductService savedProductService;
 
     @Operation(
             summary = "상품 검색",
@@ -56,8 +58,10 @@ public class ProductController {
             @PathVariable("productId") Long productId,
             @AuthenticationPrincipal AuthMember authMember
     ) {
-        requireMemberId(authMember);
-        return ApiResponse.onSuccess(productDetailService.getDetail(productId));
+        long memberId = requireMemberId(authMember);
+        ProductDetailResponse response = productDetailService.getDetail(productId)
+                .withSaved(savedProductService.isSaved(memberId, productId));
+        return ApiResponse.onSuccess(response);
     }
 
     private static long requireMemberId(AuthMember authMember) {
