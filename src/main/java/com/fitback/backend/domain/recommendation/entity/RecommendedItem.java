@@ -49,7 +49,7 @@ import org.hibernate.annotations.OnDeleteAction;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RecommendedItem extends BaseCreateTimeEntity {
 
-    private static final int MAX_RANK = 5;
+    private static final int MAX_RANK = 10;
     private static final int MAX_REASON_CODES_LENGTH = 500;
 
     @Id

@@ -60,7 +60,7 @@ seed_baseline_schema fitback 'member_id BIGINT NOT NULL PRIMARY KEY'
 seed_baseline_schema fitback_existing_refresh_token 'member_id BIGINT NOT NULL PRIMARY KEY, refresh_token VARCHAR(512) NULL'
 
 for database in fitback fitback_existing_refresh_token; do
-  for migration in src/main/resources/db/migration/V*.sql; do
+  while IFS= read -r migration; do
     if [ "$(basename "$migration")" = 'V4__update_image_upload_policy.sql' ]; then
       printf '%s\n' \
         "INSERT INTO member (member_id) VALUES (9001);" \
@@ -72,7 +72,7 @@ for database in fitback fitback_existing_refresh_token; do
         | docker exec -i "$container_name" mysql -uroot "$database"
     fi
     docker exec -i "$container_name" mysql -uroot "$database" < "$migration"
-  done
+  done < <(printf '%s\n' src/main/resources/db/migration/V*.sql | sort -V)
 done
 
 expected_product_contract="$(printf '%s\n' \
@@ -161,6 +161,7 @@ validate_recommendation_contract() {
   local analysis_metadata
   local recommendation_constraints
   local expected_recommendation_constraints
+  local recommendation_rank_check
 
   recommendation_contract="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
@@ -262,6 +263,22 @@ validate_recommendation_contract() {
     printf '%s\n' "$recommendation_constraints" >&2
     exit 1
   fi
+
+  recommendation_rank_check="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT LOWER(CHECK_CLAUSE)
+        FROM information_schema.CHECK_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = '$database'
+          AND CONSTRAINT_NAME = 'CK_RECOMMENDED_RANK';")"
+
+  case "$recommendation_rank_check" in
+    *rank_no*between*1*and*10*)
+      ;;
+    *)
+      echo "Unexpected recommendation rank check in $database: $recommendation_rank_check" >&2
+      exit 1
+      ;;
+  esac
 }
 
 for database in fitback fitback_existing_refresh_token; do

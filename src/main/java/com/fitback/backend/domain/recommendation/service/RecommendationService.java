@@ -34,7 +34,7 @@ public class RecommendationService {
     static final String SCORE_VERSION = "SIMILARITY_V1";
 
     private static final int SEARCH_PAGE_SIZE = 20;
-    private static final int MAX_ITEMS_PER_CATEGORY = 5;
+    private static final int MAX_ITEMS_PER_CATEGORY = 10;
     private static final String PROVIDER_PARTIAL_FAILURE = "PROVIDER_PARTIAL_FAILURE";
     private static final String MATERIALIZATION_SKIPPED = "MATERIALIZATION_SKIPPED";
 
@@ -77,7 +77,7 @@ public class RecommendationService {
             throw new BusinessException(ErrorCode.PRODUCT_PROVIDER_PERSISTENCE_UNSUPPORTED);
         }
 
-        List<RecommendationSelection> selections = selectTopFivePerCategory(materialized);
+        List<RecommendationSelection> selections = selectTopItemsPerCategory(materialized);
         setWriter.replaceCurrentSet(input, SCORE_VERSION, selections);
         RecommendationResultResponse result = queryService.findByReportId(memberId, reportId);
         return new RecommendationCreateResponse(
@@ -145,7 +145,7 @@ public class RecommendationService {
         return materialized;
     }
 
-    private static List<RecommendationSelection> selectTopFivePerCategory(
+    private static List<RecommendationSelection> selectTopItemsPerCategory(
             List<MaterializedCandidate> candidates
     ) {
         Comparator<MaterializedCandidate> order = Comparator
