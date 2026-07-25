@@ -71,13 +71,11 @@ class SavedProductServiceTest {
     }
 
     @Test
-    void normalizesCreatedSavedAtToDatabaseMicrosecondPrecision() {
+    void createsSavedAtAtDatabaseMicrosecondPrecision() {
         MemberRepository memberRepository = mock(MemberRepository.class);
         ProductRepository productRepository = mock(ProductRepository.class);
-        SavedProduct savedProduct = mock(SavedProduct.class);
         Member member = mock(Member.class);
         Product product = mock(Product.class);
-        Instant nanosecondTimestamp = Instant.parse("2026-07-26T03:00:00.123456789Z");
 
         when(member.getId()).thenReturn(1L);
         when(product.getId()).thenReturn(100L);
@@ -86,9 +84,7 @@ class SavedProductServiceTest {
         when(savedProductRepository.findByIdMemberIdAndIdProductId(1L, 100L))
                 .thenReturn(Optional.empty());
         when(savedProductRepository.saveAndFlush(any(SavedProduct.class)))
-                .thenReturn(savedProduct);
-        when(savedProduct.getId()).thenReturn(SavedProductId.create(1L, 100L));
-        when(savedProduct.getCreatedAt()).thenReturn(nanosecondTimestamp);
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         SavedProductService service = new SavedProductService(
                 savedProductRepository,
@@ -100,7 +96,7 @@ class SavedProductServiceTest {
 
         SavedProductService.SaveResult result = service.save(1L, 100L);
 
-        assertThat(result.response().savedAt())
-                .isEqualTo(Instant.parse("2026-07-26T03:00:00.123456Z"));
+        assertThat(result.response().savedAt()).isNotNull();
+        assertThat(result.response().savedAt().getNano() % 1_000).isZero();
     }
 }

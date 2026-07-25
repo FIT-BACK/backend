@@ -4,24 +4,21 @@ import com.fitback.backend.domain.member.entity.Member;
 import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Getter
 @Entity
 @Table(name = "saved_product")
-@EntityListeners(AuditingEntityListener.class)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class SavedProduct {
 
@@ -38,7 +35,6 @@ public class SavedProduct {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -46,6 +42,7 @@ public class SavedProduct {
         this.member = Objects.requireNonNull(member, "member must not be null");
         this.product = Objects.requireNonNull(product, "product must not be null");
         this.id = SavedProductId.create(member.getId(), product.getId());
+        this.createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
     }
 
     public static SavedProduct create(Member member, Product product) {

@@ -14,7 +14,6 @@ import com.fitback.backend.domain.product.service.model.ProductDataStatus;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -160,7 +159,7 @@ public class SavedProductService {
     }
 
     private static Instant toInstant(SavedProduct savedProduct) {
-        return savedProduct.getCreatedAt().truncatedTo(ChronoUnit.MICROS);
+        return savedProduct.getCreatedAt();
     }
 
     private static int validatePageSize(Integer requestedPageSize) {
