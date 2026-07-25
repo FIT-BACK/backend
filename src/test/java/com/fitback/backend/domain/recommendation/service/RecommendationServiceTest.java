@@ -99,7 +99,7 @@ class RecommendationServiceTest {
                             true
                     );
                 });
-        when(queryService.findByReportId(501L)).thenReturn(currentResult());
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
 
         RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
 
@@ -141,7 +141,7 @@ class RecommendationServiceTest {
         doThrow(new BusinessException(ErrorCode.PRODUCT_REFERENCE_UNSUPPORTED))
                 .when(materializationService)
                 .materializeForRecommendation(unstable);
-        when(queryService.findByReportId(501L)).thenReturn(currentResult());
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
 
         RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
 
@@ -171,7 +171,7 @@ class RecommendationServiceTest {
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(any(ProductSearchQuery.class)))
                 .thenReturn(new ProductSearchResult(List.of(), null));
-        when(queryService.findByReportId(501L)).thenReturn(currentResult());
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
 
         RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
 

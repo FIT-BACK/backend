@@ -79,7 +79,7 @@ public class RecommendationService {
 
         List<RecommendationSelection> selections = selectTopFivePerCategory(materialized);
         setWriter.replaceCurrentSet(input, SCORE_VERSION, selections);
-        RecommendationResultResponse result = queryService.findByReportId(reportId);
+        RecommendationResultResponse result = queryService.findByReportId(memberId, reportId);
         return new RecommendationCreateResponse(
                 reportId,
                 input.tagNames(),

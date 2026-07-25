@@ -19,7 +19,7 @@ public interface AnalysisReportRepository extends JpaRepository<AnalysisReport, 
     Optional<AnalysisReport> findByIdAndMemberIdAndDeletedAtIsNull(Long reportId, Long memberId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @EntityGraph(attributePaths = {"reportTags", "reportTags.tag"})
+    @EntityGraph(attributePaths = "reportTags")
     @Query("""
             select report
             from AnalysisReport report

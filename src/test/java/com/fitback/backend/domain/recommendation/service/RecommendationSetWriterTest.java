@@ -11,6 +11,7 @@ import com.fitback.backend.domain.product.repository.ProductRepository;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot.TagInput;
+import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
@@ -38,6 +39,9 @@ class RecommendationSetWriterTest {
     @Mock
     private AnalysisReport report;
 
+    @Mock
+    private Tag tag;
+
     @Test
     void rejectsChangedInputBeforeDeletingCurrentSet() {
         RecommendationInputSnapshot input = new RecommendationInputSnapshot(
@@ -49,6 +53,37 @@ class RecommendationSetWriterTest {
         when(analysisReportRepository.findOwnedReportForRecommendationUpdate(501L, 1L))
                 .thenReturn(Optional.of(report));
         when(report.hasRecommendationInputRevision(1)).thenReturn(false);
+        RecommendationSetWriter writer = new RecommendationSetWriter(
+                analysisReportRepository,
+                productRepository,
+                recommendedItemRepository,
+                Clock.fixed(Instant.parse("2026-07-25T00:00:00Z"), ZoneOffset.UTC)
+        );
+
+        assertThatThrownBy(() -> writer.replaceCurrentSet(
+                input,
+                "SIMILARITY_V1",
+                List.of()
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.RECOMMENDATION_INPUT_CHANGED);
+        verify(recommendedItemRepository, never()).deleteCurrentSetByReportId(501L);
+    }
+
+    @Test
+    void rejectsChangedTagsBeforeDeletingCurrentSet() {
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                1,
+                List.of(new TagInput(10L, "Fixture"))
+        );
+        when(analysisReportRepository.findOwnedReportForRecommendationUpdate(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(report.hasRecommendationInputRevision(1)).thenReturn(true);
+        when(report.getDisplayTags()).thenReturn(List.of(tag));
+        when(tag.getId()).thenReturn(11L);
         RecommendationSetWriter writer = new RecommendationSetWriter(
                 analysisReportRepository,
                 productRepository,

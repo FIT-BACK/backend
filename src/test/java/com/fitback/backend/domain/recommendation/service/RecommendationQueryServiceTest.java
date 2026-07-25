@@ -1,6 +1,7 @@
 package com.fitback.backend.domain.recommendation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -12,8 +13,11 @@ import com.fitback.backend.domain.recommendation.dto.RecommendationGroupResponse
 import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
 import com.fitback.backend.domain.recommendation.entity.RecommendationStatus;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
+import com.fitback.backend.global.exception.BusinessException;
+import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class RecommendationQueryServiceTest {
@@ -60,5 +64,16 @@ class RecommendationQueryServiceTest {
 
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.STALE);
         assertThat(response.scoreVersion()).isEqualTo("SIMILARITY_V1");
+    }
+
+    @Test
+    void rejectsRecommendationLookupForUnownedReport() {
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> queryService.findByReportId(1L, 501L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.ANALYSIS_REPORT_NOT_FOUND);
     }
 }

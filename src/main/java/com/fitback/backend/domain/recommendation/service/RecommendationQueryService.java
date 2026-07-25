@@ -46,8 +46,9 @@ public class RecommendationQueryService implements RecommendationResultProvider 
         return result(report, items);
     }
 
-    public RecommendationResultResponse findByReportId(Long reportId) {
-        AnalysisReport report = analysisReportRepository.findById(reportId)
+    public RecommendationResultResponse findByReportId(Long memberId, Long reportId) {
+        AnalysisReport report = analysisReportRepository
+                .findByIdAndMemberIdAndDeletedAtIsNull(reportId, memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_REPORT_NOT_FOUND));
         return findFor(report);
     }
