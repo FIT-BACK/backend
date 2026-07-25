@@ -56,8 +56,8 @@ seed_baseline_schema() {
     | docker exec -i "$container_name" mysql -uroot "$database"
 }
 
-seed_baseline_schema fitback 'member_id BIGINT NOT NULL PRIMARY KEY'
-seed_baseline_schema fitback_existing_refresh_token 'member_id BIGINT NOT NULL PRIMARY KEY, refresh_token VARCHAR(512) NULL'
+seed_baseline_schema fitback "member_id BIGINT NOT NULL PRIMARY KEY, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL'"
+seed_baseline_schema fitback_existing_refresh_token "member_id BIGINT NOT NULL PRIMARY KEY, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL', refresh_token VARCHAR(512) NULL"
 
 for database in fitback fitback_existing_refresh_token; do
   for migration in src/main/resources/db/migration/V*.sql; do
