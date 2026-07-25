@@ -22,6 +22,7 @@ public enum ErrorCode {
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "AUTH401_1", "이메일 또는 비밀번호가 올바르지 않습니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH401_2", "유효하지 않은 리프레시 토큰입니다."),
     SOCIAL_EMAIL_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH400_1", "카카오 이메일 제공 동의가 필요합니다."),
+    SOCIAL_ID_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH400_2", "카카오 회원 식별값을 확인할 수 없습니다."),
     INVALID_TEMP_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH401_3", "유효하지 않은 임시 토큰입니다."),
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "MEMBER409_1", "이미 사용중인 닉네임입니다."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "MEMBER400_1", "현재 비밀번호가 일치하지 않습니다."),
