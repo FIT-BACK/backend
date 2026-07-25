@@ -12,6 +12,13 @@ public interface LookbookLikeRepository extends JpaRepository<LookbookLike, Long
 
     boolean existsByLookbookIdAndMemberId(Long lookbookId, Long memberId);
 
+    @Query("""
+            SELECT lookbookLike.lookbook.id
+            FROM LookbookLike lookbookLike
+            WHERE lookbookLike.member.id = :memberId
+            """)
+    List<Long> findLookbookIdsByMemberId(@Param("memberId") Long memberId);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             DELETE FROM LookbookLike lookbookLike

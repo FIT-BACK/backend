@@ -2,6 +2,7 @@ package com.fitback.backend.domain.lookbook.repository;
 
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
 import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
+import com.fitback.backend.domain.member.entity.Member;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +14,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
+
+    long countByMemberIdAndDeletedAtIsNull(Long memberId);
 
     @EntityGraph(attributePaths = "member")
     Optional<Lookbook> findByIdAndDeletedAtIsNull(Long id);
@@ -118,6 +121,15 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             """)
     int decrementLikeCount(@Param("lookbookId") Long lookbookId);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Lookbook lookbook
+            SET lookbook.likeCount = lookbook.likeCount - 1
+            WHERE lookbook.id IN :lookbookIds
+              AND lookbook.deletedAt IS NULL
+            """)
+    int decrementLikeCountByIds(@Param("lookbookIds") List<Long> lookbookIds);
+
     @Query("""
             SELECT lookbook.likeCount
             FROM Lookbook lookbook
@@ -150,5 +162,17 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             @Param("reportThreshold") int reportThreshold,
             @Param("visibleStatus") LookbookModerationStatus visibleStatus,
             @Param("autoHiddenStatus") LookbookModerationStatus autoHiddenStatus
+    );
+
+    //회원 탈퇴 시 해당 회원의 룩북을 탈퇴 회원 계정으로 익명화(재지정)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Lookbook lookbook
+            SET lookbook.member = :withdrawnMember
+            WHERE lookbook.member.id = :memberId
+            """)
+    void reassignToWithdrawnMember(
+            @Param("memberId") Long memberId,
+            @Param("withdrawnMember") Member withdrawnMember
     );
 }

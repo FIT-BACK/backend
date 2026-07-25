@@ -21,6 +21,13 @@ public enum ErrorCode {
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "AUTH409_1", "이미 사용 중인 이메일입니다."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "AUTH401_1", "이메일 또는 비밀번호가 올바르지 않습니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH401_2", "유효하지 않은 리프레시 토큰입니다."),
+    NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "MEMBER409_1", "이미 사용중인 닉네임입니다."),
+    PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "MEMBER400_1", "현재 비밀번호가 일치하지 않습니다."),
+    PASSWORD_CHANGE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "MEMBER400_2", "소셜 로그인 회원은 비밀번호를 변경할 수 없습니다."),
+    MEMBER_TAG_NOT_FOUND(HttpStatus.BAD_REQUEST, "MEMBER400_3", "존재하지 않는 태그가 포함되어 있습니다."),
+    REJOIN_BLOCKED(HttpStatus.FORBIDDEN, "MEMBER403_1", "탈퇴 후 30일 동안 재가입할 수 없습니다."),
+
+    NOTIFICATION_SETTING_EMPTY(HttpStatus.BAD_REQUEST, "NOTIFICATION400_1", "변경할 알림 설정 값이 없습니다."),
 
     IMAGE_UNSUPPORTED_CONTENT_TYPE(
             HttpStatus.BAD_REQUEST,

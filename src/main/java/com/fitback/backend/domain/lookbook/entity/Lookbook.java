@@ -30,6 +30,7 @@ public class Lookbook extends BaseTimeEntity {
     @Column(name = "lookbook_id")
     private Long id;
 
+    //회원 탈퇴 시 삭제하지 않고 '탈퇴한 유저'로 익명화(재지정)하므로 cascade 미적용
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "member_id", nullable = false)
     private Member member;
