@@ -162,6 +162,7 @@ validate_recommendation_contract() {
   local recommendation_constraints
   local expected_recommendation_constraints
   local recommendation_rank_check
+  local normalized_recommendation_rank_check
 
   recommendation_contract="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
@@ -271,14 +272,12 @@ validate_recommendation_contract() {
         WHERE CONSTRAINT_SCHEMA = '$database'
           AND CONSTRAINT_NAME = 'CK_RECOMMENDED_RANK';")"
 
-  case "$recommendation_rank_check" in
-    *rank_no*between*1*and*10*)
-      ;;
-    *)
-      echo "Unexpected recommendation rank check in $database: $recommendation_rank_check" >&2
-      exit 1
-      ;;
-  esac
+  normalized_recommendation_rank_check="$(printf '%s\n' "$recommendation_rank_check" \
+    | tr -d '`()[:space:]')"
+  if [ "$normalized_recommendation_rank_check" != 'rank_nobetween1and10' ]; then
+    echo "Unexpected recommendation rank check in $database: $recommendation_rank_check" >&2
+    exit 1
+  fi
 }
 
 for database in fitback fitback_existing_refresh_token; do
