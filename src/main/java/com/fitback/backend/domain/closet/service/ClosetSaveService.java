@@ -70,8 +70,9 @@ public class ClosetSaveService {
                 }
             }
             case LOOKBOOK -> lookbookRepository.findByIdAndDeletedAtIsNull(targetId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "룩북을 찾을 수 없습니다."));
+                    .orElseThrow(() -> new BusinessException(ErrorCode.LOOKBOOK_NOT_FOUND));
             case ANALYSIS_REPORT -> throw new BusinessException(ErrorCode.CLOSET_TARGET_UNSUPPORTED);
+            default -> throw new BusinessException(ErrorCode.CLOSET_TARGET_UNSUPPORTED);
         }
     }
 

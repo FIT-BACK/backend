@@ -23,6 +23,7 @@ public enum ErrorCode {
     ANALYSIS_IMAGE_STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ANALYSIS500_1", "분석 이미지를 저장할 수 없습니다."),
     TAG_NOT_FOUND(HttpStatus.NOT_FOUND, "TAG404_1", "태그를 찾을 수 없습니다."),
     TREND_NOT_FOUND(HttpStatus.NOT_FOUND, "TREND404_1", "트렌드를 찾을 수 없습니다."),
+    LOOKBOOK_NOT_FOUND(HttpStatus.NOT_FOUND, "LOOKBOOK404_1", "룩북을 찾을 수 없습니다."),
 
     CLOSET_NOT_FOUND(HttpStatus.NOT_FOUND, "CLOSET404_1", "저장한 항목을 찾을 수 없습니다."),
     CLOSET_ALREADY_SAVED(HttpStatus.BAD_REQUEST, "CLOSET400_1", "이미 저장한 항목입니다."),

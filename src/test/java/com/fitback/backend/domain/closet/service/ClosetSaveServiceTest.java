@@ -180,7 +180,7 @@ class ClosetSaveServiceTest {
                 1L,
                 new ClosetSaveRequest.Create(ClosetTargetType.LOOKBOOK, 999L)
         )).isInstanceOfSatisfying(BusinessException.class, exception ->
-                assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
+                assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.LOOKBOOK_NOT_FOUND)
         );
 
         verify(closetSaveRepository, never())
