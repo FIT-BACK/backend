@@ -9,6 +9,8 @@ response_headers="$(mktemp)"
 response_body="$(mktemp)"
 
 grep -Fq "image: $nginx_image" "$repo_root/compose.yaml"
+grep -Fq 'proxy_set_header X-Forwarded-Proto https;' "$repo_root/deploy/nginx/default.conf"
+grep -Fq 'proxy_set_header X-Forwarded-Port 443;' "$repo_root/deploy/nginx/default.conf"
 
 cleanup() {
   docker rm -f "$container_name" > /dev/null 2>&1 || true
