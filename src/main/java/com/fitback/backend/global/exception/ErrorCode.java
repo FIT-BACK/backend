@@ -29,11 +29,7 @@ public enum ErrorCode {
     SOCIAL_EMAIL_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH400_1", "카카오 이메일 제공 동의가 필요합니다."),
     SOCIAL_ID_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH400_2", "카카오 회원 식별값을 확인할 수 없습니다."),
     INVALID_TEMP_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH401_3", "유효하지 않은 임시 토큰입니다."),
-    INVALID_PASSWORD_RESET_TOKEN(
-            HttpStatus.UNAUTHORIZED,
-            "AUTH401_4",
-            "유효하지 않거나 만료된 비밀번호 재설정 토큰입니다."
-    ),
+    INVALID_PASSWORD_RESET_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH401_4", "유효하지 않거나 만료된 비밀번호 재설정 토큰입니다."),
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "MEMBER409_1", "이미 사용중인 닉네임입니다."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "MEMBER400_1", "현재 비밀번호가 일치하지 않습니다."),
     PASSWORD_CHANGE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "MEMBER400_2", "소셜 로그인 회원은 비밀번호를 변경할 수 없습니다."),

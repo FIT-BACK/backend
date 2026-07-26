@@ -2,25 +2,36 @@ package com.fitback.backend.domain.member.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.member.repository.PasswordResetTokenRepository;
+import com.fitback.backend.domain.member.service.PasswordResetMailSender;
 import com.fitback.backend.domain.notification.entity.MemberNotificationSetting;
 import com.fitback.backend.domain.notification.repository.MemberNotificationSettingRepository;
 import com.fitback.backend.global.security.token.TempTokenPayload;
 import com.fitback.backend.global.security.token.TempTokenStore;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -41,7 +52,16 @@ class AuthControllerIntegrationTest {
     private MemberNotificationSettingRepository notificationSettingRepository;
 
     @Autowired
+    private PasswordResetTokenRepository passwordResetTokenRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
     private TempTokenStore tempTokenStore;
+
+    @MockitoBean
+    private PasswordResetMailSender passwordResetMailSender;
 
     //JSON 생성/파싱용, 컨텍스트에 빈이 없어 직접 생성
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -132,6 +152,145 @@ class AuthControllerIntegrationTest {
                         .content(jsonBody("login2@fitback.com", "wrongPw")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH401_1"));
+    }
+
+    //비밀번호 재설정 링크 요청 성공 - 인증 없이 토큰 저장 및 메일 발송
+    @Test
+    void passwordResetLinkRequestSuccessTest() throws Exception {
+        signUp("reset-link@fitback.com", "password123");
+
+        mockMvc.perform(post("/api/v1/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("email", "Reset-Link@FITBACK.COM")
+                        )))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("COMMON200_1"));
+
+        Member member = memberRepository.findByEmail("reset-link@fitback.com")
+                .orElseThrow();
+        assertThat(passwordResetTokenRepository.findById(member.getId())).isPresent();
+        verify(passwordResetMailSender)
+                .sendResetLink(eq("reset-link@fitback.com"), anyString());
+    }
+
+    //비밀번호 재설정 링크 요청 - 미가입 이메일도 동일 성공 응답
+    @Test
+    void passwordResetLinkRequestUnknownEmailSuccessTest() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("email", "unknown@fitback.com")
+                        )))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("COMMON200_1"));
+
+        verify(passwordResetMailSender, never())
+                .sendResetLink(anyString(), anyString());
+    }
+
+    //비밀번호 재설정 링크 요청 - 소셜 회원도 동일 성공 응답
+    @Test
+    void passwordResetLinkRequestSocialMemberSuccessTest() throws Exception {
+        Member socialMember = memberRepository.save(Member.createSocial(
+                "social-reset@fitback.com",
+                "social_reset_member",
+                LoginProvider.KAKAO,
+                "social-reset-uid"
+        ));
+
+        mockMvc.perform(post("/api/v1/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("email", "social-reset@fitback.com")
+                        )))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("COMMON200_1"));
+
+        assertThat(passwordResetTokenRepository.findById(socialMember.getId()))
+                .isEmpty();
+        verify(passwordResetMailSender, never())
+                .sendResetLink(anyString(), anyString());
+    }
+
+    //비밀번호 재설정 링크 요청 실패 - 이메일 형식 오류
+    @Test
+    void passwordResetLinkRequestInvalidEmailTest() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("email", "invalid-email")
+                        )))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+    }
+
+    //비밀번호 재설정 성공 - 비밀번호와 refresh token 변경 후 토큰 삭제
+    @Test
+    void passwordResetSuccessTest() throws Exception {
+        signUp("reset-password@fitback.com", "password123");
+
+        mockMvc.perform(post("/api/v1/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("email", "reset-password@fitback.com")
+                        )))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<String> resetTokenCaptor =
+                ArgumentCaptor.forClass(String.class);
+        verify(passwordResetMailSender).sendResetLink(
+                eq("reset-password@fitback.com"),
+                resetTokenCaptor.capture()
+        );
+
+        mockMvc.perform(patch("/api/v1/auth/password-reset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "resetToken", resetTokenCaptor.getValue(),
+                                "newPassword", "newPassword123"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("COMMON200_1"));
+
+        Member member = memberRepository.findByEmail("reset-password@fitback.com")
+                .orElseThrow();
+        assertThat(passwordEncoder.matches(
+                "newPassword123",
+                member.getPassword()
+        )).isTrue();
+        assertThat(member.getRefreshToken()).isNull();
+        assertThat(passwordResetTokenRepository.findById(member.getId())).isEmpty();
+    }
+
+    //비밀번호 재설정 실패 - 유효하지 않은 토큰
+    @Test
+    void passwordResetInvalidTokenTest() throws Exception {
+        mockMvc.perform(patch("/api/v1/auth/password-reset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "resetToken", "invalid-reset-token",
+                                "newPassword", "newPassword123"
+                        ))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH401_4"));
+    }
+
+    //비밀번호 재설정 실패 - 빈 토큰과 짧은 비밀번호
+    @Test
+    void passwordResetValidationTest() throws Exception {
+        mockMvc.perform(patch("/api/v1/auth/password-reset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "resetToken", "",
+                                "newPassword", "short"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
     }
 
     //토큰 재발급 성공 테스트 - 200, 새 토큰

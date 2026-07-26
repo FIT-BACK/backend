@@ -32,6 +32,7 @@ public class PasswordResetService {
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
+    //비밀번호 재설정 링크 전송 API 서비스 메서드
     public void requestResetLink(MemberRequest.PasswordResetLinkRequest dto) {
         //토큰 저장 트랜잭션 완료 후 메일 전송
         ResetMailTarget mailTarget = transactionTemplate.execute(
@@ -47,6 +48,7 @@ public class PasswordResetService {
         );
     }
 
+    //비밀번호 재설정 API 서비스 메서드
     @Transactional
     public void resetPassword(MemberRequest.PasswordResetRequest dto) {
         //전달받은 토큰을 DB 조회용 해시값으로 변환
