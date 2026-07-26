@@ -51,6 +51,7 @@ seed_baseline_schema() {
     'CREATE TABLE report_tag (report_tag_id BIGINT NOT NULL PRIMARY KEY, report_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_REPORT_TAG_REPORT_OLD FOREIGN KEY (report_id) REFERENCES analysis_report (report_id));' \
     'CREATE TABLE closet_save (closet_save_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, target_type VARCHAR(30) NOT NULL, target_id BIGINT NOT NULL, CONSTRAINT FK_CLOSET_SAVE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     'CREATE TABLE lookbook_like (lookbook_like_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, lookbook_id BIGINT NOT NULL, CONSTRAINT FK_LOOKBOOK_LIKE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
+    'CREATE TABLE lookbook_tag (lookbook_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, lookbook_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL);' \
     'CREATE TABLE trend_content (trend_id BIGINT NOT NULL PRIMARY KEY, created_by BIGINT NOT NULL, title VARCHAR(100) NOT NULL, CONSTRAINT FK_TREND_CONTENT_MEMBER_OLD FOREIGN KEY (created_by) REFERENCES member (member_id));' \
     'CREATE TABLE trend_tag (trend_tag_id BIGINT NOT NULL PRIMARY KEY, trend_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_TREND_TAG_TREND_OLD FOREIGN KEY (trend_id) REFERENCES trend_content (trend_id));' \
     | docker exec -i "$container_name" mysql -uroot "$database"
@@ -72,10 +73,16 @@ for database in fitback fitback_existing_refresh_token; do
         | docker exec -i "$container_name" mysql -uroot "$database"
     fi
     if [ "$(basename "$migration")" = 'V14__link_lookbook_to_recommended_product.sql' ]; then
-      printf '%s\n' \
-        'CREATE TABLE lookbook (lookbook_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, member_id BIGINT NOT NULL, original_image_id VARCHAR(36) NOT NULL, matched_image_id VARCHAR(36) NOT NULL, purchase_url VARCHAR(2048) NULL, comment VARCHAR(500) NULL, like_count INT NOT NULL DEFAULT 0, report_count INT NOT NULL DEFAULT 0, moderation_status VARCHAR(20) NOT NULL DEFAULT '\''VISIBLE'\'', auto_hidden_at DATETIME(6) NULL, deleted_at DATETIME(6) NULL, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NULL, CONSTRAINT FK_LOOKBOOK_MEMBER_TEST FOREIGN KEY (member_id) REFERENCES member (member_id), CONSTRAINT FK_LOOKBOOK_ORIGINAL_IMAGE_TEST FOREIGN KEY (original_image_id) REFERENCES image (image_id), CONSTRAINT FK_LOOKBOOK_MATCHED_IMAGE_TEST FOREIGN KEY (matched_image_id) REFERENCES image (image_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;' \
-        "INSERT INTO lookbook (member_id, original_image_id, matched_image_id) VALUES (9001, 'legacy-lookbook-original', 'legacy-lookbook-matched');" \
-        | docker exec -i "$container_name" mysql -uroot "$database"
+      if [ "$database" = 'fitback' ]; then
+        printf '%s\n' \
+          'CREATE TABLE lookbook (lookbook_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, member_id BIGINT NOT NULL, original_image_id VARCHAR(36) NOT NULL, matched_image_id VARCHAR(36) NOT NULL, purchase_url VARCHAR(2048) NULL, comment VARCHAR(500) NULL, like_count INT NOT NULL DEFAULT 0, report_count INT NOT NULL DEFAULT 0, moderation_status VARCHAR(20) NOT NULL DEFAULT '\''VISIBLE'\'', auto_hidden_at DATETIME(6) NULL, deleted_at DATETIME(6) NULL, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NULL, CONSTRAINT FK_LOOKBOOK_MEMBER_TEST FOREIGN KEY (member_id) REFERENCES member (member_id), CONSTRAINT FK_LOOKBOOK_ORIGINAL_IMAGE_TEST FOREIGN KEY (original_image_id) REFERENCES image (image_id), CONSTRAINT FK_LOOKBOOK_MATCHED_IMAGE_TEST FOREIGN KEY (matched_image_id) REFERENCES image (image_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;' \
+          "INSERT INTO lookbook (member_id, original_image_id, matched_image_id) VALUES (9001, 'legacy-lookbook-original', 'legacy-lookbook-matched');" \
+          | docker exec -i "$container_name" mysql -uroot "$database"
+      else
+        printf '%s\n' \
+          'CREATE TABLE lookbook (lookbook_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, matched_image_url VARCHAR(2048) NOT NULL, original_image_url VARCHAR(2048) NOT NULL, purchase_url VARCHAR(2048) NULL, member_id BIGINT NOT NULL, CONSTRAINT FK_LOOKBOOK_MEMBER_LEGACY_TEST FOREIGN KEY (member_id) REFERENCES member (member_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;' \
+          | docker exec -i "$container_name" mysql -uroot "$database"
+      fi
     fi
     docker exec -i "$container_name" mysql -uroot "$database" < "$migration"
   done < <(printf '%s\n' src/main/resources/db/migration/V*.sql | sort -V)
@@ -572,6 +579,8 @@ validate_lookbook_product_link_contract() {
   local product_foreign_key
   local match_check
   local legacy_row
+  local like_id
+  local report_columns
 
   columns="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
@@ -580,16 +589,30 @@ validate_lookbook_product_link_contract() {
         WHERE TABLE_SCHEMA = '$database'
           AND TABLE_NAME = 'lookbook'
           AND COLUMN_NAME IN (
+            'auto_hidden_at',
+            'comment',
+            'deleted_at',
+            'like_count',
             'matched_image_id',
             'matched_product_id',
-            'matched_product_image_url'
+            'matched_product_image_url',
+            'moderation_status',
+            'original_image_id',
+            'report_count'
           )
         ORDER BY COLUMN_NAME;")"
 
   if [ "$columns" != "$(printf '%s\n' \
+    'auto_hidden_at:YES:datetime' \
+    'comment:YES:varchar' \
+    'deleted_at:YES:datetime' \
+    'like_count:NO:int' \
     'matched_image_id:YES:varchar' \
     'matched_product_id:YES:bigint' \
-    'matched_product_image_url:YES:varchar')" ]; then
+    'matched_product_image_url:YES:varchar' \
+    'moderation_status:NO:varchar' \
+    'original_image_id:NO:varchar' \
+    'report_count:NO:int')" ]; then
     echo "Unexpected lookbook match source columns in $database:" >&2
     printf '%s\n' "$columns" >&2
     exit 1
@@ -654,14 +677,65 @@ validate_lookbook_product_link_contract() {
     exit 1
   fi
 
-  legacy_row="$(docker exec "$container_name" mysql -uroot \
-    --batch --skip-column-names \
-    -e "SELECT CONCAT(matched_image_id, ':', IFNULL(matched_product_id, 'NULL'))
-        FROM $database.lookbook
-        WHERE lookbook_id = 1;")"
+  if [ "$database" = 'fitback' ]; then
+    legacy_row="$(docker exec "$container_name" mysql -uroot \
+      --batch --skip-column-names \
+      -e "SELECT CONCAT(matched_image_id, ':', IFNULL(matched_product_id, 'NULL'))
+          FROM $database.lookbook
+          WHERE lookbook_id = 1;")"
 
-  if [ "$legacy_row" != 'legacy-lookbook-matched:NULL' ]; then
-    echo "Legacy lookbook match image was not preserved in $database." >&2
+    if [ "$legacy_row" != 'legacy-lookbook-matched:NULL' ]; then
+      echo "Legacy lookbook match image was not preserved in $database." >&2
+      exit 1
+    fi
+  else
+    legacy_row="$(docker exec "$container_name" mysql -uroot \
+      --batch --skip-column-names \
+      -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE)
+          FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = '$database'
+            AND TABLE_NAME = 'lookbook'
+            AND COLUMN_NAME IN ('matched_image_url', 'original_image_url')
+          ORDER BY COLUMN_NAME;")"
+
+    if [ "$legacy_row" != "$(printf '%s\n' \
+      'matched_image_url:YES' \
+      'original_image_url:YES')" ]; then
+      echo "Legacy lookbook URL columns were not made optional in $database:" >&2
+      printf '%s\n' "$legacy_row" >&2
+      exit 1
+    fi
+  fi
+
+  like_id="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', EXTRA)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'lookbook_like'
+          AND COLUMN_NAME = 'like_id';")"
+
+  if [ "$like_id" != 'like_id:auto_increment' ]; then
+    echo "Unexpected lookbook like identifier in $database: $like_id" >&2
+    exit 1
+  fi
+
+  report_columns="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'lookbook_report'
+        ORDER BY COLUMN_NAME;")"
+
+  if [ "$report_columns" != "$(printf '%s\n' \
+    'created_at:NO:datetime' \
+    'lookbook_id:NO:bigint' \
+    'member_id:NO:bigint' \
+    'reason:NO:varchar' \
+    'report_id:NO:bigint')" ]; then
+    echo "Unexpected lookbook report contract in $database:" >&2
+    printf '%s\n' "$report_columns" >&2
     exit 1
   fi
 }
