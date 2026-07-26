@@ -61,7 +61,7 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 | `ECR_REPOSITORY` | ECR 발행 | backend ECR repository 이름이다. |
 | `EC2_INSTANCE_ID` | EC2 배포 활성화 | SSM 관리형 노드로 등록된 운영 EC2 instance ID이다. 값이 없으면 `deploy-production` job은 건너뛴다. |
 | `DEPLOY_PARAMETER_PREFIX` | 선택 | Parameter Store 경로 prefix이다. workflow가 이 저장소 변수를 원격 스크립트의 `PARAMETER_PREFIX`로 매핑한다. 기본값은 `/fitback/prod`이며, 다른 값을 사용하면 EC2 instance role의 Parameter Store resource ARN도 같은 경로로 변경해야 한다. |
-| `PUBLIC_BASE_URL` | EC2 배포 | 경로가 없는 운영 CloudFront HTTPS origin이다. 현재 값은 `https://d1ra74et9h0ohu.cloudfront.net`이며 다른 값이면 배포 전에 거절한다. |
+| `PUBLIC_BASE_URL` | EC2 배포 | 경로가 없는 운영 CloudFront HTTPS origin이다. 현재 값은 `https://d1ra74et9h0ohu.cloudfront.net`이며 다른 값이면 배포 전에 거절한다. 루트는 Swagger UI와 readiness 링크가 있는 `200 OK` 안내 페이지를 제공한다. |
 | `IMAGE_BUCKET` | EC2 배포 | private 사용자 이미지 버킷 이름이다. 현재 값은 `fitback-prod-images-123209654535-ap-northeast-2`이다. |
 | `IMAGE_CDN_BASE_URL` | EC2 배포 | 서명된 이미지 조회 URL을 만들 CloudFront HTTPS origin이다. 현재 값은 `https://d1p2ierkew26r1.cloudfront.net`이다. |
 | `CLOUDFRONT_KEY_PAIR_ID` | EC2 배포 | CloudFront signed URL에 포함할 public key ID이다. 현재 값은 `K1XNJ3JDEDCVL3`이다. |
@@ -282,6 +282,7 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | main 정상 배포 | 실제 AWS/ECR/SSM | 성공 |
 | 동일 SHA 중복 실행 | 실제 GitHub Actions/ECR/SSM | 불변 태그 재사용 후 성공 |
 | Nginx 및 backend readiness | 실제 CloudFront HTTPS | 성공 |
+| Nginx 루트 안내 페이지 계약 | `scripts/ci/test_nginx_public_entrypoint.sh` | 루트 `200`, HTML 응답, Swagger UI/readiness 링크 확인 |
 | Elastic IP 80 직접 접근 | 실제 외부 HTTP | 차단 |
 | 8080 직접 접근 | 실제 외부 HTTP | 차단 |
 | 이미지 S3 CORS | 실제 S3 OPTIONS | 운영 Origin의 `POST`만 성공, 비허용 Origin과 `PUT`은 `403` |
@@ -356,3 +357,4 @@ ECR 및 S3 저장량, CloudFront 요청·데이터 전송, 소량의 CloudWatch 
 - [x] GitHub Repository Variable `EC2_INSTANCE_ID`를 추가했다.
 - [x] `Backend CD`를 실제 실행해 SSM command와 health check를 확인했다.
 - [x] CloudFront HTTPS endpoint에서 Nginx와 backend readiness를 확인했다.
+- [ ] 다음 `main` 배포 후 CloudFront 루트에서 안내 페이지와 Swagger UI/readiness 링크를 확인한다.

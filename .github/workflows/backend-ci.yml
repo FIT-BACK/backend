@@ -160,6 +160,9 @@ jobs:
       - name: Test ECR image publication script
         run: bash scripts/ci/test_publish_ecr_image.sh
 
+      - name: Test Nginx public entrypoint
+        run: bash scripts/ci/test_nginx_public_entrypoint.sh
+
       - name: Test remote deployment script
         run: bash scripts/deploy/test_remote_deploy.sh
 

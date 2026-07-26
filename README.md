@@ -95,11 +95,13 @@ http://localhost:8080/v3/api-docs
 운영 확인 경로는 다음과 같습니다.
 
 ```text
+https://d1ra74et9h0ohu.cloudfront.net
+https://d1ra74et9h0ohu.cloudfront.net/swagger-ui.html
 https://d1ra74et9h0ohu.cloudfront.net/nginx-health
 https://d1ra74et9h0ohu.cloudfront.net/actuator/health/readiness
 ```
 
-CloudFront 기본 도메인을 운영 HTTPS 주소로 사용합니다. EC2의 HTTP 80은 CloudFront 원본 요청에만 허용하고 Spring Boot의 8080 포트는 외부에 공개하지 않습니다. 운영 비밀값은 GitHub 변수나 저장소가 아니라 EC2 instance role이 Parameter Store SecureString에서 직접 읽습니다.
+CloudFront 기본 도메인의 루트는 `200 OK` 안내 페이지를 반환하며 Swagger UI와 readiness로 이동할 수 있는 링크를 제공합니다. EC2의 HTTP 80은 CloudFront 원본 요청에만 허용하고 Spring Boot의 8080 포트는 외부에 공개하지 않습니다. 운영 비밀값은 GitHub 변수나 저장소가 아니라 EC2 instance role이 Parameter Store SecureString에서 직접 읽습니다.
 
 사용자 업로드 이미지는 비공개 S3 버킷에 저장하며, `https://d1p2ierkew26r1.cloudfront.net`에서 서명된 URL로만 조회합니다. S3 직접 접근과 서명 없는 CloudFront 접근은 허용하지 않습니다.
 
