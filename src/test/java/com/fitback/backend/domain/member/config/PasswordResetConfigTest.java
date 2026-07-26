@@ -16,6 +16,7 @@ class PasswordResetConfigTest {
         contextRunner
                 .withPropertyValues(
                         "app.password-reset.frontend-url=http://localhost:3000/reset-password",
+                        "app.password-reset.sender-email=test@fitback.com",
                         "app.password-reset.token-ttl=5m"
                 )
                 .run(context -> {
@@ -25,6 +26,7 @@ class PasswordResetConfigTest {
                             context.getBean(PasswordResetProperties.class);
                     assertThat(properties.frontendUrl())
                             .isEqualTo("http://localhost:3000/reset-password");
+                    assertThat(properties.senderEmail()).isEqualTo("test@fitback.com");
                     assertThat(properties.tokenTtl()).isEqualTo(Duration.ofMinutes(5));
                 });
     }
@@ -34,6 +36,7 @@ class PasswordResetConfigTest {
         contextRunner
                 .withPropertyValues(
                         "app.password-reset.frontend-url= ",
+                        "app.password-reset.sender-email=test@fitback.com",
                         "app.password-reset.token-ttl=5m"
                 )
                 .run(context -> {
@@ -46,10 +49,28 @@ class PasswordResetConfigTest {
     }
 
     @Test
+    void rejectsBlankSenderEmail() {
+        contextRunner
+                .withPropertyValues(
+                        "app.password-reset.frontend-url=http://localhost:3000/reset-password",
+                        "app.password-reset.sender-email= ",
+                        "app.password-reset.token-ttl=5m"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining(
+                                    "app.password-reset.sender-email must not be blank"
+                            );
+                });
+    }
+
+    @Test
     void rejectsNonPositiveTokenTtl() {
         contextRunner
                 .withPropertyValues(
                         "app.password-reset.frontend-url=http://localhost:3000/reset-password",
+                        "app.password-reset.sender-email=test@fitback.com",
                         "app.password-reset.token-ttl=0s"
                 )
                 .run(context -> {

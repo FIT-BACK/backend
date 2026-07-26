@@ -79,4 +79,5 @@ app:
     temp-token-ttl: 180000
   password-reset:
     frontend-url: ${FRONT_PASSWORD_RESET_URL}
+    sender-email: ${MAIL_EMAIL}
     token-ttl: 5m

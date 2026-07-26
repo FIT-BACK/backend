@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.PasswordResetToken;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,9 @@ class PasswordResetTokenRepositoryTest {
 
     @Autowired
     private PasswordResetTokenRepository passwordResetTokenRepository;
+
+    @Autowired
+    private MemberRepository memberRepository;
 
     @Test
     void findByTokenHashForUpdateLoadsTokenAndMember() {
@@ -53,5 +57,25 @@ class PasswordResetTokenRepositoryTest {
     void findByTokenHashForUpdateReturnsEmptyForUnknownHash() {
         assertThat(passwordResetTokenRepository.findByTokenHashForUpdate("b".repeat(64)))
                 .isEmpty();
+    }
+
+    @Test
+    void findByEmailForUpdateReturnsMember() {
+        Member member = em.persist(Member.create(
+                "locked@fitback.com",
+                "locked_member",
+                "encodedPw",
+                LoginProvider.EMAIL
+        ));
+        em.flush();
+        em.clear();
+
+        Member lockedMember = memberRepository
+                .findByEmailForUpdate("locked@fitback.com")
+                .orElseThrow();
+
+        assertThat(lockedMember.getId()).isEqualTo(member.getId());
+        assertThat(em.getEntityManager().getLockMode(lockedMember))
+                .isEqualTo(LockModeType.PESSIMISTIC_WRITE);
     }
 }
