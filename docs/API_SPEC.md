@@ -989,3 +989,44 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 | 이미지가 없거나 본인 소유가 아닌 경우 | 404 | `IMAGE404_1` |
 | 상품이 존재하지 않는 경우 | 404 | `COMMON404_1` |
 | 이미지 목적 또는 상태가 룩북에서 사용할 수 없는 경우 | 409 | `IMAGE409_1` |
+
+---
+
+## 18. 트렌드·태그·통합 클로젯
+
+### `GET /api/v1/trends`
+
+비로그인 조회를 허용하며 최신순으로 최대 10개의 트렌드를 반환한다. `cursor`와 `tag`를
+선택적으로 전달할 수 있다. 로그인 요청은 각 항목에 `isSaved`를 포함한다.
+
+### `GET /api/v1/trends/{trendId}`
+
+트렌드 제목, 이미지, 설명, 태그와 로그인 회원의 `isSaved`를 반환한다.
+
+### `GET /api/v1/tags`
+
+관심 태그, 분석 태그 수정, 룩북 업로드에 사용할 전체 태그 목록을 반환한다.
+
+### `POST /api/v1/closet-saves`
+
+인증 회원이 트렌드 또는 삭제되지 않은 룩북을 저장한다.
+
+```json
+{
+  "targetType": "TREND",
+  "targetId": 10
+}
+```
+
+성공 시 `201 Created`로 삭제 식별자 `saveId`, `targetType`, `targetId`를 반환한다.
+분석 리포트는 선택 상품 스냅샷 계약을 보존하기 위해 이 API로 저장할 수 없으며,
+`PUT /api/v1/analyses/{reportId}/save`를 사용해야 한다.
+
+### `GET /api/v1/closet-saves?target_type=&cursor=`
+
+인증 회원의 통합 저장 목록을 최신 저장순으로 최대 10개 반환한다. 각 항목은 삭제에 사용할
+`saveId`, `targetType`, `targetId`, `thumbnailUrl`, `tags`를 포함한다.
+
+### `DELETE /api/v1/closet-saves/{saveId}`
+
+인증 회원 본인이 저장한 항목을 `saveId`로 삭제한다.

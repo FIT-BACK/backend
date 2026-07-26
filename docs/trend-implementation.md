@@ -119,5 +119,5 @@ MockMvc를 쓰지 않은 이유는 별도 feature 브랜치의 `Lookbook` 도메
 
 - **관리자용 트렌드 등록/수정/삭제 API**: 명세서에 없어 미구현. 필요 여부를 기획 쪽과 확인 필요.
 - **`TREND_PAGE_SIZE` 값 확정**: 현재 10으로 임의 설정. 실제 프론트/기획 요구사항에 맞춰 조정 필요.
-- **경로 변수/쿼리 파라미터 타입 불일치 시 처리**: `trendId`나 `cursor`에 숫자가 아닌 값이 들어오면 `MethodArgumentTypeMismatchException`이 발생하는데, `GlobalExceptionHandler`에 이를 처리하는 핸들러가 없어 500으로 응답한다. `GlobalExceptionHandler`는 도메인 공용 파일이라 다른 도메인 컨트롤러에도 동일하게 해당할 것으로 보이는 전역 이슈이므로, 별도로 논의 후 개선 여부를 결정할 필요가 있다.
+- **경로 변수/쿼리 파라미터 타입 불일치 처리**: `trendId`나 `cursor`에 숫자가 아닌 값이 들어오면 전역 `MethodArgumentTypeMismatchException` 핸들러가 `COMMON400_2` 검증 오류로 변환한다.
 - **Gradle 테스트 실행 환경 이슈**: 이 작업 환경(`C:\Users\김재민\backend`, 경로에 한글 포함)에서 `./gradlew test`가 `GradleWorkerMain ClassNotFoundException`으로 실패한다. Trend 코드와 무관하게 기존 테스트(`GlobalExceptionHandlerTest` 등)도 동일하게 실패하는 것을 확인했다. 컴파일(`compileJava`/`compileTestJava`)은 정상 통과하므로 코드 자체의 문제는 아니며, 이 환경 이슈 해결이 별도로 필요하다.

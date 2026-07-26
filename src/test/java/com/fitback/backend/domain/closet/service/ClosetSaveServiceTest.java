@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,6 +14,8 @@ import com.fitback.backend.domain.closet.dto.ClosetSaveResponse;
 import com.fitback.backend.domain.closet.entity.ClosetSave;
 import com.fitback.backend.domain.closet.entity.ClosetTargetType;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
+import com.fitback.backend.domain.lookbook.entity.Lookbook;
+import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
@@ -47,6 +50,9 @@ class ClosetSaveServiceTest {
     private MemberRepository memberRepository;
 
     @Mock
+    private LookbookRepository lookbookRepository;
+
+    @Mock
     private TrendContentRepository trendContentRepository;
 
     @Mock
@@ -65,7 +71,8 @@ class ClosetSaveServiceTest {
 
     @Test
     void saveCreatesClosetSaveWhenNotAlreadySaved() {
-        when(closetSaveRepository.existsByMemberIdAndTargetTypeAndTargetId(1L, ClosetTargetType.LOOKBOOK, 12L))
+        when(trendContentRepository.existsById(12L)).thenReturn(true);
+        when(closetSaveRepository.existsByMemberIdAndTargetTypeAndTargetId(1L, ClosetTargetType.TREND, 12L))
                 .thenReturn(false);
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
         when(closetSaveRepository.save(any(ClosetSave.class))).thenAnswer(invocation -> {
@@ -74,10 +81,10 @@ class ClosetSaveServiceTest {
             return closetSave;
         });
 
-        ClosetSave result = closetSaveService.save(1L, new ClosetSaveRequest.Create(ClosetTargetType.LOOKBOOK, 12L));
+        ClosetSave result = closetSaveService.save(1L, new ClosetSaveRequest.Create(ClosetTargetType.TREND, 12L));
 
         assertThat(result.getId()).isEqualTo(100L);
-        assertThat(result.getTargetType()).isEqualTo(ClosetTargetType.LOOKBOOK);
+        assertThat(result.getTargetType()).isEqualTo(ClosetTargetType.TREND);
         assertThat(result.getTargetId()).isEqualTo(12L);
         verify(closetSaveRepository).save(any(ClosetSave.class));
     }
@@ -112,15 +119,72 @@ class ClosetSaveServiceTest {
 
     @Test
     void saveFailsWhenMemberDoesNotExist() {
-        when(closetSaveRepository.existsByMemberIdAndTargetTypeAndTargetId(999L, ClosetTargetType.LOOKBOOK, 12L))
+        when(trendContentRepository.existsById(12L)).thenReturn(true);
+        when(closetSaveRepository.existsByMemberIdAndTargetTypeAndTargetId(999L, ClosetTargetType.TREND, 12L))
                 .thenReturn(false);
         when(memberRepository.findById(999L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() ->
-                closetSaveService.save(999L, new ClosetSaveRequest.Create(ClosetTargetType.LOOKBOOK, 12L)))
+                closetSaveService.save(999L, new ClosetSaveRequest.Create(ClosetTargetType.TREND, 12L)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.MEMBER_NOT_FOUND)
                 );
+        verify(closetSaveRepository, never()).save(any());
+    }
+
+    @Test
+    void saveFailsWhenAnalysisReportUsesGenericClosetApi() {
+        assertThatThrownBy(() -> closetSaveService.save(
+                1L,
+                new ClosetSaveRequest.Create(ClosetTargetType.ANALYSIS_REPORT, 12L)
+        )).isInstanceOfSatisfying(BusinessException.class, exception ->
+                assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CLOSET_TARGET_UNSUPPORTED)
+        );
+
+        verify(closetSaveRepository, never())
+                .existsByMemberIdAndTargetTypeAndTargetId(any(), any(), any());
+        verify(closetSaveRepository, never()).save(any());
+    }
+
+    @Test
+    void saveAllowsExistingLookbook() {
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(12L))
+                .thenReturn(Optional.of(mock(Lookbook.class)));
+        when(closetSaveRepository.existsByMemberIdAndTargetTypeAndTargetId(
+                1L,
+                ClosetTargetType.LOOKBOOK,
+                12L
+        )).thenReturn(false);
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(closetSaveRepository.save(any(ClosetSave.class))).thenAnswer(invocation -> {
+            ClosetSave closetSave = invocation.getArgument(0);
+            ReflectionTestUtils.setField(closetSave, "id", 101L);
+            return closetSave;
+        });
+
+        ClosetSave result = closetSaveService.save(
+                1L,
+                new ClosetSaveRequest.Create(ClosetTargetType.LOOKBOOK, 12L)
+        );
+
+        assertThat(result.getId()).isEqualTo(101L);
+        assertThat(result.getTargetType()).isEqualTo(ClosetTargetType.LOOKBOOK);
+        assertThat(result.getTargetId()).isEqualTo(12L);
+    }
+
+    @Test
+    void saveFailsWhenLookbookTargetDoesNotExist() {
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> closetSaveService.save(
+                1L,
+                new ClosetSaveRequest.Create(ClosetTargetType.LOOKBOOK, 999L)
+        )).isInstanceOfSatisfying(BusinessException.class, exception ->
+                assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
+        );
+
+        verify(closetSaveRepository, never())
+                .existsByMemberIdAndTargetTypeAndTargetId(any(), any(), any());
         verify(closetSaveRepository, never()).save(any());
     }
 
@@ -158,6 +222,7 @@ class ClosetSaveServiceTest {
         ClosetSaveResponse.ClosetSaveList response = closetSaveService.getClosetSaves(1L, null, null);
 
         assertThat(response.items()).hasSize(10);
+        assertThat(response.items().get(0).saveId()).isEqualTo(100L);
         assertThat(response.items().get(0).thumbnailUrl()).isNull();
         assertThat(response.items().get(0).tags()).isEmpty();
         assertThat(response.nextCursor()).isEqualTo(91L);

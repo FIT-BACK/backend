@@ -26,6 +26,11 @@ public enum ErrorCode {
 
     CLOSET_NOT_FOUND(HttpStatus.NOT_FOUND, "CLOSET404_1", "저장한 항목을 찾을 수 없습니다."),
     CLOSET_ALREADY_SAVED(HttpStatus.BAD_REQUEST, "CLOSET400_1", "이미 저장한 항목입니다."),
+    CLOSET_TARGET_UNSUPPORTED(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "CLOSET422_1",
+            "이 API에서 지원하지 않는 저장 대상입니다."
+    ),
 
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "AUTH409_1", "이미 사용 중인 이메일입니다."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "AUTH401_1", "이메일 또는 비밀번호가 올바르지 않습니다."),

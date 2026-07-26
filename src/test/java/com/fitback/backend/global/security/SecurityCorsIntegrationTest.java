@@ -30,6 +30,7 @@ class SecurityCorsIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+            "https://frontend-chi-one-35.vercel.app",
             "http://localhost:3000",
             "http://localhost:5173",
             "http://127.0.0.1:3000",
@@ -66,6 +67,29 @@ class SecurityCorsIntegrationTest {
                 ))
                 .andExpect(header().doesNotExist(
                         HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS
+                ));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "https://frontend-chi-one-35.vercel.app"
+    })
+    void allowsFrontendPasswordResetPreflight(String origin) throws Exception {
+        mockMvc.perform(options("/api/v1/auth/password-reset")
+                        .header(HttpHeaders.ORIGIN, origin)
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "PATCH")
+                        .header(
+                                HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,
+                                "content-type"
+                        ))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN,
+                        origin
+                ))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS,
+                        containsString("PATCH")
                 ));
     }
 
@@ -115,6 +139,7 @@ class SecurityCorsIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+            "https://frontend-chi-one-35.vercel.app",
             "http://localhost:3000",
             "http://localhost:5173",
             "http://127.0.0.1:3000",

@@ -96,6 +96,8 @@ class ProductionProfileConfigurationTest {
                     .isEqualTo("5m");
             assertThat(environment.getProperty("app.password-reset.request-cooldown"))
                     .isEqualTo("1m");
+            assertThat(environment.getProperty("app.cors.allowed-origins[0]"))
+                    .isEqualTo("https://frontend-chi-one-35.vercel.app");
         });
     }
 

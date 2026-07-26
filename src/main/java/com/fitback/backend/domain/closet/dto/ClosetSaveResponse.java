@@ -11,6 +11,23 @@ public final class ClosetSaveResponse {
     private ClosetSaveResponse() {
     }
 
+    // 마이 클로젯 저장
+    @Builder
+    public record Created(
+            Long saveId,
+            ClosetTargetType targetType,
+            Long targetId
+    ) {
+
+        public static Created from(ClosetSave closetSave) {
+            return Created.builder()
+                    .saveId(closetSave.getId())
+                    .targetType(closetSave.getTargetType())
+                    .targetId(closetSave.getTargetId())
+                    .build();
+        }
+    }
+
     // 마이 클로젯 목록 조회
     @Builder
     public record ClosetSaveList(
@@ -38,6 +55,7 @@ public final class ClosetSaveResponse {
     // 마이 클로젯 목록 조회에서 사용할 저장 항목 정보
     @Builder
     public record ClosetSaveItem(
+            Long saveId,
             ClosetTargetType targetType,
             Long targetId,
             String thumbnailUrl,
@@ -50,6 +68,7 @@ public final class ClosetSaveResponse {
                 List<String> tags
         ) {
             return ClosetSaveItem.builder()
+                    .saveId(closetSave.getId())
                     .targetType(closetSave.getTargetType())
                     .targetId(closetSave.getTargetId())
                     .thumbnailUrl(thumbnailUrl)
