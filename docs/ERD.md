@@ -1,14 +1,14 @@
-# Recommendation/Product 및 이미지 ERD 계약
+# Recommendation/Product, 분석 리포트 저장 및 이미지 ERD 계약
 
 ## 0. 문서 정보
 
 | 항목 | 값 |
 | --- | --- |
 | 기준일 | 2026-07-26 |
-| 적용 범위 | 추천 결과 생성, 상품 검색·상세, 쇼핑 API 연동, 추천 상품 저장, 카테고리별 그룹핑, 기존 이미지 metadata |
-| 기준 코드 | 현재 `develop`과 Issue `#119`의 `Member`, `AnalysisReport`, `ReportCustomTag`, `Tag`, `Product`, `ProductTag`, `RecommendedItem`, `SavedProduct` |
+| 적용 범위 | 추천 결과 생성, 상품 검색·상세, 쇼핑 API 연동, 추천 상품 저장, 분석 리포트 저장, 카테고리별 그룹핑, 기존 이미지 metadata |
+| 기준 코드 | 현재 `develop`과 Issue `#124`의 `Member`, `AnalysisReport`, `ClosetSave`, `SavedAnalysisItem`, `ReportCustomTag`, `Tag`, `Product`, `ProductTag`, `RecommendedItem`, `SavedProduct` |
 | 연동 참고 | Recommendation은 기존 분석 입력을 읽거나 요청의 확정 태그·매칭값을 멱등 반영 |
-| 문서 성격 | Issue `#98` 데이터 계약을 Issue `#119` 구현 상태와 동기화 |
+| 문서 성격 | Issue `#98` 데이터 계약을 Issue `#124` 구현 상태와 동기화 |
 
 이 문서는 임시 ERD의 `products`, `recommendations`, `product_saves`,
 `product_style_tags` 개념을 현재 단수형 테이블명과 JPA 모델에 맞춘다. 현재 코드와 다른 항목은
@@ -26,9 +26,11 @@
 - Recommendation/Product 테이블은 단수형 `product`, `product_tag`, `recommended_item`,
   `saved_product`, `report_custom_tag`를 사용한다.
 - `SavedProduct`는 추천 결과 행이 아니라 사용자가 직접 선택한 상품 저장 관계다.
+- `ClosetSave(ANALYSIS_REPORT)`는 명시적으로 저장한 분석 리포트 관계이며,
+  `SavedAnalysisItem`은 저장 시점의 카테고리별 선택 상품 표시 정보를 보존한다.
 - Request에서 `member_id`를 받지 않고 인증 principal의 회원을 사용한다.
 - 추천 결과의 소유권은 연결된 `AnalysisReport.member`로 판정한다.
-- 원상품 후보·기준 가격 확정과 별도 리포트 저장 모델은 이번 데이터 계약에 포함하지 않는다.
+- 원상품 후보·기준 가격 확정 모델은 이번 데이터 계약에 포함하지 않는다.
 
 ### 1.2 외부 상품 identity와 snapshot
 
@@ -109,12 +111,15 @@ providerIdentityKey = SHA-256(
 erDiagram
     MEMBER ||--o{ ANALYSIS_REPORT : owns
     MEMBER ||--o{ SAVED_PRODUCT : saves
+    MEMBER ||--o{ CLOSET_SAVE : saves_to_closet
     MEMBER ||--o{ IMAGE : owns
     ANALYSIS_REPORT ||--o{ RECOMMENDED_ITEM : has_current_set
     ANALYSIS_REPORT ||--o{ REPORT_CUSTOM_TAG : has_custom_input
     IMAGE o|--o{ ANALYSIS_REPORT : used_as_original
     PRODUCT ||--o{ RECOMMENDED_ITEM : recommended_as
     PRODUCT ||--o{ SAVED_PRODUCT : saved_as
+    PRODUCT ||--o{ SAVED_ANALYSIS_ITEM : snapshotted_as
+    CLOSET_SAVE ||--o{ SAVED_ANALYSIS_ITEM : contains_selection
     PRODUCT ||--o{ PRODUCT_TAG : tagged_with
     TAG ||--o{ PRODUCT_TAG : classifies
 
@@ -186,6 +191,33 @@ erDiagram
     SAVED_PRODUCT {
         BIGINT member_id PK,FK
         BIGINT product_id PK,FK
+        DATETIME created_at
+    }
+
+    CLOSET_SAVE {
+        BIGINT save_id PK
+        BIGINT member_id FK
+        VARCHAR target_type
+        BIGINT target_id
+        DATETIME created_at
+    }
+
+    SAVED_ANALYSIS_ITEM {
+        BIGINT saved_analysis_item_id PK
+        BIGINT save_id FK
+        BIGINT product_id FK
+        VARCHAR category
+        INTEGER rank_no
+        VARCHAR image_url
+        VARCHAR product_name
+        VARCHAR seller_name
+        DECIMAL price_amount
+        CHAR price_currency
+        VARCHAR price_type
+        DATETIME price_observed_at
+        VARCHAR purchase_url
+        DECIMAL similarity_score
+        DECIMAL final_score
         DATETIME created_at
     }
 
@@ -352,7 +384,41 @@ FK_PRODUCT_TAG_TAG(tag_id)
 CHK_PRODUCT_TAG_CONFIDENCE(confidence IS NULL OR confidence BETWEEN 0 AND 1)
 ```
 
-### 4.6 기존 `analysis_report` 확장
+### 4.6 `closet_save`와 `saved_analysis_item`
+
+`closet_save`의 `ANALYSIS_REPORT` 관계는 사용자가 SCR-08에서 리포트 저장을 누른 경우에만
+생성한다. `saved_analysis_item`은 추천 현재 세트가 재생성되어도 저장 화면이 바뀌지 않도록
+선택한 상품의 표시 정보를 스냅샷으로 보존한다.
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `saved_analysis_item_id` | `BIGINT` | N | PK, auto increment |
+| `save_id` | `BIGINT` | N | FK, `ClosetSave(ANALYSIS_REPORT)` |
+| `product_id` | `BIGINT` | N | FK, 선택한 내부 Product |
+| `category` | `VARCHAR(30)` | N | 카테고리별 하나만 저장 |
+| `rank_no` | `INT` | N | 저장 당시 추천 순위 |
+| `image_url` | `VARCHAR(2048)` | Y | 저장 당시 상품 이미지 |
+| `product_name` | `VARCHAR(255)` | Y | 저장 당시 상품명 |
+| `seller_name` | `VARCHAR(255)` | Y | 저장 당시 판매처 |
+| `price_amount` | `DECIMAL(19,2)` | Y | 저장 당시 표시 가격 |
+| `price_currency` | `CHAR(3)` | Y | 가격 통화 |
+| `price_type` | `VARCHAR(20)` | Y | `LIST`, `CURRENT`, `SALE` |
+| `price_observed_at` | `DATETIME(6)` | Y | 가격 관측 시각 |
+| `purchase_url` | `VARCHAR(2048)` | Y | 저장 당시 구매 URL |
+| `similarity_score` | `DECIMAL(5,2)` | N | 저장 당시 유사도 |
+| `final_score` | `DECIMAL(5,2)` | N | 저장 당시 최종 점수 |
+| `created_at` | `DATETIME(6)` | N | 저장 시각 |
+
+```text
+UK_CLOSET_SAVE_MEMBER_ID_TARGET_TYPE_TARGET_ID(member_id, target_type, target_id)
+UK_SAVED_ANALYSIS_ITEM_SAVE_CATEGORY(save_id, category)
+FK_SAVED_ANALYSIS_ITEM_SAVE(save_id)
+  -> closet_save(save_id) ON DELETE CASCADE ON UPDATE RESTRICT
+FK_SAVED_ANALYSIS_ITEM_PRODUCT(product_id)
+  -> product(product_id) ON DELETE RESTRICT ON UPDATE RESTRICT
+```
+
+### 4.7 기존 `analysis_report` 확장
 
 | 컬럼 | 타입 | NULL | 설명 |
 | --- | --- | --- | --- |
@@ -414,6 +480,8 @@ result_input_revision != recommendation_input_revision -> STALE
 | --- | --- | --- |
 | `analysis_report` 물리 삭제 | recommended item, report custom tag `CASCADE` | 리포트 소유 결과·입력 |
 | `member` 삭제 | saved product `CASCADE` | 회원 개인 저장 관계 |
+| `member` 삭제 | closet save와 saved analysis item `CASCADE` | 회원 개인 리포트 저장 관계 |
+| `closet_save` 삭제 | saved analysis item `CASCADE` | 저장 해제 시 선택 스냅샷 정리 |
 | `product` 삭제 | product tag `CASCADE` | 상품 부속 태그 |
 | `product` 삭제 | recommendation, saved product `RESTRICT` | 추천 근거와 사용자 저장 보존 |
 | `tag` 삭제 | product tag `RESTRICT` | 사용 중 태그 우발 삭제 방지 |
@@ -467,6 +535,8 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 
 - Issue #114에서 `SavedProduct`와 `SavedProductId`를 구현한다.
 - Issue #119에서 `ReportCustomTag`를 구현한다.
+- Issue #124에서 `ClosetSave(ANALYSIS_REPORT)`를 실제 API에 연결하고
+  `SavedAnalysisItem`으로 카테고리별 선택 상품 스냅샷을 구현한다.
 - 추천 실행 이력은 요구사항이 생길 때 별도 migration으로 추가한다.
 
 ---
@@ -495,6 +565,8 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 - [ ] 입력 version 변경 후 늦게 끝난 요청이 현재 세트를 덮어쓰지 못함
 - [ ] 추천 항목 0개 성공과 미생성이 metadata로 구분됨
 - [x] `saved_product` 복합 key로 PUT/DELETE가 멱등임
+- [x] 분석 리포트 저장 PUT/DELETE가 멱등이며 저장 목록이 명시적 저장 관계만 반환함
+- [x] 저장된 선택 상품이 추천 현재 세트 교체와 독립된 스냅샷으로 유지됨
 - [ ] 추천 교체·공급자 장애·품절 후에도 저장 상품이 유지됨
 - [ ] 공급자 약관상 저장 불가 필드가 DB에 남지 않음
 - [ ] Entity 또는 DB 변경 PR에서 이 문서와 실제 migration을 함께 갱신함

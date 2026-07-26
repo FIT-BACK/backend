@@ -9,7 +9,7 @@
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
 | 연동 참고 | Auth `#20`의 `AuthMember` principal과 현재 `AnalysisReport`의 분석 결과를 입력으로 사용 |
-| 문서 성격 | Issue `#98` 기준 계약과 후속 기능 Issue `#106`, `#111`, `#119` 구현 상태 반영 |
+| 문서 성격 | Issue `#98` 기준 계약과 후속 기능 Issue `#106`, `#111`, `#119`, `#124` 구현 상태 반영 |
 
 이 문서는 제공된 임시 API 명세의 URI와 화면 흐름을 최대한 유지하면서 현재 backend 구조와
 확정된 Recommendation/Product 정책을 구체화한다. 이 범위 밖 Auth, Member, Tag, Trend,
@@ -23,7 +23,7 @@ Lookbook, Closet API는 해당 도메인의 명세를 따른다.
 | 비용 최소화 | pagination, Top 10, live lookup 최소화, fixture fallback을 전제로 함 |
 | 추천 생성 | 기존 분석 태그 또는 요청에서 확정한 기본·직접 입력 태그와 매칭값으로 추천 결과 생성 |
 | 추천 상품 저장(찜) | 추천 현재 세트와 분리된 `/members/me/saved-products` 정의 |
-| 범위 제한 | 원상품 후보 탐색·기준 가격 확정·리포트 저장 모델은 제외 |
+| 범위 제한 | 원상품 후보 탐색·기준 가격 확정 모델은 제외 |
 | 3D 가상 피팅 제외 | 이 문서와 Recommendation/Product MVP endpoint에서 제외 |
 | 외부 데이터 정책 준수 | candidateToken, materialization, snapshot/identity-only 경계 정의 |
 
@@ -236,8 +236,10 @@ similarityScore DESC
 | POST | `/api/v1/images/{imageId}/complete` | 이미지 업로드 완료 검증 | 필수 |
 | POST | `/api/v1/images/{imageId}/upload-request` | 이미지 업로드 URL 재발급 | 필수 |
 | POST | `/api/v1/analyses` | 이미지 기반 분석 리포트 생성 | 필수 |
-| GET | `/api/v1/analyses` | 내 분석 리포트 목록 | 필수 |
+| GET | `/api/v1/analyses` | 마이 클로젯에 저장한 분석 리포트 목록 | 필수 |
 | GET | `/api/v1/analyses/{reportId}` | 기존 분석 상세와 추천 fragment 조회 | 필수 |
+| PUT | `/api/v1/analyses/{reportId}/save` | 선택 상품을 포함한 분석 리포트 저장 | 필수 |
+| DELETE | `/api/v1/analyses/{reportId}/save` | 분석 리포트 저장 해제 | 필수 |
 | DELETE | `/api/v1/analyses/{reportId}` | 분석 리포트 삭제 | 필수 |
 
 Issue `#98`은 `GET /analyses/{reportId}` 자체를 새로 구현하지 않고, 기존 상세 응답에
@@ -896,13 +898,40 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 
 ### `GET /api/v1/analyses?cursor=&pageSize=20`
 
-인증 회원의 삭제되지 않은 리포트를 `reportId` cursor 기준으로 조회한다. `pageSize`는 1~50이며
-응답은 `items`, `nextCursor`, `hasNext`, `pageSize`를 포함한다.
+인증 회원이 명시적으로 마이 클로젯에 저장한 리포트를 `ClosetSave.saveId` cursor 기준으로
+최신 저장순 조회한다. 생성만 하고 저장하지 않은 분석 결과는 목록에 포함하지 않는다.
+`pageSize`는 1~50이며 응답은 `items`, `nextCursor`, `hasNext`, `pageSize`를 포함한다.
+각 item은 `reportId`, signed `imageUrl`, `tags`, `savedAt`을 반환한다.
 
 ### `GET /api/v1/analyses/{reportId}`
 
 본인의 삭제되지 않은 리포트 상세와 확정 기본·직접 입력 태그, 추천 그룹을 반환한다. private
-이미지 URL은 10분 유효한 CloudFront signed URL이다.
+이미지 URL은 10분 유효한 CloudFront signed URL이다. 명시적 저장 여부인 `saved`, `savedAt`과
+저장 시점의 카테고리별 `selectedItems`도 함께 반환한다.
+
+### `PUT /api/v1/analyses/{reportId}/save`
+
+SCR-08에서 현재 결과 리포트 전체를 마이 클로젯에 저장한다. 현재 추천 결과에 상품이 존재하는
+각 카테고리마다 정확히 하나를 선택해야 하며, 타 리포트 상품·카테고리 누락·중복은
+`ANALYSIS400_2`로 거부한다.
+
+```json
+{
+  "selectedItems": [
+    {"category": "TOP", "productId": 100},
+    {"category": "BOTTOM", "productId": 205}
+  ]
+}
+```
+
+최초 저장은 `201 Created`, 같은 리포트 재저장은 기존 스냅샷을 유지하며 `200 OK`를 반환한다.
+응답은 `reportId`, `saved`, `savedAt`, `selectedItems`를 포함한다. 선택 상품은 상품명, 판매처,
+가격, 이미지, 구매 URL, 순위, 유사도와 최종 점수를 저장 시점 스냅샷으로 반환한다.
+
+### `DELETE /api/v1/analyses/{reportId}/save`
+
+분석 리포트의 클로젯 저장 관계와 선택 상품 스냅샷만 멱등 삭제한다. 원본 분석 리포트와 현재
+추천 결과는 유지한다. 응답은 `saved=false`, `savedAt=null`, 빈 `selectedItems`를 반환한다.
 
 ### `POST /api/v1/analyses/{reportId}/recommendations`
 
@@ -913,4 +942,5 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 ### `DELETE /api/v1/analyses/{reportId}`
 
 리포트를 soft delete 처리한다. 삭제된 리포트는 목록과 상세 조회에서 제외되며 연결된 이미지는
-보존 기간 이후 정리 작업의 대상이 된다.
+보존 기간 이후 정리 작업의 대상이 된다. 저장된 리포트라면 클로젯 저장 관계와 선택 상품
+스냅샷을 먼저 제거한다.

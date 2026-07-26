@@ -27,6 +27,7 @@ import java.util.Set;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
@@ -84,6 +85,7 @@ public class AnalysisReport extends BaseTimeEntity {
     @Getter(AccessLevel.NONE)
     @OneToMany(mappedBy = "report", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
+    @BatchSize(size = 50)
     private final List<ReportCustomTag> customTags = new ArrayList<>();
 
     private AnalysisReport(Member member, String imageUrl, Integer matchPercentage) {

@@ -11,6 +11,7 @@ import com.fitback.backend.domain.analysis.dto.AnalysisByImageRequest;
 import com.fitback.backend.domain.analysis.dto.AnalysisCreateResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisDetailResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisListResponse;
+import com.fitback.backend.domain.analysis.dto.AnalysisSummaryResponse;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.image.entity.Image;
@@ -30,6 +31,7 @@ import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -38,8 +40,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.SliceImpl;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -64,6 +64,9 @@ class AnalysisServiceTest {
     @Mock
     private ImageUploadService imageUploadService;
 
+    @Mock
+    private AnalysisReportSaveService analysisReportSaveService;
+
     private final Clock clock = Clock.fixed(
             Instant.parse("2026-07-22T00:00:00Z"),
             ZoneOffset.UTC
@@ -80,6 +83,7 @@ class AnalysisServiceTest {
                 aiTagAnalyzer,
                 recommendationResultProvider,
                 imageUploadService,
+                analysisReportSaveService,
                 clock
         );
     }
@@ -174,19 +178,30 @@ class AnalysisServiceTest {
 
     @Test
     void listsReportsWithCursorMetadata() {
-        Member member = member(1L);
-        Tag minimal = tag(10L, "미니멀");
-        AnalysisReport newestReport = report(501L, member, minimal);
-        AnalysisReport nextReport = report(500L, member, minimal);
-        when(analysisReportRepository.findByMemberIdAndDeletedAtIsNullOrderByIdDesc(
+        AnalysisListResponse savedReports = new AnalysisListResponse(
+                List.of(
+                        new AnalysisSummaryResponse(
+                                501L,
+                                "/uploads/look.jpg",
+                                List.of("미니멀"),
+                                LocalDateTime.parse("2026-07-22T09:00:00")
+                        ),
+                        new AnalysisSummaryResponse(
+                                500L,
+                                "/uploads/look.jpg",
+                                List.of("미니멀"),
+                                LocalDateTime.parse("2026-07-21T09:00:00")
+                        )
+                ),
+                10L,
+                true,
+                2
+        );
+        when(analysisReportSaveService.getSavedReports(
                 1L,
-                PageRequest.of(0, 2)
-        ))
-                .thenReturn(new SliceImpl<>(
-                        List.of(newestReport, nextReport),
-                        PageRequest.of(0, 2),
-                        true
-                ));
+                null,
+                2
+        )).thenReturn(savedReports);
 
         AnalysisListResponse response = analysisService.getReports(1L, null, 2);
 
@@ -197,7 +212,7 @@ class AnalysisServiceTest {
                         org.assertj.core.groups.Tuple.tuple(500L, "/uploads/look.jpg")
                 );
         assertThat(response.items().getFirst().tags()).containsExactly("미니멀");
-        assertThat(response.nextCursor()).isEqualTo(500L);
+        assertThat(response.nextCursor()).isEqualTo(10L);
         assertThat(response.hasNext()).isTrue();
         assertThat(response.pageSize()).isEqualTo(2);
     }
@@ -223,6 +238,12 @@ class AnalysisServiceTest {
         when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
                 .thenReturn(Optional.of(report));
         when(recommendationResultProvider.findFor(report)).thenReturn(recommendationResult);
+        when(analysisReportSaveService.getState(1L, 501L))
+                .thenReturn(new AnalysisReportSaveService.SavedState(
+                        false,
+                        null,
+                        List.of()
+                ));
 
         AnalysisDetailResponse response = analysisService.getReport(1L, 501L);
 
@@ -231,6 +252,8 @@ class AnalysisServiceTest {
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
         assertThat(response.scoreVersion()).isEqualTo("SIMILARITY_V1");
         assertThat(response.recommendationGroups()).containsExactly(recommendationGroup);
+        assertThat(response.saved()).isFalse();
+        assertThat(response.selectedItems()).isEmpty();
     }
 
     @Test

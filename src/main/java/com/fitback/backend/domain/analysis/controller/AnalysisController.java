@@ -4,6 +4,9 @@ import com.fitback.backend.domain.analysis.dto.AnalysisByImageRequest;
 import com.fitback.backend.domain.analysis.dto.AnalysisCreateResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisDetailResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisListResponse;
+import com.fitback.backend.domain.analysis.dto.AnalysisReportSaveRequest;
+import com.fitback.backend.domain.analysis.dto.AnalysisReportSaveResponse;
+import com.fitback.backend.domain.analysis.service.AnalysisReportSaveService;
 import com.fitback.backend.domain.analysis.service.AnalysisService;
 import com.fitback.backend.global.response.ApiResponse;
 import com.fitback.backend.global.security.CurrentMemberProvider;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,6 +38,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class AnalysisController {
 
     private final AnalysisService analysisService;
+    private final AnalysisReportSaveService analysisReportSaveService;
     private final CurrentMemberProvider currentMemberProvider;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -82,7 +87,38 @@ public class AnalysisController {
 
     @DeleteMapping("/{reportId}")
     public ApiResponse<Void> deleteReport(@PathVariable @Positive Long reportId) {
+        analysisReportSaveService.unsave(
+                currentMemberProvider.getCurrentMemberId(),
+                reportId
+        );
         analysisService.deleteReport(currentMemberProvider.getCurrentMemberId(), reportId);
         return ApiResponse.onSuccess();
+    }
+
+    @PutMapping("/{reportId}/save")
+    public ResponseEntity<ApiResponse<AnalysisReportSaveResponse>> saveReport(
+            @PathVariable @Positive Long reportId,
+            @Valid @RequestBody AnalysisReportSaveRequest request
+    ) {
+        AnalysisReportSaveService.SaveOutcome outcome = analysisReportSaveService.save(
+                currentMemberProvider.getCurrentMemberId(),
+                reportId,
+                request
+        );
+        ApiResponse<AnalysisReportSaveResponse> body = outcome.created()
+                ? ApiResponse.onCreated(outcome.response())
+                : ApiResponse.onSuccess(outcome.response());
+        HttpStatus status = outcome.created() ? HttpStatus.CREATED : HttpStatus.OK;
+        return ResponseEntity.status(status).body(body);
+    }
+
+    @DeleteMapping("/{reportId}/save")
+    public ApiResponse<AnalysisReportSaveResponse> unsaveReport(
+            @PathVariable @Positive Long reportId
+    ) {
+        return ApiResponse.onSuccess(analysisReportSaveService.unsave(
+                currentMemberProvider.getCurrentMemberId(),
+                reportId
+        ));
     }
 }
