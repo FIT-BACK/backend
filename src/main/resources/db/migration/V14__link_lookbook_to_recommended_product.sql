@@ -12,4 +12,8 @@ ALTER TABLE lookbook
             (matched_image_id IS NOT NULL AND matched_product_id IS NULL)
             OR (matched_image_id IS NULL AND matched_product_id IS NOT NULL)
         ),
+    ADD CONSTRAINT CK_LOOKBOOK_MATCHED_PRODUCT_IMAGE
+        CHECK (
+            matched_product_id IS NULL OR matched_product_image_url IS NOT NULL
+        ),
     ADD INDEX IDX_LOOKBOOK_MATCHED_PRODUCT (matched_product_id);

@@ -599,14 +599,42 @@ validate_lookbook_product_link_contract() {
   match_check="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
     -e "SELECT COUNT(*)
-        FROM information_schema.TABLE_CONSTRAINTS
-        WHERE CONSTRAINT_SCHEMA = '$database'
-          AND TABLE_NAME = 'lookbook'
-          AND CONSTRAINT_NAME = 'CK_LOOKBOOK_MATCH_SOURCE'
-          AND CONSTRAINT_TYPE = 'CHECK';")"
+        FROM information_schema.TABLE_CONSTRAINTS tc
+        JOIN information_schema.CHECK_CONSTRAINTS cc
+          ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+         AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+        WHERE tc.CONSTRAINT_SCHEMA = '$database'
+          AND tc.TABLE_NAME = 'lookbook'
+          AND tc.CONSTRAINT_NAME = 'CK_LOOKBOOK_MATCH_SOURCE'
+          AND tc.CONSTRAINT_TYPE = 'CHECK'
+          AND LOWER(cc.CHECK_CLAUSE) LIKE '%matched_image_id%'
+          AND LOWER(cc.CHECK_CLAUSE) LIKE '%matched_product_id%'
+          AND LOWER(cc.CHECK_CLAUSE) LIKE '%is null%'
+          AND LOWER(cc.CHECK_CLAUSE) LIKE '%is not null%';")"
 
   if [ "$match_check" != '1' ]; then
-    echo "Missing lookbook match source check in $database." >&2
+    echo "Unexpected lookbook match source check in $database." >&2
+    exit 1
+  fi
+
+  product_image_check="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*)
+        FROM information_schema.TABLE_CONSTRAINTS tc
+        JOIN information_schema.CHECK_CONSTRAINTS cc
+          ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+         AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+        WHERE tc.CONSTRAINT_SCHEMA = '$database'
+          AND tc.TABLE_NAME = 'lookbook'
+          AND tc.CONSTRAINT_NAME = 'CK_LOOKBOOK_MATCHED_PRODUCT_IMAGE'
+          AND tc.CONSTRAINT_TYPE = 'CHECK'
+          AND LOWER(cc.CHECK_CLAUSE) LIKE '%matched_product_id%'
+          AND LOWER(cc.CHECK_CLAUSE) LIKE '%matched_product_image_url%'
+          AND LOWER(cc.CHECK_CLAUSE) LIKE '%is null%'
+          AND LOWER(cc.CHECK_CLAUSE) LIKE '%is not null%';")"
+
+  if [ "$product_image_check" != '1' ]; then
+    echo "Unexpected lookbook matched product image check in $database." >&2
     exit 1
   fi
 

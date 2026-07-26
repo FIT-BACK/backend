@@ -475,8 +475,11 @@ public class LookbookService {
 
         if (hasMatchedProduct) {
             Image originalImage = findAvailableOwnedOriginalImage(member, originalImageId);
+            AnalysisReport sourceReport = findAuthorizedSourceReport(member, sourceReportId);
+            validateSourceReportOriginalImage(sourceReport, originalImage);
             Product matchedProduct = findAuthorizedMatchedProduct(
                     member,
+                    sourceReport,
                     sourceReportId,
                     matchedProductId
             );
@@ -506,16 +509,34 @@ public class LookbookService {
         return originalImage;
     }
 
-    private Product findAuthorizedMatchedProduct(
-            Member member,
-            Long sourceReportId,
-            Long matchedProductId
-    ) {
-        AnalysisReport report = analysisReportRepository
+    private AnalysisReport findAuthorizedSourceReport(Member member, Long sourceReportId) {
+        return analysisReportRepository
                 .findByIdAndMemberIdAndDeletedAtIsNull(sourceReportId, member.getId())
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.ANALYSIS_REPORT_NOT_FOUND
                 ));
+    }
+
+    private void validateSourceReportOriginalImage(
+            AnalysisReport sourceReport,
+            Image originalImage
+    ) {
+        Image reportOriginalImage = sourceReport.getOriginalImage();
+        if (reportOriginalImage == null
+                || !Objects.equals(reportOriginalImage.getId(), originalImage.getId())) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "분석 리포트의 원본 이미지만 룩북에 사용할 수 있습니다."
+            );
+        }
+    }
+
+    private Product findAuthorizedMatchedProduct(
+            Member member,
+            AnalysisReport report,
+            Long sourceReportId,
+            Long matchedProductId
+    ) {
         boolean currentResult = report.getRecommendationGeneratedAt() != null
                 && report.hasRecommendationInputRevision(report.getResultInputRevision());
         boolean currentRecommendation = currentResult

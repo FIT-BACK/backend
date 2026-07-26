@@ -191,7 +191,7 @@ class LookbookServiceTest {
         )).thenReturn(List.of(analysisImage));
         AnalysisReport report = AnalysisReport.create(
                 member,
-                "https://example.com/original.jpg",
+                analysisImage,
                 70
         );
         report.markRecommendationGenerated(
@@ -240,6 +240,47 @@ class LookbookServiceTest {
                 eq(ImageStatus.ACTIVE),
                 any(Instant.class)
         );
+    }
+
+    @Test
+    void createLookbookRejectsOriginalImageFromAnotherAnalysisReport() {
+        Image requestedImage = readyImage(
+                "analysis-original",
+                member,
+                ImagePurpose.ANALYSIS_ORIGINAL
+        );
+        Image reportImage = readyImage(
+                "other-analysis-original",
+                member,
+                ImagePurpose.ANALYSIS_ORIGINAL
+        );
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("analysis-original"),
+                1L
+        )).thenReturn(List.of(requestedImage));
+        AnalysisReport report = AnalysisReport.create(member, reportImage, 70);
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
+                .thenReturn(Optional.of(report));
+        LookbookRequest.LookbookCreate request = new LookbookRequest.LookbookCreate(
+                "analysis-original",
+                null,
+                101L,
+                501L,
+                null,
+                List.of(10L),
+                null
+        );
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST);
+                    assertThat(exception.getMessage())
+                            .isEqualTo("분석 리포트의 원본 이미지만 룩북에 사용할 수 있습니다.");
+                });
+        verify(recommendedItemRepository, never())
+                .existsByReportIdAndProductId(any(), any());
+        verify(lookbookRepository, never()).save(any());
     }
 
     @Test

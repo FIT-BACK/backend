@@ -149,7 +149,9 @@ public class Lookbook extends BaseTimeEntity {
         this.originalImage = originalImage;
         this.matchedImage = null;
         this.matchedProduct = matchedProduct;
-        this.matchedProductImageUrl = matchedProduct.getImageUrl();
+        this.matchedProductImageUrl = matchedProduct == null
+                ? null
+                : matchedProduct.getImageUrl();
         this.purchaseUrl = purchaseUrl;
         this.comment = comment;
     }
