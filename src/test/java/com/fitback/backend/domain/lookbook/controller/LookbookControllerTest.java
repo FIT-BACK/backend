@@ -47,6 +47,8 @@ class LookbookControllerTest {
                 "original-image-id",
                 "matched-image-id",
                 null,
+                null,
+                null,
                 List.of(10L, 20L),
                 "합리적인 가격으로 완성한 룩입니다."
         );
@@ -82,6 +84,8 @@ class LookbookControllerTest {
         LookbookRequest.LookbookUpdate updateRequest = new LookbookRequest.LookbookUpdate(
                 "updated-original-image-id",
                 "updated-matched-image-id",
+                null,
+                null,
                 "https://shop.example.com/updated-item",
                 List.of(10L, 20L),
                 "수정된 코멘트"
@@ -106,6 +110,8 @@ class LookbookControllerTest {
         LookbookRequest.LookbookUpdate updateRequest = new LookbookRequest.LookbookUpdate(
                 "updated-original-image-id",
                 "updated-matched-image-id",
+                null,
+                null,
                 null,
                 List.of(10L),
                 null

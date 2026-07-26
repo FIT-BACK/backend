@@ -2,6 +2,7 @@ package com.fitback.backend.domain.lookbook.entity;
 
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.product.entity.Product;
 import com.fitback.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -39,9 +40,16 @@ public class Lookbook extends BaseTimeEntity {
     @JoinColumn(name = "original_image_id", nullable = false)
     private Image originalImage;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "matched_image_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "matched_image_id")
     private Image matchedImage;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "matched_product_id")
+    private Product matchedProduct;
+
+    @Column(name = "matched_product_image_url", length = 2048)
+    private String matchedProductImageUrl;
 
     @Column(name = "purchase_url", length = 2048)
     private String purchaseUrl;
@@ -69,12 +77,17 @@ public class Lookbook extends BaseTimeEntity {
             Member member,
             Image originalImage,
             Image matchedImage,
+            Product matchedProduct,
             String purchaseUrl,
             String comment
     ) {
         this.member = member;
         this.originalImage = originalImage;
         this.matchedImage = matchedImage;
+        this.matchedProduct = matchedProduct;
+        this.matchedProductImageUrl = matchedProduct == null
+                ? null
+                : matchedProduct.getImageUrl();
         this.purchaseUrl = purchaseUrl;
         this.comment = comment;
     }
@@ -86,7 +99,31 @@ public class Lookbook extends BaseTimeEntity {
             String purchaseUrl,
             String comment
     ) {
-        return new Lookbook(member, originalImage, matchedImage, purchaseUrl, comment);
+        return new Lookbook(
+                member,
+                originalImage,
+                matchedImage,
+                null,
+                purchaseUrl,
+                comment
+        );
+    }
+
+    public static Lookbook createWithProduct(
+            Member member,
+            Image originalImage,
+            Product matchedProduct,
+            String purchaseUrl,
+            String comment
+    ) {
+        return new Lookbook(
+                member,
+                originalImage,
+                null,
+                matchedProduct,
+                purchaseUrl,
+                comment
+        );
     }
 
     public void update(
@@ -97,6 +134,22 @@ public class Lookbook extends BaseTimeEntity {
     ) {
         this.originalImage = originalImage;
         this.matchedImage = matchedImage;
+        this.matchedProduct = null;
+        this.matchedProductImageUrl = null;
+        this.purchaseUrl = purchaseUrl;
+        this.comment = comment;
+    }
+
+    public void updateWithProduct(
+            Image originalImage,
+            Product matchedProduct,
+            String purchaseUrl,
+            String comment
+    ) {
+        this.originalImage = originalImage;
+        this.matchedImage = null;
+        this.matchedProduct = matchedProduct;
+        this.matchedProductImageUrl = matchedProduct.getImageUrl();
         this.purchaseUrl = purchaseUrl;
         this.comment = comment;
     }

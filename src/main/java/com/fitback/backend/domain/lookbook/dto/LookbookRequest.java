@@ -21,8 +21,13 @@ public final class LookbookRequest {
             @NotBlank(message = "원본 룩 이미지 ID는 필수입니다.")
             String originalImageId,
 
-            @NotBlank(message = "가성비 매칭 이미지 ID는 필수입니다.")
             String matchedImageId,
+
+            @Positive(message = "매칭 상품 ID는 양수여야 합니다.")
+            Long matchedProductId,
+
+            @Positive(message = "출처 분석 리포트 ID는 양수여야 합니다.")
+            Long sourceReportId,
 
             @Size(max = 2048, message = "구매 URL은 2048자 이하여야 합니다.")
             @URL(
@@ -59,8 +64,13 @@ public final class LookbookRequest {
             @NotBlank(message = "원본 룩 이미지 ID는 필수입니다.")
             String originalImageId,
 
-            @NotBlank(message = "가성비 매칭 이미지 ID는 필수입니다.")
             String matchedImageId,
+
+            @Positive(message = "매칭 상품 ID는 양수여야 합니다.")
+            Long matchedProductId,
+
+            @Positive(message = "출처 분석 리포트 ID는 양수여야 합니다.")
+            Long sourceReportId,
 
             @Size(max = 2048, message = "구매 URL은 2048자 이하여야 합니다.")
             @URL(

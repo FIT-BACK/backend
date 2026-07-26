@@ -112,6 +112,7 @@ erDiagram
     MEMBER ||--o{ ANALYSIS_REPORT : owns
     MEMBER ||--o{ SAVED_PRODUCT : saves
     MEMBER ||--o{ CLOSET_SAVE : saves_to_closet
+    MEMBER ||--o{ LOOKBOOK : uploads
     MEMBER ||--o{ IMAGE : owns
     ANALYSIS_REPORT ||--o{ RECOMMENDED_ITEM : has_current_set
     ANALYSIS_REPORT ||--o{ REPORT_CUSTOM_TAG : has_custom_input
@@ -119,7 +120,9 @@ erDiagram
     PRODUCT ||--o{ RECOMMENDED_ITEM : recommended_as
     PRODUCT ||--o{ SAVED_PRODUCT : saved_as
     PRODUCT ||--o{ SAVED_ANALYSIS_ITEM : snapshotted_as
+    PRODUCT o|--o{ LOOKBOOK : used_as_matched
     CLOSET_SAVE ||--o{ SAVED_ANALYSIS_ITEM : contains_selection
+    IMAGE ||--o{ LOOKBOOK : used_as_original_or_matched
     PRODUCT ||--o{ PRODUCT_TAG : tagged_with
     TAG ||--o{ PRODUCT_TAG : classifies
 
@@ -218,6 +221,18 @@ erDiagram
         VARCHAR purchase_url
         DECIMAL similarity_score
         DECIMAL final_score
+        DATETIME created_at
+    }
+
+    LOOKBOOK {
+        BIGINT lookbook_id PK
+        BIGINT member_id FK
+        VARCHAR original_image_id FK
+        VARCHAR matched_image_id FK
+        BIGINT matched_product_id FK
+        VARCHAR matched_product_image_url
+        VARCHAR purchase_url
+        VARCHAR comment
         DATETIME created_at
     }
 
@@ -460,6 +475,23 @@ result_input_revision != recommendation_input_revision -> STALE
 그 외 -> CURRENT
 ```
 
+### 4.8 `lookbook` 분석 추천 상품 연결
+
+SCR-09 직접 업로드 경로는 기존 `matched_image_id`를 사용하고, SCR-08 분석 결과 경로는
+`matched_product_id`를 사용한다. 두 컬럼은 모두 nullable이지만 룩북 한 건에는 정확히 하나만
+존재해야 한다. 게시 이후 상품 정보가 갱신되어도 사진이 바뀌지 않도록
+`matched_product_image_url`에 게시 시점 이미지를 보존한다. 분석 원본 이미지는 기존
+`original_image_id` 관계를 재사용한다.
+
+```text
+FK_LOOKBOOK_MATCHED_PRODUCT(matched_product_id)
+  -> product(product_id) ON DELETE RESTRICT ON UPDATE RESTRICT
+CK_LOOKBOOK_MATCH_SOURCE(
+  (matched_image_id IS NOT NULL AND matched_product_id IS NULL)
+  OR (matched_image_id IS NULL AND matched_product_id IS NOT NULL)
+)
+```
+
 ---
 
 ## 5. 유사도 점수 영속 근거
@@ -484,6 +516,7 @@ result_input_revision != recommendation_input_revision -> STALE
 | `closet_save` 삭제 | saved analysis item `CASCADE` | 저장 해제 시 선택 스냅샷 정리 |
 | `product` 삭제 | product tag `CASCADE` | 상품 부속 태그 |
 | `product` 삭제 | recommendation, saved product `RESTRICT` | 추천 근거와 사용자 저장 보존 |
+| `product` 삭제 | 분석 상품 기반 lookbook `RESTRICT` | 게시된 룩북의 매칭 이미지 보존 |
 | `tag` 삭제 | product tag `RESTRICT` | 사용 중 태그 우발 삭제 방지 |
 
 JPA에는 대규모 `CascadeType.ALL`을 기본 적용하지 않는다. 특히 Product 삭제로 저장 상품이

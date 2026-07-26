@@ -23,10 +23,12 @@ class LookbookRequestTest {
     }
 
     @Test
-    void lookbookCreateRequiresImageIds() {
+    void lookbookCreateRequiresOriginalImageId() {
         LookbookRequest.LookbookCreate request = new LookbookRequest.LookbookCreate(
                 " ",
                 "",
+                null,
+                null,
                 null,
                 List.of(10L),
                 null
@@ -34,10 +36,7 @@ class LookbookRequestTest {
 
         assertThat(validator.validate(request))
                 .extracting(violation -> violation.getMessage())
-                .contains(
-                        "원본 룩 이미지 ID는 필수입니다.",
-                        "가성비 매칭 이미지 ID는 필수입니다."
-                );
+                .contains("원본 룩 이미지 ID는 필수입니다.");
     }
 
     @Test
@@ -124,6 +123,8 @@ class LookbookRequestTest {
         LookbookRequest.LookbookUpdate request = new LookbookRequest.LookbookUpdate(
                 "updated-original-image-id",
                 "updated-matched-image-id",
+                null,
+                null,
                 "   ",
                 List.of(10L),
                 null
@@ -138,6 +139,8 @@ class LookbookRequestTest {
         LookbookRequest.LookbookUpdate request = new LookbookRequest.LookbookUpdate(
                 "updated-original-image-id",
                 "updated-matched-image-id",
+                null,
+                null,
                 null,
                 List.of(),
                 null
@@ -173,6 +176,8 @@ class LookbookRequestTest {
         return new LookbookRequest.LookbookCreate(
                 "original-image-id",
                 "matched-image-id",
+                null,
+                null,
                 purchaseUrl,
                 tagIds,
                 comment

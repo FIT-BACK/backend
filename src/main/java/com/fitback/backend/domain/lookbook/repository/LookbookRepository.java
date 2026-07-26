@@ -17,16 +17,16 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
 
     long countByMemberIdAndDeletedAtIsNull(Long memberId);
 
-    @EntityGraph(attributePaths = "member")
+    @EntityGraph(attributePaths = {"member", "matchedProduct"})
     Optional<Lookbook> findByIdAndDeletedAtIsNull(Long id);
 
-    @EntityGraph(attributePaths = "member")
+    @EntityGraph(attributePaths = {"member", "matchedProduct"})
     List<Lookbook> findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
             LookbookModerationStatus moderationStatus,
             Pageable pageable
     );
 
-    @EntityGraph(attributePaths = "member")
+    @EntityGraph(attributePaths = {"member", "matchedProduct"})
     @Query("""
             SELECT lookbook
             FROM Lookbook lookbook
@@ -62,7 +62,7 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             @Param("tagName") String tagName
     );
 
-    @EntityGraph(attributePaths = "member")
+    @EntityGraph(attributePaths = {"member", "matchedProduct"})
     @Query("""
             SELECT lookbook
             FROM Lookbook lookbook
@@ -79,7 +79,7 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             Pageable pageable
     );
 
-    @EntityGraph(attributePaths = "member")
+    @EntityGraph(attributePaths = {"member", "matchedProduct"})
     @Query("""
             SELECT lookbook
             FROM Lookbook lookbook

@@ -13,6 +13,8 @@ public interface RecommendedItemRepository extends JpaRepository<RecommendedItem
     @EntityGraph(attributePaths = "product")
     List<RecommendedItem> findByReportIdOrderByCategoryAscRankNoAsc(Long reportId);
 
+    boolean existsByReportIdAndProductId(Long reportId, Long productId);
+
     @Modifying
     @Query("delete from RecommendedItem item where item.report.id = :reportId")
     void deleteCurrentSetByReportId(@Param("reportId") Long reportId);

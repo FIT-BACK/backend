@@ -137,6 +137,7 @@ public class AnalysisService {
                 analysisReportSaveService.getState(report.getMember().getId(), report.getId());
         return new AnalysisDetailResponse(
                 report.getId(),
+                report.getOriginalImage() == null ? null : report.getOriginalImage().getId(),
                 resolveImageUrl(report),
                 report.getMatchPercentage(),
                 tagNames,

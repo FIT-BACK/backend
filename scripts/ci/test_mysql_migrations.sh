@@ -71,6 +71,12 @@ for database in fitback fitback_existing_refresh_token; do
         "('legacy-profile', 9001, 'prod/images/profile/legacy-profile.jpg', 'PROFILE', 'image/jpeg', 1024, 'REJECTED', 'PRIVATE', 0, NOW());" \
         | docker exec -i "$container_name" mysql -uroot "$database"
     fi
+    if [ "$(basename "$migration")" = 'V13__link_lookbook_to_recommended_product.sql' ]; then
+      printf '%s\n' \
+        'CREATE TABLE lookbook (lookbook_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, member_id BIGINT NOT NULL, original_image_id VARCHAR(36) NOT NULL, matched_image_id VARCHAR(36) NOT NULL, purchase_url VARCHAR(2048) NULL, comment VARCHAR(500) NULL, like_count INT NOT NULL DEFAULT 0, report_count INT NOT NULL DEFAULT 0, moderation_status VARCHAR(20) NOT NULL DEFAULT '\''VISIBLE'\'', auto_hidden_at DATETIME(6) NULL, deleted_at DATETIME(6) NULL, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NULL, CONSTRAINT FK_LOOKBOOK_MEMBER_TEST FOREIGN KEY (member_id) REFERENCES member (member_id), CONSTRAINT FK_LOOKBOOK_ORIGINAL_IMAGE_TEST FOREIGN KEY (original_image_id) REFERENCES image (image_id), CONSTRAINT FK_LOOKBOOK_MATCHED_IMAGE_TEST FOREIGN KEY (matched_image_id) REFERENCES image (image_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;' \
+        "INSERT INTO lookbook (member_id, original_image_id, matched_image_id) VALUES (9001, 'legacy-lookbook-original', 'legacy-lookbook-matched');" \
+        | docker exec -i "$container_name" mysql -uroot "$database"
+    fi
     docker exec -i "$container_name" mysql -uroot "$database" < "$migration"
   done < <(printf '%s\n' src/main/resources/db/migration/V*.sql | sort -V)
 done
@@ -542,6 +548,82 @@ validate_saved_analysis_contract() {
 
 for database in fitback fitback_existing_refresh_token; do
   validate_saved_analysis_contract "$database"
+done
+
+validate_lookbook_product_link_contract() {
+  local database="$1"
+  local columns
+  local product_foreign_key
+  local match_check
+  local legacy_row
+
+  columns="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'lookbook'
+          AND COLUMN_NAME IN (
+            'matched_image_id',
+            'matched_product_id',
+            'matched_product_image_url'
+          )
+        ORDER BY COLUMN_NAME;")"
+
+  if [ "$columns" != "$(printf '%s\n' \
+    'matched_image_id:YES:varchar' \
+    'matched_product_id:YES:bigint' \
+    'matched_product_image_url:YES:varchar')" ]; then
+    echo "Unexpected lookbook match source columns in $database:" >&2
+    printf '%s\n' "$columns" >&2
+    exit 1
+  fi
+
+  product_foreign_key="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(k.COLUMN_NAME, '->', k.REFERENCED_TABLE_NAME, '=', rc.DELETE_RULE)
+        FROM information_schema.KEY_COLUMN_USAGE k
+        JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+          ON rc.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA
+         AND rc.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+        WHERE k.TABLE_SCHEMA = '$database'
+          AND k.TABLE_NAME = 'lookbook'
+          AND k.COLUMN_NAME = 'matched_product_id';")"
+
+  if [ "$product_foreign_key" != 'matched_product_id->product=RESTRICT' ]; then
+    echo "Unexpected lookbook matched product foreign key in $database:" >&2
+    printf '%s\n' "$product_foreign_key" >&2
+    exit 1
+  fi
+
+  match_check="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*)
+        FROM information_schema.TABLE_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = '$database'
+          AND TABLE_NAME = 'lookbook'
+          AND CONSTRAINT_NAME = 'CK_LOOKBOOK_MATCH_SOURCE'
+          AND CONSTRAINT_TYPE = 'CHECK';")"
+
+  if [ "$match_check" != '1' ]; then
+    echo "Missing lookbook match source check in $database." >&2
+    exit 1
+  fi
+
+  legacy_row="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(matched_image_id, ':', IFNULL(matched_product_id, 'NULL'))
+        FROM $database.lookbook
+        WHERE lookbook_id = 1;")"
+
+  if [ "$legacy_row" != 'legacy-lookbook-matched:NULL' ]; then
+    echo "Legacy lookbook match image was not preserved in $database." >&2
+    exit 1
+  fi
+}
+
+for database in fitback fitback_existing_refresh_token; do
+  validate_lookbook_product_link_contract "$database"
 done
 
 actual_contract="$(docker exec "$container_name" mysql -uroot \

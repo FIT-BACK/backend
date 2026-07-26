@@ -7,10 +7,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fitback.backend.domain.analysis.entity.AnalysisReport;
+import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
+import com.fitback.backend.domain.analysis.service.AnalysisReportSaveService;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImagePurpose;
 import com.fitback.backend.domain.image.entity.ImageStatus;
@@ -30,6 +34,9 @@ import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
+import com.fitback.backend.domain.product.entity.Product;
+import com.fitback.backend.domain.product.repository.ProductRepository;
+import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
@@ -83,6 +90,18 @@ class LookbookServiceTest {
 
     @Mock
     private ImageAccessUrlProvider imageAccessUrlProvider;
+
+    @Mock
+    private AnalysisReportRepository analysisReportRepository;
+
+    @Mock
+    private AnalysisReportSaveService analysisReportSaveService;
+
+    @Mock
+    private RecommendedItemRepository recommendedItemRepository;
+
+    @Mock
+    private ProductRepository productRepository;
 
     @InjectMocks
     private LookbookService lookbookService;
@@ -149,6 +168,74 @@ class LookbookServiceTest {
         verify(lookbookTagRepository).saveAll(anyList());
         verify(lookbookImageRepository).activateReadyImages(
                 eq(List.of("original", "matched")),
+                eq(ImageStatus.READY),
+                eq(ImageStatus.ACTIVE),
+                any(Instant.class)
+        );
+    }
+
+    @Test
+    void createLookbookReusesAnalysisImageAndSelectedRecommendationProduct() {
+        Image analysisImage = readyImage(
+                "analysis-original",
+                member,
+                ImagePurpose.ANALYSIS_ORIGINAL
+        );
+        Product product = mock(Product.class);
+        when(product.getImageUrl()).thenReturn("https://shop.example.com/product.jpg");
+        when(product.getPurchaseUrl()).thenReturn("https://shop.example.com/product");
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("analysis-original"),
+                1L
+        )).thenReturn(List.of(analysisImage));
+        AnalysisReport report = AnalysisReport.create(
+                member,
+                "https://example.com/original.jpg",
+                70
+        );
+        report.markRecommendationGenerated(
+                report.getRecommendationInputRevision(),
+                "SIMILARITY_V1",
+                Instant.parse("2026-07-26T00:00:00Z")
+        );
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(recommendedItemRepository.existsByReportIdAndProductId(501L, 101L))
+                .thenReturn(true);
+        when(productRepository.findById(101L)).thenReturn(Optional.of(product));
+        when(lookbookRepository.save(any(Lookbook.class))).thenAnswer(invocation -> {
+            Lookbook lookbook = invocation.getArgument(0);
+            ReflectionTestUtils.setField(lookbook, "id", 100L);
+            return lookbook;
+        });
+        LookbookRequest.LookbookCreate request = new LookbookRequest.LookbookCreate(
+                "analysis-original",
+                null,
+                101L,
+                501L,
+                null,
+                List.of(10L),
+                "분석 결과로 완성한 룩"
+        );
+
+        LookbookResponse.LookbookCreate response = lookbookService.createLookbook(
+                member,
+                request
+        );
+
+        assertThat(response.lookbookId()).isEqualTo(100L);
+        ArgumentCaptor<Lookbook> lookbookCaptor = ArgumentCaptor.forClass(Lookbook.class);
+        verify(lookbookRepository).save(lookbookCaptor.capture());
+        assertThat(lookbookCaptor.getValue().getOriginalImage()).isEqualTo(analysisImage);
+        assertThat(lookbookCaptor.getValue().getMatchedImage()).isNull();
+        assertThat(lookbookCaptor.getValue().getMatchedProduct()).isEqualTo(product);
+        assertThat(lookbookCaptor.getValue().getMatchedProductImageUrl())
+                .isEqualTo("https://shop.example.com/product.jpg");
+        assertThat(lookbookCaptor.getValue().getPurchaseUrl())
+                .isEqualTo("https://shop.example.com/product");
+        verify(lookbookImageRepository).activateReadyImages(
+                eq(List.of("analysis-original")),
                 eq(ImageStatus.READY),
                 eq(ImageStatus.ACTIVE),
                 any(Instant.class)
@@ -756,6 +843,8 @@ class LookbookServiceTest {
         return new LookbookRequest.LookbookCreate(
                 "original",
                 "matched",
+                null,
+                null,
                 "https://shop.example.com/item",
                 tagIds,
                 "합리적인 가격으로 완성한 룩입니다."
@@ -766,6 +855,8 @@ class LookbookServiceTest {
         return new LookbookRequest.LookbookUpdate(
                 "updated-original",
                 "updated-matched",
+                null,
+                null,
                 "   ",
                 tagIds,
                 null
