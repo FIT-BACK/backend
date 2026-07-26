@@ -463,6 +463,87 @@ for database in fitback fitback_existing_refresh_token; do
   validate_saved_product_contract "$database"
 done
 
+validate_saved_analysis_contract() {
+  local database="$1"
+  local closet_contract
+  local saved_analysis_contract
+  local saved_analysis_foreign_keys
+
+  closet_contract="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', EXTRA)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'closet_save'
+          AND COLUMN_NAME IN ('save_id', 'created_at')
+        ORDER BY COLUMN_NAME;")"
+
+  if [ "$closet_contract" != "$(printf '%s\n' \
+    'created_at:NO:DEFAULT_GENERATED' \
+    'save_id:NO:auto_increment')" ]; then
+    echo "Unexpected closet_save normalized contract in $database:" >&2
+    printf '%s\n' "$closet_contract" >&2
+    exit 1
+  fi
+
+  saved_analysis_contract="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', IS_NULLABLE, ':', DATA_TYPE)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'saved_analysis_item'
+          AND COLUMN_NAME IN (
+            'saved_analysis_item_id',
+            'save_id',
+            'product_id',
+            'category',
+            'rank_no',
+            'price_amount',
+            'similarity_score',
+            'final_score',
+            'created_at'
+          )
+        ORDER BY COLUMN_NAME;")"
+
+  if [ "$saved_analysis_contract" != "$(printf '%s\n' \
+    'category:NO:varchar' \
+    'created_at:NO:datetime' \
+    'final_score:NO:decimal' \
+    'price_amount:YES:decimal' \
+    'product_id:NO:bigint' \
+    'rank_no:NO:int' \
+    'save_id:NO:bigint' \
+    'saved_analysis_item_id:NO:bigint' \
+    'similarity_score:NO:decimal')" ]; then
+    echo "Unexpected saved_analysis_item contract in $database:" >&2
+    printf '%s\n' "$saved_analysis_contract" >&2
+    exit 1
+  fi
+
+  saved_analysis_foreign_keys="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(k.COLUMN_NAME, '->', k.REFERENCED_TABLE_NAME, '=', rc.DELETE_RULE)
+        FROM information_schema.KEY_COLUMN_USAGE k
+        JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+          ON rc.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA
+         AND rc.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+        WHERE k.TABLE_SCHEMA = '$database'
+          AND k.TABLE_NAME = 'saved_analysis_item'
+        ORDER BY k.COLUMN_NAME;")"
+
+  if [ "$saved_analysis_foreign_keys" != "$(printf '%s\n' \
+    'product_id->product=RESTRICT' \
+    'save_id->closet_save=CASCADE')" ]; then
+    echo "Unexpected saved_analysis_item foreign keys in $database:" >&2
+    printf '%s\n' "$saved_analysis_foreign_keys" >&2
+    exit 1
+  fi
+}
+
+for database in fitback fitback_existing_refresh_token; do
+  validate_saved_analysis_contract "$database"
+done
+
 actual_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE)
