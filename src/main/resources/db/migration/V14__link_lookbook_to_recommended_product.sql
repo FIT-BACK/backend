@@ -16,8 +16,10 @@ SET @sql := IF(
     'ALTER TABLE lookbook
         MODIFY COLUMN original_image_url VARCHAR(2048) NULL,
         MODIFY COLUMN matched_image_url VARCHAR(2048) NULL,
-        ADD COLUMN original_image_id VARCHAR(36) NOT NULL,
-        ADD COLUMN matched_image_id VARCHAR(36) NULL,
+        ADD COLUMN original_image_id VARCHAR(36)
+            CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        ADD COLUMN matched_image_id VARCHAR(36)
+            CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         ADD COLUMN matched_product_id BIGINT NULL,
         ADD COLUMN matched_product_image_url VARCHAR(2048) NULL,
         ADD COLUMN comment VARCHAR(500) NULL,
@@ -55,7 +57,8 @@ SET @sql := IF(
         'SIGNAL SQLSTATE ''45000''
             SET MESSAGE_TEXT = ''Legacy lookbook rows require an explicit image migration''',
         'ALTER TABLE lookbook
-            MODIFY COLUMN matched_image_id VARCHAR(36) NULL,
+            MODIFY COLUMN matched_image_id VARCHAR(36)
+                CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
             ADD COLUMN matched_product_id BIGINT NULL,
             ADD COLUMN matched_product_image_url VARCHAR(2048) NULL,
             ADD CONSTRAINT FK_LOOKBOOK_MATCHED_PRODUCT
