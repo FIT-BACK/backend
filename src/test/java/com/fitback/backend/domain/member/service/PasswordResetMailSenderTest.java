@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,7 +34,6 @@ class PasswordResetMailSenderTest {
     @BeforeEach
     void setUp() {
         message = new MimeMessage(Session.getInstance(new Properties()));
-        when(mailSender.createMimeMessage()).thenReturn(message);
 
         PasswordResetProperties properties = new PasswordResetProperties(
                 "http://localhost:3000/reset-password",
@@ -46,6 +46,8 @@ class PasswordResetMailSenderTest {
 
     @Test
     void sendsHtmlMailWithResetTokenOnlyInButtonUrl() throws Exception {
+        when(mailSender.createMimeMessage()).thenReturn(message);
+
         passwordResetMailSender.sendResetLink(
                 "member@fitback.com",
                 "reset-token"
@@ -69,12 +71,28 @@ class PasswordResetMailSenderTest {
 
     @Test
     void ignoresMailFailureToProtectAccountExistence() {
+        when(mailSender.createMimeMessage()).thenReturn(message);
         doThrow(new MailSendException("mail failure"))
                 .when(mailSender)
                 .send(any(MimeMessage.class));
 
         assertThatCode(() ->
                 passwordResetMailSender.sendResetLink(
+                        "member@fitback.com",
+                        "reset-token"
+                )
+        ).doesNotThrowAnyException();
+    }
+
+    @Test
+    void ignoresInvalidResetUrlToProtectAccountExistence() {
+        PasswordResetProperties invalidProperties = mock(PasswordResetProperties.class);
+        when(invalidProperties.frontendUrl()).thenReturn("http://[invalid");
+        PasswordResetMailSender mailSenderWithInvalidUrl =
+                new PasswordResetMailSender(mailSender, invalidProperties);
+
+        assertThatCode(() ->
+                mailSenderWithInvalidUrl.sendResetLink(
                         "member@fitback.com",
                         "reset-token"
                 )

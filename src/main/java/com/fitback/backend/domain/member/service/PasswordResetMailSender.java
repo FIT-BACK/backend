@@ -24,15 +24,15 @@ public class PasswordResetMailSender {
     private final PasswordResetProperties properties;
 
     public void sendResetLink(String recipientEmail, String resetToken) {
-        //재설정 토큰은 프론트엔드 주소의 쿼리 파라미터로 추가
-        String resetUrl = UriComponentsBuilder
-                .fromUriString(properties.frontendUrl())
-                .queryParam("resetToken", resetToken)
-                .build()
-                .encode()
-                .toUriString();
-
         try {
+            //재설정 토큰은 프론트엔드 주소의 쿼리 파라미터로 추가
+            String resetUrl = UriComponentsBuilder
+                    .fromUriString(properties.frontendUrl())
+                    .queryParam("resetToken", resetToken)
+                    .build()
+                    .encode()
+                    .toUriString();
+
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
 
@@ -43,7 +43,10 @@ public class PasswordResetMailSender {
 
             //재설정 토큰은 HTML 버튼 주소에만 포함
             mailSender.send(message);
-        } catch (MessagingException | MailException | UnsupportedEncodingException exception) {
+        } catch (IllegalArgumentException
+                 | MessagingException
+                 | MailException
+                 | UnsupportedEncodingException exception) {
             //가입 여부 노출 방지를 위해 메일 전송 실패도 성공 처리
             log.error("비밀번호 재설정 메일 전송 실패", exception);
         }

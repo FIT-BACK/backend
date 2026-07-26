@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.member.config;
 
+import java.net.URI;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -16,6 +17,26 @@ public record PasswordResetProperties(
         if (frontendUrl == null || frontendUrl.isBlank()) {
             throw new IllegalArgumentException(
                     "app.password-reset.frontend-url must not be blank"
+            );
+        }
+
+        //비밀번호 재설정 화면 주소가 유효한 HTTP 주소인지 검증
+        URI frontendUri;
+        try {
+            frontendUri = URI.create(frontendUrl);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(
+                    "app.password-reset.frontend-url must be a valid HTTP(S) URL",
+                    exception
+            );
+        }
+
+        String scheme = frontendUri.getScheme();
+        if (!frontendUri.isAbsolute()
+                || frontendUri.getHost() == null
+                || (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme))) {
+            throw new IllegalArgumentException(
+                    "app.password-reset.frontend-url must be a valid HTTP(S) URL"
             );
         }
 

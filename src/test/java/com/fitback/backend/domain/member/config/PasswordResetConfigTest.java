@@ -52,6 +52,25 @@ class PasswordResetConfigTest {
     }
 
     @Test
+    void rejectsInvalidFrontendUrl() {
+        contextRunner
+                .withPropertyValues(
+                        "app.password-reset.frontend-url=http://[invalid",
+                        "app.password-reset.sender-email=test@fitback.com",
+                        "app.password-reset.token-ttl=5m",
+                        "app.password-reset.request-cooldown=1m"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining(
+                                    "app.password-reset.frontend-url "
+                                            + "must be a valid HTTP(S) URL"
+                            );
+                });
+    }
+
+    @Test
     void rejectsBlankSenderEmail() {
         contextRunner
                 .withPropertyValues(
