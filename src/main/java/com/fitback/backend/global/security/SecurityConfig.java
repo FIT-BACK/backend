@@ -11,6 +11,7 @@ import com.fitback.backend.global.security.util.JwtUtil;
 import jakarta.servlet.DispatcherType;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -28,11 +29,13 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
+@EnableConfigurationProperties(CorsProperties.class)
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtUtil jwtUtil;
     private final CustomUserDetailsService customUserDetailsService;
+    private final CorsProperties corsProperties;
 
     private static final String[] SWAGGER_URLS = {
             "/swagger-ui.html",
@@ -45,8 +48,15 @@ public class SecurityConfig {
             "/api/v1/auth/login",
             "/api/v1/auth/token/refresh",
             "/api/v1/auth/token/exchange",
+            "/api/v1/auth/password-reset/request",
+            "/api/v1/auth/password-reset",
             "/api/v1/auth/oauth2/**",
             "/api/v1/auth/callback/**"
+    };
+
+    private static final String[] PUBLIC_READ_URLS = {
+            "/api/v1/trends/**",
+            "/api/v1/tags/**"
     };
 
     private static final String[] HEALTH_URLS = {
@@ -54,13 +64,6 @@ public class SecurityConfig {
             "/actuator/health/liveness",
             "/actuator/health/readiness"
     };
-
-    private static final List<String> LOCAL_QA_ORIGINS = List.of(
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173"
-    );
 
     @Bean
     public SecurityFilterChain securityFilterChain(
@@ -81,6 +84,7 @@ public class SecurityConfig {
                         .requestMatchers(SWAGGER_URLS).permitAll()
                         .requestMatchers(HEALTH_URLS).permitAll()
                         .requestMatchers(NO_AUTH_URLS).permitAll()
+                        .requestMatchers(PUBLIC_READ_URLS).permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(oauth -> oauth
                         .authorizationEndpoint(auth -> auth.baseUri("/api/v1/auth/oauth2"))
@@ -101,7 +105,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(LOCAL_QA_ORIGINS);
+        configuration.setAllowedOrigins(corsProperties.allowedOrigins());
         configuration.setAllowedMethods(List.of(
                 "GET",
                 "POST",

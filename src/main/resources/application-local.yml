@@ -2,6 +2,22 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_EMAIL}
+    password: ${MAIL_APP_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 3000
+          writetimeout: 5000
+
   datasource:
     url: ${DB_URL:${LOCAL_DB_URL:jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}}
     username: ${DB_USER:${LOCAL_DB_USERNAME:root}}
@@ -63,6 +79,17 @@ hmac:
   secret-key: ${HMAC_SECRET_KEY}
 
 app:
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+      - http://localhost:5173
+      - http://127.0.0.1:3000
+      - http://127.0.0.1:5173
   oauth:
     front-redirect-uri: ${FRONT_REDIRECT_URI:http://localhost:3000/oauth/success}
     temp-token-ttl: 180000
+  password-reset:
+    frontend-url: ${FRONT_PASSWORD_RESET_URL:http://localhost:3000/reset-password}
+    sender-email: ${MAIL_EMAIL}
+    token-ttl: 5m
+    request-cooldown: 1m

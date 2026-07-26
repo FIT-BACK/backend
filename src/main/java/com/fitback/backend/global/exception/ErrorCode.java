@@ -22,6 +22,16 @@ public enum ErrorCode {
     ),
     ANALYSIS_IMAGE_STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ANALYSIS500_1", "분석 이미지를 저장할 수 없습니다."),
     TAG_NOT_FOUND(HttpStatus.NOT_FOUND, "TAG404_1", "태그를 찾을 수 없습니다."),
+    TREND_NOT_FOUND(HttpStatus.NOT_FOUND, "TREND404_1", "트렌드를 찾을 수 없습니다."),
+    LOOKBOOK_NOT_FOUND(HttpStatus.NOT_FOUND, "LOOKBOOK404_1", "룩북을 찾을 수 없습니다."),
+
+    CLOSET_NOT_FOUND(HttpStatus.NOT_FOUND, "CLOSET404_1", "저장한 항목을 찾을 수 없습니다."),
+    CLOSET_ALREADY_SAVED(HttpStatus.BAD_REQUEST, "CLOSET400_1", "이미 저장한 항목입니다."),
+    CLOSET_TARGET_UNSUPPORTED(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "CLOSET422_1",
+            "이 API에서 지원하지 않는 저장 대상입니다."
+    ),
 
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "AUTH409_1", "이미 사용 중인 이메일입니다."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "AUTH401_1", "이메일 또는 비밀번호가 올바르지 않습니다."),
@@ -29,11 +39,13 @@ public enum ErrorCode {
     SOCIAL_EMAIL_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH400_1", "카카오 이메일 제공 동의가 필요합니다."),
     SOCIAL_ID_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH400_2", "카카오 회원 식별값을 확인할 수 없습니다."),
     INVALID_TEMP_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH401_3", "유효하지 않은 임시 토큰입니다."),
+    INVALID_PASSWORD_RESET_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH401_4", "유효하지 않거나 만료된 비밀번호 재설정 토큰입니다."),
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "MEMBER409_1", "이미 사용중인 닉네임입니다."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "MEMBER400_1", "현재 비밀번호가 일치하지 않습니다."),
     PASSWORD_CHANGE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "MEMBER400_2", "소셜 로그인 회원은 비밀번호를 변경할 수 없습니다."),
     MEMBER_TAG_NOT_FOUND(HttpStatus.BAD_REQUEST, "MEMBER400_3", "존재하지 않는 태그가 포함되어 있습니다."),
     REJOIN_BLOCKED(HttpStatus.FORBIDDEN, "MEMBER403_1", "탈퇴 후 30일 동안 재가입할 수 없습니다."),
+    MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER404_1", "회원을 찾을 수 없습니다."),
 
     NOTIFICATION_SETTING_EMPTY(HttpStatus.BAD_REQUEST, "NOTIFICATION400_1", "변경할 알림 설정 값이 없습니다."),
 

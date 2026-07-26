@@ -996,4 +996,63 @@ if [ "$member_delete_cascades" != "$expected_member_delete_cascades" ]; then
   exit 1
 fi
 
+password_reset_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        COLUMN_NAME, ':',
+        IS_NULLABLE, ':',
+        DATA_TYPE, ':',
+        COALESCE(CHARACTER_MAXIMUM_LENGTH, DATETIME_PRECISION, 0), ':',
+        COALESCE(COLLATION_NAME, '-')
+      )
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = 'fitback'
+        AND TABLE_NAME = 'password_reset_token'
+      ORDER BY ORDINAL_POSITION;")"
+
+expected_password_reset_contract="$(printf '%s\n' \
+  'member_id:NO:bigint:0:-' \
+  'token_hash:NO:char:64:ascii_bin' \
+  'expires_at:NO:datetime:6:-' \
+  'created_at:NO:datetime:6:-')"
+
+if [ "$password_reset_contract" != "$expected_password_reset_contract" ]; then
+  echo 'Unexpected password reset token column contract:' >&2
+  printf '%s\n' "$password_reset_contract" >&2
+  exit 1
+fi
+
+password_reset_constraints="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        tc.CONSTRAINT_TYPE, ':',
+        tc.CONSTRAINT_NAME, ':',
+        GROUP_CONCAT(k.COLUMN_NAME ORDER BY k.ORDINAL_POSITION), ':',
+        COALESCE(MAX(k.REFERENCED_TABLE_NAME), '-'), ':',
+        COALESCE(MAX(rc.DELETE_RULE), '-')
+      )
+      FROM information_schema.TABLE_CONSTRAINTS tc
+      JOIN information_schema.KEY_COLUMN_USAGE k
+        ON k.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+       AND k.TABLE_NAME = tc.TABLE_NAME
+       AND k.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+      LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+        ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+       AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+      WHERE tc.TABLE_SCHEMA = 'fitback'
+        AND tc.TABLE_NAME = 'password_reset_token'
+      GROUP BY tc.CONSTRAINT_TYPE, tc.CONSTRAINT_NAME
+      ORDER BY tc.CONSTRAINT_TYPE, tc.CONSTRAINT_NAME;")"
+
+expected_password_reset_constraints="$(printf '%s\n' \
+  'FOREIGN KEY:FK_PASSWORD_RESET_TOKEN_MEMBER:member_id:member:CASCADE' \
+  'PRIMARY KEY:PRIMARY:member_id:-:-' \
+  'UNIQUE:UK_PASSWORD_RESET_TOKEN_TOKEN_HASH:token_hash:-:-')"
+
+if [ "$password_reset_constraints" != "$expected_password_reset_constraints" ]; then
+  echo 'Unexpected password reset token constraints:' >&2
+  printf '%s\n' "$password_reset_constraints" >&2
+  exit 1
+fi
+
 echo 'MySQL migration tests passed.'

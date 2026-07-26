@@ -26,7 +26,10 @@ class ProductionProfileConfigurationTest {
                     "CLOUDFRONT_PRIVATE_KEY_BASE64=dGVzdC1rZXk=",
                     "KAKAO_REST_API_KEY=test-kakao-client-id",
                     "KAKAO_REST_API_SECRET=test-kakao-client-secret",
-                    "FRONT_REDIRECT_URI=http://localhost:3000/oauth/success"
+                    "FRONT_REDIRECT_URI=http://localhost:3000/oauth/success",
+                    "MAIL_EMAIL=test@fitback.com",
+                    "MAIL_APP_PASSWORD=test-mail-app-password",
+                    "FRONT_PASSWORD_RESET_URL=https://frontend.example.com/reset-password"
             );
 
     @Test
@@ -67,6 +70,34 @@ class ProductionProfileConfigurationTest {
                     .isEqualTo("PT10M");
             assertThat(environment.getProperty("app.oauth.front-redirect-uri"))
                     .isEqualTo("http://localhost:3000/oauth/success");
+            assertThat(environment.getProperty("spring.mail.username"))
+                    .isEqualTo("test@fitback.com");
+            assertThat(environment.getProperty("spring.mail.password"))
+                    .isEqualTo("test-mail-app-password");
+            assertThat(environment.getProperty(
+                    "spring.mail.properties.mail.smtp.connectiontimeout",
+                    Integer.class
+            )).isEqualTo(5000);
+            assertThat(environment.getProperty(
+                    "spring.mail.properties.mail.smtp.timeout",
+                    Integer.class
+            )).isEqualTo(3000);
+            assertThat(environment.getProperty(
+                    "spring.mail.properties.mail.smtp.writetimeout",
+                    Integer.class
+            )).isEqualTo(5000);
+            assertThat(environment.getProperty("management.health.mail.enabled", Boolean.class))
+                    .isFalse();
+            assertThat(environment.getProperty("app.password-reset.frontend-url"))
+                    .isEqualTo("https://frontend.example.com/reset-password");
+            assertThat(environment.getProperty("app.password-reset.sender-email"))
+                    .isEqualTo("test@fitback.com");
+            assertThat(environment.getProperty("app.password-reset.token-ttl"))
+                    .isEqualTo("5m");
+            assertThat(environment.getProperty("app.password-reset.request-cooldown"))
+                    .isEqualTo("1m");
+            assertThat(environment.getProperty("app.cors.allowed-origins[0]"))
+                    .isEqualTo("https://frontend-chi-one-35.vercel.app");
         });
     }
 

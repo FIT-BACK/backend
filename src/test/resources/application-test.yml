@@ -1,4 +1,20 @@
 spring:
+  mail:
+    host: localhost
+    port: 3025
+    username: test@example.com
+    password: test-app-password
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 3000
+          writetimeout: 5000
+
   datasource:
     url: jdbc:h2:mem:fitback_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
     username: sa
@@ -56,6 +72,23 @@ hmac:
   secret-key: test-hmac-secret-key-for-test-codes
 
 app:
+  cors:
+    allowed-origins:
+      - https://frontend-chi-one-35.vercel.app
+      - http://localhost:3000
+      - http://localhost:5173
+      - http://127.0.0.1:3000
+      - http://127.0.0.1:5173
   oauth:
     front-redirect-uri: http://localhost:3000/oauth/success
     temp-token-ttl: 180000
+  password-reset:
+    frontend-url: http://localhost:3000/reset-password
+    sender-email: test@example.com
+    token-ttl: 5m
+    request-cooldown: 1m
+
+management:
+  health:
+    mail:
+      enabled: false

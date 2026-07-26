@@ -30,6 +30,23 @@ public class MemberRequest {
             String password
     ) {}
 
+    //비밀번호 재설정 링크 요청
+    public record PasswordResetLinkRequest(
+            @NotBlank(message = "이메일은 필수 입력값입니다.")
+            @Email(message = "올바른 이메일 형식이 아닙니다.")
+            String email
+    ) {}
+
+    //비밀번호 재설정 요청
+    public record PasswordResetRequest(
+            @NotBlank(message = "재설정 토큰은 필수 입력값입니다.")
+            String resetToken,
+
+            @NotBlank(message = "새 비밀번호는 필수 입력값입니다.")
+            @Size(min = 8, max = 64, message = "새 비밀번호는 8~64자여야 합니다.")
+            String newPassword
+    ) {}
+
     //토큰 재발급
     public record RefreshRequest(
             @NotBlank(message = "Refresh Token은 필수 입니다.")
