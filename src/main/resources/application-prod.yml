@@ -3,6 +3,19 @@ spring:
     init:
       mode: never
 
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_EMAIL}
+    password: ${MAIL_APP_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USER}
@@ -64,3 +77,5 @@ app:
   oauth:
     front-redirect-uri: ${FRONT_REDIRECT_URI}
     temp-token-ttl: 180000
+  password-reset:
+    frontend-url: ${FRONT_PASSWORD_RESET_URL}
