@@ -5,19 +5,19 @@ import com.fitback.backend.domain.member.dto.MemberResponse;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
-import com.fitback.backend.domain.member.repository.WithdrawalEmailBlockRepository;
 import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
+import com.fitback.backend.global.security.token.TempTokenPayload;
+import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
-import com.fitback.backend.global.util.HmacUtil;
+import com.fitback.backend.global.util.LowercaseNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -27,22 +27,25 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final MemberRepository memberRepository;
     private final JwtUtil jwtUtil;
+    private final TempTokenStore tempTokenStore;
 
-    private final WithdrawalEmailBlockRepository withdrawalEmailBlockRepository;
-    private final HmacUtil hmacUtil;
+    private final RejoinBlockChecker rejoinBlockChecker;
     private final NotificationSettingService notificationSettingService;
 
     //이메일 회원가입
     @Transactional
     public MemberResponse.SignUpResponse signUp(MemberRequest.SignUpRequest dto) {
+        String email = LowercaseNormalizer.normalize(dto.email());
 
         // 이메일 중복 검사
-        if (memberRepository.existsByEmail(dto.email())) {
+        if (memberRepository.existsByEmail(email)) {
             throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         //30일 재가입 차단 검사
-        assertNotRejoinBlocked(dto.email());
+        if (rejoinBlockChecker.isRejoinBlocked(email)) {
+            throw new BusinessException(ErrorCode.REJOIN_BLOCKED);
+        }
 
         //임시 닉네임 설정 (중복 방지)
         String temporalNickName;
@@ -54,7 +57,7 @@ public class AuthService {
         String encodedPassword = passwordEncoder.encode(dto.password());
 
         //member 객체 생성 후 저장
-        Member newMember = Member.create(dto.email(), temporalNickName, encodedPassword, LoginProvider.EMAIL);
+        Member newMember = Member.create(email, temporalNickName, encodedPassword, LoginProvider.EMAIL);
         Member savedMember = memberRepository.save(newMember);
 
         //회원가입과 같은 트랜잭션에서 기본 알림 설정 row 생성
@@ -77,9 +80,10 @@ public class AuthService {
     //이메일 로그인 서비스 메서드
     @Transactional
     public MemberResponse.LoginResponse login(MemberRequest.LoginRequest dto) {
+        String email = LowercaseNormalizer.normalize(dto.email());
 
         //이메일로 member 찾기
-        Member member = memberRepository.findByEmail(dto.email())
+        Member member = memberRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
         //비밀번호 일치 여부 확인
@@ -103,7 +107,7 @@ public class AuthService {
     }
 
     @Transactional
-    public MemberResponse.RefreshResponse refresh(MemberRequest.RefreshRequest dto) {
+    public MemberResponse.TokenResponse refresh(MemberRequest.RefreshRequest dto) {
 
         String refreshToken = dto.refreshToken();
 
@@ -113,7 +117,7 @@ public class AuthService {
         }
 
         //이메일로 Member 찾기
-        String email = jwtUtil.getEmailFromToken(refreshToken);
+        String email = LowercaseNormalizer.normalize(jwtUtil.getEmailFromToken(refreshToken));
         Member member = memberRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
 
@@ -128,7 +132,7 @@ public class AuthService {
         String newRefreshToken = jwtUtil.createRefreshToken(authMember);
         member.updateRefreshToken(newRefreshToken);
 
-        return MemberResponse.toRefreshResponse(newAccessToken, newRefreshToken);
+        return MemberResponse.toTokenResponse(newAccessToken, newRefreshToken);
     }
 
     //로그아웃
@@ -144,11 +148,21 @@ public class AuthService {
         member.clearRefreshToken();
     }
 
-    //탈퇴 후 30일 재가입 차단 검사 (이메일·소셜 가입 공용)
-    private void assertNotRejoinBlocked(String email) {
-        String hashedEmail = hmacUtil.hashHex(email);
-        if (withdrawalEmailBlockRepository.existsByEmailHashAndBlockedUntilAfter(hashedEmail, LocalDateTime.now())) {
-            throw new BusinessException(ErrorCode.REJOIN_BLOCKED);
-        }
+    //카카오 임시 토큰을 실제 access/refresh 토큰으로 교환 (일회용)
+    @Transactional
+    public MemberResponse.TokenExchangeResponse exchangeToken(String tempToken) {
+        TempTokenPayload payload = tempTokenStore.consume(tempToken)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TEMP_TOKEN));
+
+        Member member = memberRepository.findById(payload.memberId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+
+        AuthMember authMember = new AuthMember(member);
+        String accessToken = jwtUtil.createAccessToken(authMember);
+        String refreshToken = jwtUtil.createRefreshToken(authMember);
+
+        member.updateRefreshToken(refreshToken);
+
+        return MemberResponse.toTokenExchangeResponse(accessToken, refreshToken, payload.isNewMember());
     }
 }

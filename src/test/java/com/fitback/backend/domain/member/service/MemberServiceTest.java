@@ -677,6 +677,23 @@ class MemberServiceTest {
                 .isBefore(LocalDateTime.now().plusDays(31));
     }
 
+    //회원 탈퇴 - 이메일 대소문자가 달라도 정규화한 이메일 기준으로 차단 해시 생성
+    @Test
+    void deleteAccountNormalizeEmailBeforeHashTest(){
+        Member deleteMember = createTestMember(1L, "User@FITBACK.COM", "nick", "encodedPw", LoginProvider.EMAIL);
+        AuthMember authMember = new AuthMember(deleteMember);
+        Member withdrawnMember = createTestMember(99L, WithdrawnMember.EMAIL, WithdrawnMember.NICKNAME, null, LoginProvider.EMAIL);
+
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(deleteMember));
+        when(memberRepository.findByEmail(WithdrawnMember.EMAIL)).thenReturn(Optional.of(withdrawnMember));
+        when(hmacUtil.hashHex("user@fitback.com")).thenReturn("hashed-email");
+        when(withdrawalEmailBlockRepository.findByEmailHash("hashed-email")).thenReturn(Optional.empty());
+
+        memberService.deleteAccount(authMember);
+
+        verify(hmacUtil).hashHex("user@fitback.com");
+    }
+
     //회원 탈퇴 - 기존 차단 기록이 있으면 renew로 갱신, 신규 저장 안 함
     @Test
     void deleteAccountRenewBlockTest(){

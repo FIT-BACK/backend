@@ -3,6 +3,7 @@ package com.fitback.backend.global.security.service;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.global.security.entity.AuthMember;
+import com.fitback.backend.global.util.LowercaseNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -17,9 +18,10 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        String email = LowercaseNormalizer.normalize(username);
 
         //이메일로 로그인하므로 이메일로 member 찾기
-        Member member = memberRepository.findByEmail(username)
+        Member member = memberRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("Email을 찾을 수 없습니다."));
 
         return new AuthMember(member);

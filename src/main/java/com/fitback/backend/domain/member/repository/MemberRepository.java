@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.member.repository;
 
+import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
@@ -21,4 +22,6 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT member FROM Member member WHERE member.id = :memberId")
     Optional<Member> findByIdForUpdate(@Param("memberId") Long memberId);
+
+    Optional<Member> findByLoginProviderAndSocialUid(LoginProvider loginProvider, String socialUid);
 }

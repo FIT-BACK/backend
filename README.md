@@ -30,9 +30,19 @@ cp .env.example .env
 DB_URL=jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
 DB_USER=your_mysql_user
 DB_PASSWORD=your_mysql_password
-SHOPPING_PROVIDER=fixture
+JWT_SECRET_KEY=change-me-to-at-least-32-byte-random-secret
+AWS_REGION=ap-northeast-2
+IMAGE_BUCKET=fitback-prod-images-123209654535-ap-northeast-2
+IMAGE_CDN_BASE_URL=https://d1p2ierkew26r1.cloudfront.net
+CLOUDFRONT_KEY_PAIR_ID=K1XNJ3JDEDCVL3
+CLOUDFRONT_PRIVATE_KEY_BASE64=bG9jYWwtcHJpdmF0ZS1rZXk=
+HMAC_SECRET_KEY=change-me-to-a-stable-32-byte-random-secret
 SHOPIFY_ENABLED=false
 SHOPPING_CANDIDATE_TOKEN_TTL=PT10M
+SHOPPING_PROVIDER=fixture
+KAKAO_REST_API_KEY=team_kakao_rest_api_key
+KAKAO_REST_API_SECRET=team_kakao_client_secret
+FRONT_REDIRECT_URI=http://localhost:3000/oauth/success
 ```
 
 쇼핑 공급자는 최종 공급자가 확정되기 전까지 `fixture`를 기본값으로 사용합니다.
@@ -100,7 +110,7 @@ CloudFront 기본 도메인을 운영 HTTPS 주소로 사용합니다. EC2의 HT
 
 ## Security
 
-JWT 기반 인증을 사용합니다. `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/auth/sign`, `/api/v1/auth/login`, `/api/v1/auth/token/refresh` 경로만 인증 없이 허용하며, 그 외 모든 API는 인증이 필요합니다.
+JWT 기반 인증을 사용합니다. `SecurityConfig`에서 Swagger/OpenAPI 경로와 `/api/v1/auth/sign`, `/api/v1/auth/login`, `/api/v1/auth/token/refresh`, `/api/v1/auth/token/exchange`, 카카오 로그인 경로(`/api/v1/auth/oauth2/**`, `/api/v1/auth/callback/**`)만 인증 없이 허용하며, 그 외 모든 API는 인증이 필요합니다.
 요청의 `Authorization: Bearer {accessToken}` 헤더는 `JwtAuthFilter`가 검증하여 인증 정보를 설정합니다.
 REST API 기준으로 CSRF, Form Login, HTTP Basic은 비활성화되어 있으며, 세션은 `STATELESS`로 사용합니다.
 
@@ -119,6 +129,8 @@ JWT는 응답 본문과 `Authorization` 헤더로 전달하며 credential cookie
 CloudFront 경유 요청만 실패하면 CloudFront의 Origin 요청 헤더 전달 및 OPTIONS 캐시 정책을
 별도로 확인합니다. 운영 프론트엔드 Origin 추가는 이 로컬 QA 허용 범위에 포함하지 않습니다.
 이 설정은 S3 이미지 업로드 CORS 또는 EC2 보안 그룹 설정과는 무관합니다.
+
+카카오 소셜 로그인은 Spring OAuth2 Client 기반의 백엔드 주도 리다이렉트 방식입니다. `GET /api/v1/auth/oauth2/kakao`로 시작하면 카카오 인증 페이지로 리다이렉트되고, 콜백(`/api/v1/auth/callback/kakao`) 처리 후 프론트 URL(`FRONT_REDIRECT_URI`)로 일회용 임시 토큰 또는 에러 코드를 전달합니다. access/refresh JWT는 임시 토큰을 `POST /api/v1/auth/token/exchange`로 교환할 때 발급됩니다.
 
 ## 브랜치 컨벤션
 

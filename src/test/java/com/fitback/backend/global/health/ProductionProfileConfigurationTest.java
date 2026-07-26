@@ -23,7 +23,10 @@ class ProductionProfileConfigurationTest {
                     "IMAGE_BUCKET=fitback-prod-images",
                     "IMAGE_CDN_BASE_URL=https://images.example.com",
                     "CLOUDFRONT_KEY_PAIR_ID=TESTKEY",
-                    "CLOUDFRONT_PRIVATE_KEY_BASE64=dGVzdC1rZXk="
+                    "CLOUDFRONT_PRIVATE_KEY_BASE64=dGVzdC1rZXk=",
+                    "KAKAO_REST_API_KEY=test-kakao-client-id",
+                    "KAKAO_REST_API_SECRET=test-kakao-client-secret",
+                    "FRONT_REDIRECT_URI=http://localhost:3000/oauth/success"
             );
 
     @Test
@@ -62,6 +65,8 @@ class ProductionProfileConfigurationTest {
                     .isFalse();
             assertThat(environment.getProperty("shopping.candidate-token.ttl"))
                     .isEqualTo("PT10M");
+            assertThat(environment.getProperty("app.oauth.front-redirect-uri"))
+                    .isEqualTo("http://localhost:3000/oauth/success");
         });
     }
 
@@ -71,5 +76,24 @@ class ProductionProfileConfigurationTest {
                 "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration",
                 getClass().getClassLoader()
         )).isTrue();
+    }
+
+    @Test
+    void productionProfileMapsKakaoAndOAuthEnvironmentVariables() {
+        contextRunner.run(context -> {
+            Environment environment = context.getEnvironment();
+
+            //카카오 클라이언트 자격정보는 env로 주입
+            assertThat(environment.getProperty("spring.security.oauth2.client.registration.kakao.client-id"))
+                    .isEqualTo("test-kakao-client-id");
+            assertThat(environment.getProperty("spring.security.oauth2.client.registration.kakao.client-secret"))
+                    .isEqualTo("test-kakao-client-secret");
+            //프론트 리다이렉트 주소는 env로 주입
+            assertThat(environment.getProperty("app.oauth.front-redirect-uri"))
+                    .isEqualTo("http://localhost:3000/oauth/success");
+            //임시 토큰 TTL은 고정값
+            assertThat(environment.getProperty("app.oauth.temp-token-ttl", Long.class))
+                    .isEqualTo(180000L);
+        });
     }
 }

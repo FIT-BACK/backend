@@ -8,7 +8,7 @@
 2. GitHub OIDC로 AWS IAM 역할을 위임받아 ECR의 `git-${GITHUB_SHA}` 태그를 조회하고, 없을 때만 푸시한다. 같은 SHA를 다시 실행하면 기존 불변 태그를 재사용한다.
 3. ECR에서 `sha256` digest를 확인해 변경 불가능한 이미지 참조를 생성한다.
 4. `EC2_INSTANCE_ID` 저장소 변수가 설정된 경우에만 SSM Run Command로 EC2 배포를 실행한다.
-5. EC2는 고유한 release 디렉터리에서 Parameter Store의 DB, JWT, HMAC 값을 읽고 Compose stack을 갱신한다.
+5. EC2는 고유한 release 디렉터리에서 Parameter Store의 DB, JWT, HMAC, Kakao OAuth, CloudFront 개인 키 값을 읽고 Compose stack을 갱신한다.
 6. Nginx와 backend health check가 실패하면 직전 release 전체로 rollback한다.
 7. `PUBLIC_BASE_URL`이 설정되어 있으면 CloudFront HTTPS 주소에서 Nginx와 backend readiness를 다시 확인한다.
 
@@ -78,6 +78,9 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 /fitback/prod/db-password
 /fitback/prod/jwt-secret-key
 /fitback/prod/hmac-secret-key
+/fitback/prod/kakao-rest-api-key
+/fitback/prod/kakao-rest-api-secret
+/fitback/prod/front-redirect-uri
 /fitback/prod/cloudfront-private-key
 ```
 
@@ -89,13 +92,21 @@ db-user=<application-user>
 db-password=<generated-password>
 jwt-secret-key=<at-least-32-byte-random-secret>
 hmac-secret-key=<stable-at-least-32-byte-random-secret>
+kakao-rest-api-key=<kakao-rest-api-key>
+kakao-rest-api-secret=<kakao-rest-api-secret>
+front-redirect-uri=https://<frontend-origin>/<oauth-callback-path>
 cloudfront-private-key=<base64-encoded-pkcs8-der>
 ```
+
+`front-redirect-uri`는 카카오 로그인 성공/실패 후 임시 토큰 또는 에러 코드를 붙여 이동할 프론트 HTTPS URL이다.
+운영 배포 전 카카오 개발자 콘솔의 Redirect URI에는 백엔드 콜백
+`https://d1ra74et9h0ohu.cloudfront.net/api/v1/auth/callback/kakao`를 등록한다.
 
 `cloudfront-private-key`는 PEM header/footer를 포함한 전체 문자열이 아니라 PKCS8 DER bytes를
 줄바꿈 없는 Base64로 인코딩한다. 전체 PEM을 다시 Base64로 인코딩하면 RSA key 크기에 따라
 Standard Parameter의 4096자 제한을 초과할 수 있다. 실제 키 원문과 Base64 값은 문서,
-저장소, GitHub payload, 로그에 기록하지 않는다.
+저장소, GitHub payload, 로그에 기록하지 않는다. `kakao-rest-api-secret`도 같은 기준으로
+문서, 저장소, GitHub payload, 로그에 기록하지 않는다.
 
 고객 관리형 KMS key로 암호화하면 EC2 instance role에 해당 key의 `kms:Decrypt` 권한도 추가해야 한다.
 
@@ -189,7 +200,7 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - AWS CLI v2, Docker Engine, Docker Compose v2, `curl`, `tar`, `base64`, `flock`가 설치되어야 한다.
 - Docker daemon이 실행 중이어야 한다.
 - ECR 이미지 platform과 EC2 architecture가 일치해야 한다. 현재 workflow는 multi-architecture 이미지를 만들지 않는다.
-- `/opt/fitback/releases`에 배포 파일과 mode `600`의 비민감 runtime `.env`를 저장하고 `/opt/fitback/current` symlink를 교체할 수 있어야 한다. DB, JWT, CloudFront 개인 키 값은 파일에 기록하지 않고 Compose 프로세스 환경으로만 전달한다.
+- `/opt/fitback/releases`에 배포 파일과 mode `600`의 비민감 runtime `.env`를 저장하고 `/opt/fitback/current` symlink를 교체할 수 있어야 한다. DB, JWT, HMAC, Kakao OAuth, CloudFront 개인 키 값은 파일에 기록하지 않고 Compose 프로세스 환경으로만 전달한다.
 
 ## 네트워크 계약
 
@@ -234,7 +245,11 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V5__add_product_provider_contract.sql`,
 `V6__add_recommendation_result_contract.sql`,
 `V7__add_withdrawal_block_and_notification_tables.sql`,
-`V8__add_member_delete_cascades.sql`을 순서대로 적용하고 Hibernate
+`V8__add_member_delete_cascades.sql`,
+`V9__add_saved_product.sql`,
+`V10__expand_recommendation_rank_to_ten.sql`,
+`V11__add_report_custom_tag.sql`,
+`V12__add_member_social_uid.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
 
@@ -243,9 +258,9 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `scripts/deploy/remote_deploy.sh`는 다음 작업을 수행한다.
 
 1. digest가 포함된 ECR 이미지 참조를 검증한다.
-2. Parameter Store의 DB, JWT, HMAC, Base64 CloudFront 개인 키 값을 단일 행 값으로 검증한다.
+2. Parameter Store의 DB, JWT, HMAC, Kakao OAuth, Base64 CloudFront 개인 키 값을 단일 행 값으로 검증한다.
 3. host 단위 `flock`을 획득해 같은 EC2에서 두 배포가 동시에 실행되지 않게 한다.
-4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, CloudFront 개인 키 비밀값은 현재 Compose 프로세스 환경으로 전달한다.
+4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, Kakao OAuth, CloudFront 개인 키 비밀값은 현재 Compose 프로세스 환경으로 전달한다.
 5. EC2 instance role로 ECR에 로그인하고 backend 이미지를 pull한다.
 6. 새 release의 `docker compose up -d --remove-orphans`를 실행한다.
 7. `/nginx-health`와 backend container health가 모두 정상인지 확인한다.
@@ -253,6 +268,8 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 9. 실패하면 직전 release의 Compose asset, Nginx 설정, `.env`, image digest를 함께 다시 시작하고 health를 재검증한 뒤 `current` symlink도 직전 release로 복원한다.
 
 첫 배포가 실패해 이전 release가 없으면 실패한 stack을 내리고 `.env`를 제거한다. 배포 중 예기치 않은 오류, `INT`/`TERM`, 활성 symlink 교체 실패도 같은 rollback 경로를 사용한다. rollback 중 pull, 시작 또는 health 검증이 실패하면 별도의 rollback 실패 코드로 종료한다.
+
+카카오 로그인 임시 토큰은 현재 backend process 내부 메모리에 저장하므로 운영 배포는 단일 backend container를 전제로 한다. backend를 여러 instance/container로 수평 확장할 때는 임시 토큰 저장소를 Redis 같은 공유 저장소로 교체해야 한다.
 
 Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. GitHub Actions는 managed node 전달 제한 60초와 실행 제한 900초를 합친 구간에 여유 시간을 더해 polling한다. workflow 중단 또는 polling timeout이 발생하면 `ssm:CancelCommand`를 호출하고, 최대 60초 동안 terminal 상태를 확인한 뒤 마지막 상태와 표준 출력을 기록한다. `send-command --timeout-seconds`는 실행 제한이 아니라 managed node 전달 제한이다.
 
@@ -275,8 +292,8 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | 중복 배포 | `flock` mock test | 두 번째 실행 거절 |
 | rollback 자체 실패 | mock test | 비정상 종료 코드 반환 |
 | 활성화 실패 및 INT/TERM | mock test | 직전 release 복원 |
-| DB/JWT/HMAC 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
-| Flyway V1~V8 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환, 이미지 old/new purpose/status, 상품 provider·추천 결과 계약, 회원 알림/탈퇴 cascade 계약 확인 |
+| DB/JWT/HMAC/Kakao 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
+| Flyway V1~V12 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환, 이미지 old/new purpose/status, 상품 provider·추천 결과·저장 계약, 회원 알림/탈퇴 cascade, 카카오 `social_uid` 계약 확인 |
 
 검증 명령:
 
@@ -294,7 +311,7 @@ GRADLE_USER_HOME=/tmp/fitback-gradle-home ./gradlew clean build
 3. `/nginx-health`, backend container health, `/actuator/health/readiness` 순서로 확인한다.
 4. 자동 rollback이 실패한 경우 직전 release 디렉터리에서 비밀값을 출력하지 않고 `remote_deploy.sh`의 rollback 실패 원인을 확인한다.
 5. 같은 정상 SHA를 `workflow_dispatch`로 다시 실행해 ECR 태그 재사용과 SSM 배포를 복구 경로로 사용할 수 있다.
-6. 로그나 이슈에는 DB URL/user/password, Parameter Store 복호화 값, 인증 토큰을 붙이지 않는다.
+6. 로그나 이슈에는 DB URL/user/password, Kakao secret, CloudFront 개인 키, Parameter Store 복호화 값, 인증 토큰을 붙이지 않는다.
 
 SSM 배포 완료 후 CloudFront 외부 검증은 원본과 무관한 CloudFront 장애나 일시적인 네트워크 오류로 정상 release를 되돌리지 않도록 비차단 경고로 처리한다. 경고가 발생하면 현재 release는 유지하며 위 순서로 CloudFront와 원본 상태를 확인한 뒤 같은 main SHA를 다시 실행한다.
 
@@ -333,7 +350,8 @@ ECR 및 S3 저장량, CloudFront 요청·데이터 전송, 소량의 CloudWatch 
 - [x] private S3 이미지 버킷, CloudFront OAC, trusted key group을 구성했다.
 - [x] 운영 프론트 Origin의 S3 Presigned POST 전용 CORS와 실제 업로드를 검증했다.
 - [x] 이미지 저장소 Repository Variable 세 개와 `/fitback/prod/cloudfront-private-key` SecureString을 구성했다.
-- [ ] `/fitback/prod/jwt-secret-key`, `/fitback/prod/hmac-secret-key`를 포함한 운영 Parameter Store SecureString을 모두 생성했다.
+- [ ] `/fitback/prod/jwt-secret-key`, `/fitback/prod/hmac-secret-key`, Kakao OAuth 값을 포함한 운영 Parameter Store SecureString을 모두 생성했다.
+- [ ] 카카오 개발자 콘솔에 운영 백엔드 콜백 URI를 등록했다.
 - [x] GitHub OIDC 역할에 SSM 최소 권한을 추가했다.
 - [x] GitHub Repository Variable `EC2_INSTANCE_ID`를 추가했다.
 - [x] `Backend CD`를 실제 실행해 SSM command와 health check를 확인했다.

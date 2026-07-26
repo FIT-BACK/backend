@@ -56,8 +56,8 @@ seed_baseline_schema() {
     | docker exec -i "$container_name" mysql -uroot "$database"
 }
 
-seed_baseline_schema fitback 'member_id BIGINT NOT NULL PRIMARY KEY'
-seed_baseline_schema fitback_existing_refresh_token 'member_id BIGINT NOT NULL PRIMARY KEY, refresh_token VARCHAR(512) NULL'
+seed_baseline_schema fitback "member_id BIGINT NOT NULL PRIMARY KEY, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL'"
+seed_baseline_schema fitback_existing_refresh_token "member_id BIGINT NOT NULL PRIMARY KEY, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL', refresh_token VARCHAR(512) NULL"
 
 for database in fitback fitback_existing_refresh_token; do
   while IFS= read -r migration; do
@@ -74,6 +74,22 @@ for database in fitback fitback_existing_refresh_token; do
     docker exec -i "$container_name" mysql -uroot "$database" < "$migration"
   done < <(printf '%s\n' src/main/resources/db/migration/V*.sql | sort -V)
 done
+
+docker exec "$container_name" mysql -uroot -e \
+  "CREATE DATABASE fitback_mismatched_social_uid;
+   CREATE TABLE fitback_mismatched_social_uid.member (
+     member_id BIGINT NOT NULL PRIMARY KEY,
+     login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL',
+     social_uid VARCHAR(100) NULL,
+     CONSTRAINT UK_MEMBER_PROVIDER_UID UNIQUE (social_uid)
+   );"
+
+if docker exec -i "$container_name" mysql -uroot fitback_mismatched_social_uid \
+  < src/main/resources/db/migration/V12__add_member_social_uid.sql \
+  >/dev/null 2>&1; then
+  echo 'V12 accepted a mismatched UK_MEMBER_PROVIDER_UID constraint.' >&2
+  exit 1
+fi
 
 expected_product_contract="$(printf '%s\n' \
   'availability:NO:varchar' \
@@ -465,12 +481,16 @@ done
 
 actual_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
-  -e "SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE)
+  -e "SELECT CASE
+          WHEN TABLE_NAME = 'member' AND COLUMN_NAME = 'social_uid'
+            THEN CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE, ':', COLUMN_TYPE)
+          ELSE CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE)
+        END
       FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = 'fitback'
         AND (
           (TABLE_NAME = 'image' AND COLUMN_NAME = 'presigned_expires_at')
-          OR (TABLE_NAME = 'member' AND COLUMN_NAME = 'refresh_token')
+          OR (TABLE_NAME = 'member' AND COLUMN_NAME IN ('refresh_token', 'social_uid'))
           OR (
             TABLE_NAME = 'analysis_report'
             AND COLUMN_NAME IN ('original_image_id', 'deleted_at', 'purge_after')
@@ -507,6 +527,7 @@ expected_contract="$(printf '%s\n' \
   'marketing_consent_history.marketing_consent_history_id=NO' \
   'marketing_consent_history.member_id=NO' \
   'member.refresh_token=YES' \
+  'member.social_uid=YES:varchar(100)' \
   'member_notification_setting.analysis_complete_enabled=NO' \
   'member_notification_setting.lookbook_liked_enabled=NO' \
   'member_notification_setting.marketing_enabled=NO' \
@@ -614,6 +635,25 @@ for database in fitback fitback_existing_refresh_token; do
     exit 1
   fi
 done
+
+member_social_uid_unique="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(tc.CONSTRAINT_NAME, ':', GROUP_CONCAT(k.COLUMN_NAME ORDER BY k.ORDINAL_POSITION))
+      FROM information_schema.TABLE_CONSTRAINTS tc
+      JOIN information_schema.KEY_COLUMN_USAGE k
+        ON k.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+       AND k.TABLE_NAME = tc.TABLE_NAME
+       AND k.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+      WHERE tc.TABLE_SCHEMA = 'fitback'
+        AND tc.TABLE_NAME = 'member'
+        AND tc.CONSTRAINT_TYPE = 'UNIQUE'
+        AND tc.CONSTRAINT_NAME = 'UK_MEMBER_PROVIDER_UID'
+      GROUP BY tc.CONSTRAINT_NAME;")"
+
+if [ "$member_social_uid_unique" != 'UK_MEMBER_PROVIDER_UID:login_provider,social_uid' ]; then
+  echo "Unexpected member social uid unique constraint: $member_social_uid_unique" >&2
+  exit 1
+fi
 
 notification_defaults="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \

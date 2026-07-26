@@ -31,7 +31,11 @@ import org.springframework.test.web.servlet.MockMvc;
         "image.storage.cdn-base-url=https://example.invalid",
         "image.storage.cloudfront-key-pair-id=TESTKEY",
         "image.storage.cloudfront-private-key-base64=dGVzdC1wcml2YXRlLWtleQ==",
-        "hmac.secret-key=test-hmac-secret-key-for-health-endpoint-tests"
+        "hmac.secret-key=test-hmac-secret-key-for-health-endpoint-tests",
+        "HMAC_SECRET_KEY=test-hmac-secret-key-for-health-endpoint-tests",
+        "KAKAO_REST_API_KEY=test-kakao-client-id",
+        "KAKAO_REST_API_SECRET=test-kakao-client-secret",
+        "FRONT_REDIRECT_URI=http://localhost:3000/oauth/success"
 })
 class HealthEndpointIntegrationTest {
 
