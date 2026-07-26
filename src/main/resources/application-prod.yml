@@ -55,6 +55,11 @@ spring:
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
 
+management:
+  health:
+    mail:
+      enabled: false
+
 jwt:
   token:
     secretKey: ${JWT_SECRET_KEY}

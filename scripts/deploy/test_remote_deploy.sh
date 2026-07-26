@@ -15,6 +15,9 @@ special_hmac_secret="hmac\$\$\\'secret\\value#=end-for-fitback-test"
 special_kakao_rest_api_key="kakao-rest-api-key-for-fitback-test"
 special_kakao_rest_api_secret="kakao\$\$\\'secret\\value#=end-for-fitback-test"
 special_front_redirect_uri="https://frontend.example.com/oauth/success"
+special_mail_email="mail@fitback.com"
+special_mail_app_password="mail\$\$\\'password\\value#=end-for-fitback-test"
+special_front_password_reset_url="https://frontend.example.com/reset-password"
 special_cloudfront_private_key="Y2xvdWRmcm9udC1wcml2YXRlLWtleS1mb3ItdGVzdA=="
 
 mkdir -p "$mock_bin"
@@ -66,6 +69,15 @@ if [ "${1:-}" = 'ssm' ] && [ "${2:-}" = 'get-parameter' ]; then
       ;;
     */front-redirect-uri)
       printf '%s\n' "$MOCK_FRONT_REDIRECT_URI"
+      ;;
+    */mail-email)
+      printf '%s\n' "$MOCK_MAIL_EMAIL"
+      ;;
+    */mail-app-password)
+      printf '%s\n' "$MOCK_MAIL_APP_PASSWORD"
+      ;;
+    */front-password-reset-url)
+      printf '%s\n' "$MOCK_FRONT_PASSWORD_RESET_URL"
       ;;
     */cloudfront-private-key)
       printf '%s\n' "$MOCK_CLOUDFRONT_PRIVATE_KEY"
@@ -214,6 +226,9 @@ run_deploy() {
   MOCK_KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
   MOCK_KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
   MOCK_FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  MOCK_MAIL_EMAIL="$special_mail_email" \
+  MOCK_MAIL_APP_PASSWORD="$special_mail_app_password" \
+  MOCK_FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
   MOCK_CLOUDFRONT_PRIVATE_KEY="$special_cloudfront_private_key" \
   MOCK_CURL_FAIL_COUNT="${MOCK_CURL_FAIL_COUNT:-0}" \
   MOCK_DOCKER_FAIL_MATCH="${MOCK_DOCKER_FAIL_MATCH:-}" \
@@ -256,6 +271,9 @@ parsed_password="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
   KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
   KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
   FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  MAIL_EMAIL="$special_mail_email" \
+  MAIL_APP_PASSWORD="$special_mail_app_password" \
+  FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
@@ -270,6 +288,9 @@ parsed_jwt_secret="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
   KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
   KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
   FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  MAIL_EMAIL="$special_mail_email" \
+  MAIL_APP_PASSWORD="$special_mail_app_password" \
+  FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
@@ -284,6 +305,9 @@ parsed_hmac_secret="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
   KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
   KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
   FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  MAIL_EMAIL="$special_mail_email" \
+  MAIL_APP_PASSWORD="$special_mail_app_password" \
+  FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
@@ -298,6 +322,9 @@ parsed_cloudfront_private_key="$(DB_URL='jdbc:mysql://database.internal:3306/fit
   KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
   KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
   FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  MAIL_EMAIL="$special_mail_email" \
+  MAIL_APP_PASSWORD="$special_mail_app_password" \
+  FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
@@ -312,6 +339,9 @@ parsed_kakao_rest_api_key="$(DB_URL='jdbc:mysql://database.internal:3306/fitback
   KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
   KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
   FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  MAIL_EMAIL="$special_mail_email" \
+  MAIL_APP_PASSWORD="$special_mail_app_password" \
+  FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
@@ -326,6 +356,9 @@ parsed_kakao_rest_api_secret="$(DB_URL='jdbc:mysql://database.internal:3306/fitb
   KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
   KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
   FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  MAIL_EMAIL="$special_mail_email" \
+  MAIL_APP_PASSWORD="$special_mail_app_password" \
+  FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
@@ -340,14 +373,34 @@ parsed_front_redirect_uri="$(DB_URL='jdbc:mysql://database.internal:3306/fitback
   KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
   KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
   FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  MAIL_EMAIL="$special_mail_email" \
+  MAIL_APP_PASSWORD="$special_mail_app_password" \
+  FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
   --env-file "$env_file" \
   config --environment | sed -n 's/^FRONT_REDIRECT_URI=//p')"
 test "$parsed_front_redirect_uri" = "$special_front_redirect_uri"
+parsed_mail_app_password="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
+  DB_USER='fitback_app' \
+  DB_PASSWORD="$special_password" \
+  JWT_SECRET_KEY="$special_jwt_secret" \
+  HMAC_SECRET_KEY="$special_hmac_secret" \
+  KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
+  KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
+  FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  MAIL_EMAIL="$special_mail_email" \
+  MAIL_APP_PASSWORD="$special_mail_app_password" \
+  FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
+  CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
+  docker compose \
+  --project-directory "$release_one" \
+  --env-file "$env_file" \
+  config --environment | sed -n 's/^MAIL_APP_PASSWORD=//p')"
+test "$parsed_mail_app_password" = "$special_mail_app_password"
 grep_status=0
-grep -Eq '^(DB_(URL|USER|PASSWORD)|JWT_SECRET_KEY|HMAC_SECRET_KEY|KAKAO_REST_API_KEY|KAKAO_REST_API_SECRET|FRONT_REDIRECT_URI|CLOUDFRONT_PRIVATE_KEY_BASE64)=' "$env_file" || grep_status=$?
+grep -Eq '^(DB_(URL|USER|PASSWORD)|JWT_SECRET_KEY|HMAC_SECRET_KEY|KAKAO_REST_API_KEY|KAKAO_REST_API_SECRET|FRONT_REDIRECT_URI|MAIL_EMAIL|MAIL_APP_PASSWORD|FRONT_PASSWORD_RESET_URL|CLOUDFRONT_PRIVATE_KEY_BASE64)=' "$env_file" || grep_status=$?
 if [ "$grep_status" -eq 0 ]; then
   echo 'Secret was written to .env.' >&2
   exit 1
@@ -370,6 +423,10 @@ if grep -Fq "$special_hmac_secret" "$mock_log"; then
 fi
 if grep -Fq "$special_kakao_rest_api_secret" "$mock_log"; then
   echo 'Kakao REST API secret leaked into a command log.' >&2
+  exit 1
+fi
+if grep -Fq "$special_mail_app_password" "$mock_log"; then
+  echo 'Mail app password leaked into a command log.' >&2
   exit 1
 fi
 if grep -Fq "$special_cloudfront_private_key" "$mock_log"; then

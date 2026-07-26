@@ -178,6 +178,9 @@ compose_in() {
   KAKAO_REST_API_KEY="$kakao_rest_api_key" \
   KAKAO_REST_API_SECRET="$kakao_rest_api_secret" \
   FRONT_REDIRECT_URI="$front_redirect_uri" \
+  MAIL_EMAIL="$mail_email" \
+  MAIL_APP_PASSWORD="$mail_app_password" \
+  FRONT_PASSWORD_RESET_URL="$front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$cloudfront_private_key_base64" \
     docker compose \
     --project-directory "$release_dir" \
@@ -284,6 +287,9 @@ hmac_secret_key="$(get_parameter 'hmac-secret-key')"
 kakao_rest_api_key="$(get_parameter 'kakao-rest-api-key')"
 kakao_rest_api_secret="$(get_parameter 'kakao-rest-api-secret')"
 front_redirect_uri="$(get_parameter 'front-redirect-uri')"
+mail_email="$(get_parameter 'mail-email')"
+mail_app_password="$(get_parameter 'mail-app-password')"
+front_password_reset_url="$(get_parameter 'front-password-reset-url')"
 cloudfront_private_key_base64="$(get_parameter 'cloudfront-private-key')"
 
 require_single_line 'db-url' "$db_url"
@@ -294,10 +300,23 @@ require_single_line 'hmac-secret-key' "$hmac_secret_key"
 require_single_line 'kakao-rest-api-key' "$kakao_rest_api_key"
 require_single_line 'kakao-rest-api-secret' "$kakao_rest_api_secret"
 require_single_line 'front-redirect-uri' "$front_redirect_uri"
+require_single_line 'mail-email' "$mail_email"
+require_single_line 'mail-app-password' "$mail_app_password"
+require_single_line 'front-password-reset-url' "$front_password_reset_url"
 require_single_line 'cloudfront-private-key' "$cloudfront_private_key_base64"
 
 if [[ ! "$front_redirect_uri" =~ ^https://[^[:space:]]+$ ]]; then
   echo 'front-redirect-uri must be an HTTPS URL.' >&2
+  exit 1
+fi
+
+if [[ ! "$mail_email" =~ ^[^[:space:]@]+@[^[:space:]@]+$ ]]; then
+  echo 'mail-email must be a valid email address.' >&2
+  exit 1
+fi
+
+if [[ ! "$front_password_reset_url" =~ ^https://[^[:space:]]+$ ]]; then
+  echo 'front-password-reset-url must be an HTTPS URL.' >&2
   exit 1
 fi
 
