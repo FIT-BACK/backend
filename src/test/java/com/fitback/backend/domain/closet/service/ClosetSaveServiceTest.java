@@ -16,6 +16,12 @@ import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.domain.tag.entity.TagType;
+import com.fitback.backend.domain.trend.entity.TrendContent;
+import com.fitback.backend.domain.trend.entity.TrendTag;
+import com.fitback.backend.domain.trend.repository.TrendContentRepository;
+import com.fitback.backend.domain.trend.repository.TrendTagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.LocalDateTime;
@@ -39,6 +45,12 @@ class ClosetSaveServiceTest {
 
     @Mock
     private MemberRepository memberRepository;
+
+    @Mock
+    private TrendContentRepository trendContentRepository;
+
+    @Mock
+    private TrendTagRepository trendTagRepository;
 
     @InjectMocks
     private ClosetSaveService closetSaveService;
@@ -72,6 +84,7 @@ class ClosetSaveServiceTest {
 
     @Test
     void saveFailsWhenAlreadySaved() {
+        when(trendContentRepository.existsById(1L)).thenReturn(true);
         when(closetSaveRepository.existsByMemberIdAndTargetTypeAndTargetId(1L, ClosetTargetType.TREND, 1L))
                 .thenReturn(true);
 
@@ -81,6 +94,20 @@ class ClosetSaveServiceTest {
                 );
         verify(closetSaveRepository, never()).save(any());
         verify(memberRepository, never()).findById(any());
+    }
+
+    @Test
+    void saveFailsWhenTrendTargetDoesNotExist() {
+        when(trendContentRepository.existsById(999L)).thenReturn(false);
+
+        assertThatThrownBy(() ->
+                closetSaveService.save(1L, new ClosetSaveRequest.Create(ClosetTargetType.TREND, 999L)))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TREND_NOT_FOUND)
+                );
+        verify(closetSaveRepository, never())
+                .existsByMemberIdAndTargetTypeAndTargetId(any(), any(), any());
+        verify(closetSaveRepository, never()).save(any());
     }
 
     @Test
@@ -167,10 +194,50 @@ class ClosetSaveServiceTest {
     }
 
     @Test
+    void getClosetSavesEnrichesTrendItemsWithThumbnailAndTags() {
+        ClosetSave closetSave = createClosetSave(100L, ClosetTargetType.TREND, 1L, LocalDateTime.now());
+        TrendContent trend = TrendContent.create(
+                "미니멀룩",
+                "https://cdn.fitback.app/trends/1.jpg",
+                "설명",
+                member
+        );
+        ReflectionTestUtils.setField(trend, "id", 1L);
+        Tag minimalTag = Tag.create("미니멀", TagType.DETAIL);
+        ReflectionTestUtils.setField(minimalTag, "id", 10L);
+        when(closetSaveRepository.findAllByMemberIdAndTargetTypeOrderByCreatedAtDescIdDesc(
+                eq(1L), eq(ClosetTargetType.TREND), any(Pageable.class)))
+                .thenReturn(List.of(closetSave));
+        when(trendContentRepository.findAllById(List.of(1L))).thenReturn(List.of(trend));
+        when(trendTagRepository.findAllByTrendIdInOrderByIdAsc(List.of(1L)))
+                .thenReturn(List.of(TrendTag.create(trend, minimalTag)));
+
+        ClosetSaveResponse.ClosetSaveList response =
+                closetSaveService.getClosetSaves(1L, ClosetTargetType.TREND, null);
+
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).thumbnailUrl()).isEqualTo("https://cdn.fitback.app/trends/1.jpg");
+        assertThat(response.items().get(0).tags()).containsExactly("미니멀");
+    }
+
+    @Test
+    void getClosetSavesLeavesNonTrendItemsUnenriched() {
+        ClosetSave closetSave = createClosetSave(100L, ClosetTargetType.LOOKBOOK, 12L, LocalDateTime.now());
+        when(closetSaveRepository.findAllByMemberIdOrderByCreatedAtDescIdDesc(eq(1L), any(Pageable.class)))
+                .thenReturn(List.of(closetSave));
+
+        ClosetSaveResponse.ClosetSaveList response = closetSaveService.getClosetSaves(1L, null, null);
+
+        assertThat(response.items().get(0).thumbnailUrl()).isNull();
+        assertThat(response.items().get(0).tags()).isEmpty();
+        verify(trendContentRepository, never()).findAllById(any());
+    }
+
+    @Test
     void getClosetSavesUsesCursorCreatedAtAndIdForNextPage() {
         LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 19, 12, 0);
         ClosetSave cursorClosetSave = createClosetSave(100L, ClosetTargetType.LOOKBOOK, 1L, cursorCreatedAt);
-        ClosetSave nextClosetSave = createClosetSave(99L, ClosetTargetType.LOOKBOOK, 1L, cursorCreatedAt.minusMinutes(1));
+        ClosetSave nextClosetSave = createClosetSave(99L, ClosetTargetType.LOOKBOOK, 99L, cursorCreatedAt.minusMinutes(1));
         when(closetSaveRepository.findByIdAndMemberId(100L, 1L)).thenReturn(Optional.of(cursorClosetSave));
         when(closetSaveRepository.findNextPage(eq(1L), eq(cursorCreatedAt), eq(100L), any(Pageable.class)))
                 .thenReturn(List.of(nextClosetSave));
@@ -186,7 +253,7 @@ class ClosetSaveServiceTest {
     void getClosetSavesUsesCursorWithTargetTypeFilterForNextPage() {
         LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 19, 12, 0);
         ClosetSave cursorClosetSave = createClosetSave(100L, ClosetTargetType.TREND, 1L, cursorCreatedAt);
-        ClosetSave nextClosetSave = createClosetSave(99L, ClosetTargetType.TREND, 1L, cursorCreatedAt.minusMinutes(1));
+        ClosetSave nextClosetSave = createClosetSave(99L, ClosetTargetType.TREND, 99L, cursorCreatedAt.minusMinutes(1));
         when(closetSaveRepository.findByIdAndMemberId(100L, 1L)).thenReturn(Optional.of(cursorClosetSave));
         when(closetSaveRepository.findNextPageByTargetType(
                 eq(1L), eq(ClosetTargetType.TREND), eq(cursorCreatedAt), eq(100L), any(Pageable.class)))

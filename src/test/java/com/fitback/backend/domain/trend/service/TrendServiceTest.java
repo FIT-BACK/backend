@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.tag.entity.Tag;
@@ -39,6 +40,9 @@ class TrendServiceTest {
     @Mock
     private TrendTagRepository trendTagRepository;
 
+    @Mock
+    private ClosetSaveRepository closetSaveRepository;
+
     @InjectMocks
     private TrendService trendService;
 
@@ -67,7 +71,7 @@ class TrendServiceTest {
                         TrendTag.create(trend, streetTag)
                 ));
 
-        TrendResponse.TrendDetail response = trendService.getTrendDetail(100L);
+        TrendResponse.TrendDetail response = trendService.getTrendDetail(100L, null);
 
         assertThat(response.title()).isEqualTo("미니멀룩");
         assertThat(response.imageUrl()).isEqualTo("https://cdn.fitback.app/trends/100.jpg");
@@ -81,7 +85,7 @@ class TrendServiceTest {
         when(trendContentRepository.findById(100L)).thenReturn(Optional.of(trend));
         when(trendTagRepository.findAllByTrendIdOrderByIdAsc(100L)).thenReturn(List.of());
 
-        TrendResponse.TrendDetail response = trendService.getTrendDetail(100L);
+        TrendResponse.TrendDetail response = trendService.getTrendDetail(100L, null);
 
         assertThat(response.tags()).isEmpty();
     }
@@ -90,7 +94,7 @@ class TrendServiceTest {
     void getTrendDetailFailsWhenTrendDoesNotExist() {
         when(trendContentRepository.findById(999L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> trendService.getTrendDetail(999L))
+        assertThatThrownBy(() -> trendService.getTrendDetail(999L, null))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TREND_NOT_FOUND)
                 );
@@ -114,7 +118,7 @@ class TrendServiceTest {
         when(trendTagRepository.findAllByTrendIdInOrderByIdAsc(returnedTrendIds))
                 .thenReturn(List.of(TrendTag.create(trendPage.get(0), minimalTag)));
 
-        TrendResponse.TrendList response = trendService.getTrends(null);
+        TrendResponse.TrendList response = trendService.getTrends(null, null, null);
 
         assertThat(response.items()).hasSize(10);
         assertThat(response.items().get(0).trendId()).isEqualTo(100L);
@@ -133,7 +137,7 @@ class TrendServiceTest {
         when(trendTagRepository.findAllByTrendIdInOrderByIdAsc(List.of(100L)))
                 .thenReturn(List.of());
 
-        TrendResponse.TrendList response = trendService.getTrends(null);
+        TrendResponse.TrendList response = trendService.getTrends(null, null, null);
 
         assertThat(response.items()).hasSize(1);
         assertThat(response.nextCursor()).isNull();
@@ -154,7 +158,7 @@ class TrendServiceTest {
         when(trendTagRepository.findAllByTrendIdInOrderByIdAsc(List.of(99L)))
                 .thenReturn(List.of());
 
-        TrendResponse.TrendList response = trendService.getTrends(100L);
+        TrendResponse.TrendList response = trendService.getTrends(100L, null, null);
 
         assertThat(response.items())
                 .extracting(TrendResponse.TrendItem::trendId)
@@ -165,7 +169,7 @@ class TrendServiceTest {
     void getTrendsFailsWhenCursorDoesNotExist() {
         when(trendContentRepository.findById(999L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> trendService.getTrends(999L))
+        assertThatThrownBy(() -> trendService.getTrends(999L, null, null))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TREND_NOT_FOUND)
                 );

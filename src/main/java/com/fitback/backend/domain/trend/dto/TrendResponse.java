@@ -40,15 +40,17 @@ public final class TrendResponse {
             Long trendId,
             String title,
             String imageUrl,
-            List<String> tags
+            List<String> tags,
+            boolean isSaved
     ) {
 
-        public static TrendItem toTrendItem(TrendContent trend, List<String> tags) {
+        public static TrendItem toTrendItem(TrendContent trend, List<String> tags, boolean isSaved) {
             return TrendItem.builder()
                     .trendId(trend.getId())
                     .title(trend.getTitle())
                     .imageUrl(trend.getImageUrl())
                     .tags(List.copyOf(tags))
+                    .isSaved(isSaved)
                     .build();
         }
     }
@@ -59,15 +61,17 @@ public final class TrendResponse {
             String title,
             String imageUrl,
             String description,
-            List<String> tags
+            List<String> tags,
+            boolean isSaved
     ) {
 
-        public static TrendDetail toTrendDetail(TrendContent trend, List<String> tags) {
+        public static TrendDetail toTrendDetail(TrendContent trend, List<String> tags, boolean isSaved) {
             return TrendDetail.builder()
                     .title(trend.getTitle())
                     .imageUrl(trend.getImageUrl())
                     .description(trend.getDescription())
                     .tags(List.copyOf(tags))
+                    .isSaved(isSaved)
                     .build();
         }
     }

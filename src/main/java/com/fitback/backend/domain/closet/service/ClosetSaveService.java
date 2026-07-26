@@ -7,9 +7,15 @@ import com.fitback.backend.domain.closet.entity.ClosetTargetType;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.trend.entity.TrendContent;
+import com.fitback.backend.domain.trend.repository.TrendContentRepository;
+import com.fitback.backend.domain.trend.repository.TrendTagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,10 +31,15 @@ public class ClosetSaveService {
 
     private final ClosetSaveRepository closetSaveRepository;
     private final MemberRepository memberRepository;
+    private final TrendContentRepository trendContentRepository;
+    private final TrendTagRepository trendTagRepository;
 
     // 마이 클로젯 저장
     @Transactional
     public ClosetSave save(Long memberId, ClosetSaveRequest.Create request) {
+
+        // 저장 대상이 실제로 존재하는지 확인 (TREND만 이번 범위에서 검증)
+        validateTargetExists(request.targetType(), request.targetId());
 
         // 이미 저장된 항목인지 확인
         boolean alreadySaved = closetSaveRepository.existsByMemberIdAndTargetTypeAndTargetId(
@@ -46,6 +57,13 @@ public class ClosetSaveService {
         ClosetSave closetSave = ClosetSave.create(member, request.targetType(), request.targetId());
 
         return closetSaveRepository.save(closetSave);
+    }
+
+    // 저장 대상 유효성 검사
+    private void validateTargetExists(ClosetTargetType targetType, Long targetId) {
+        if (targetType == ClosetTargetType.TREND && !trendContentRepository.existsById(targetId)) {
+            throw new BusinessException(ErrorCode.TREND_NOT_FOUND);
+        }
     }
 
     // 마이 클로젯 저장 취소
@@ -75,11 +93,27 @@ public class ClosetSaveService {
                 Math.min(closetSavePage.size(), CLOSET_SAVE_PAGE_SIZE)
         );
 
+        // TREND 저장 항목의 썸네일/태그 조회 (LOOKBOOK/ANALYSIS_REPORT는 각 도메인 작업에서 연동 예정)
+        List<Long> trendTargetIds = closetSaves.stream()
+                .filter(closetSave -> closetSave.getTargetType() == ClosetTargetType.TREND)
+                .map(ClosetSave::getTargetId)
+                .toList();
+        Map<Long, TrendContent> trendsById = findTrendsById(trendTargetIds);
+        Map<Long, List<String>> tagsByTrendId = findTagsByTrendIds(trendTargetIds);
+
         // responseDTO 로 변환
-        // TREND/LOOKBOOK/ANALYSIS_REPORT 모두 thumbnailUrl=null, tags=[] 로 반환
-        // (TREND enrichment는 feature/#60-trend가 develop에 머지된 이후 별도 작업으로 추가 예정)
         List<ClosetSaveResponse.ClosetSaveItem> items = closetSaves.stream()
-                .map(closetSave -> ClosetSaveResponse.ClosetSaveItem.toClosetSaveItem(closetSave, null, List.of()))
+                .map(closetSave -> {
+                    if (closetSave.getTargetType() != ClosetTargetType.TREND) {
+                        return ClosetSaveResponse.ClosetSaveItem.toClosetSaveItem(closetSave, null, List.of());
+                    }
+                    TrendContent trend = trendsById.get(closetSave.getTargetId());
+                    return ClosetSaveResponse.ClosetSaveItem.toClosetSaveItem(
+                            closetSave,
+                            trend == null ? null : trend.getImageUrl(),
+                            tagsByTrendId.getOrDefault(closetSave.getTargetId(), List.of())
+                    );
+                })
                 .toList();
 
         // 다음 cursor 계산
@@ -111,5 +145,30 @@ public class ClosetSaveService {
                 : closetSaveRepository.findNextPageByTargetType(
                         memberId, targetType, cursorClosetSave.getCreatedAt(), cursorClosetSave.getId(),
                         CLOSET_SAVE_PAGE_REQUEST);
+    }
+
+    // trendId 로 트렌드 조회 (N+1 방지)
+    private Map<Long, TrendContent> findTrendsById(List<Long> trendIds) {
+        if (trendIds.isEmpty()) {
+            return Map.of();
+        }
+        return trendContentRepository.findAllById(trendIds).stream()
+                .collect(Collectors.toMap(TrendContent::getId, Function.identity()));
+    }
+
+    // trendId 로 태그 조회 (N+1 방지)
+    private Map<Long, List<String>> findTagsByTrendIds(List<Long> trendIds) {
+        if (trendIds.isEmpty()) {
+            return Map.of();
+        }
+        return trendTagRepository.findAllByTrendIdInOrderByIdAsc(trendIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        trendTag -> trendTag.getTrend().getId(),
+                        Collectors.mapping(
+                                trendTag -> trendTag.getTag().getTagName(),
+                                Collectors.toList()
+                        )
+                ));
     }
 }

@@ -49,6 +49,11 @@ public class SecurityConfig {
             "/api/v1/auth/callback/**"
     };
 
+    private static final String[] PUBLIC_READ_URLS = {
+            "/api/v1/trends/**",
+            "/api/v1/tags/**"
+    };
+
     private static final String[] HEALTH_URLS = {
             "/actuator/health",
             "/actuator/health/liveness",
@@ -81,6 +86,7 @@ public class SecurityConfig {
                         .requestMatchers(SWAGGER_URLS).permitAll()
                         .requestMatchers(HEALTH_URLS).permitAll()
                         .requestMatchers(NO_AUTH_URLS).permitAll()
+                        .requestMatchers(PUBLIC_READ_URLS).permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(oauth -> oauth
                         .authorizationEndpoint(auth -> auth.baseUri("/api/v1/auth/oauth2"))
