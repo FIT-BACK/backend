@@ -11,6 +11,9 @@ spring:
           starttls:
             enable: true
             required: true
+          connectiontimeout: 5000
+          timeout: 3000
+          writetimeout: 5000
 
   datasource:
     url: jdbc:h2:mem:fitback_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
@@ -76,6 +79,7 @@ app:
     frontend-url: http://localhost:3000/reset-password
     sender-email: test@example.com
     token-ttl: 5m
+    request-cooldown: 1m
 
 management:
   health:

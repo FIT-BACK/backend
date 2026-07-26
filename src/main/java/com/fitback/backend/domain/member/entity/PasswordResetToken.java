@@ -11,6 +11,7 @@ import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.regex.Pattern;
@@ -73,6 +74,15 @@ public class PasswordResetToken extends BaseCreateTimeEntity {
     //만료 시각과 같아도 만료된 토큰으로 처리
     public boolean isExpired(LocalDateTime now) {
         return !expiresAt.isAfter(Objects.requireNonNull(now, "now must not be null"));
+    }
+
+    //생성 시각을 기준으로 재설정 링크 재요청 가능 여부 확인
+    public boolean isReissueBlocked(LocalDateTime now, Duration cooldown) {
+        Objects.requireNonNull(now, "now must not be null");
+        Objects.requireNonNull(cooldown, "cooldown must not be null");
+
+        return getCreatedAt() != null
+                && getCreatedAt().plus(cooldown).isAfter(now);
     }
 
     private static String validateTokenHash(String tokenHash) {

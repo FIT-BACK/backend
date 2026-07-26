@@ -7,7 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record PasswordResetProperties(
         String frontendUrl,
         String senderEmail,
-        Duration tokenTtl
+        Duration tokenTtl,
+        Duration requestCooldown
 ) {
 
     public PasswordResetProperties {
@@ -29,6 +30,22 @@ public record PasswordResetProperties(
         if (tokenTtl == null || tokenTtl.isZero() || tokenTtl.isNegative()) {
             throw new IllegalArgumentException(
                     "app.password-reset.token-ttl must be positive"
+            );
+        }
+
+        //재설정 링크 재요청 대기 시간이 양수인지 검증
+        if (requestCooldown == null
+                || requestCooldown.isZero()
+                || requestCooldown.isNegative()) {
+            throw new IllegalArgumentException(
+                    "app.password-reset.request-cooldown must be positive"
+            );
+        }
+
+        //재요청 대기 시간은 토큰 만료 시간보다 짧게 제한
+        if (requestCooldown.compareTo(tokenTtl) >= 0) {
+            throw new IllegalArgumentException(
+                    "app.password-reset.request-cooldown must be shorter than token-ttl"
             );
         }
     }

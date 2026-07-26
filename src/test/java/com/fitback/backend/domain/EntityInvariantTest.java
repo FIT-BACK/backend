@@ -19,11 +19,13 @@ import com.fitback.backend.domain.trend.entity.TrendContent;
 import com.fitback.backend.domain.trend.entity.TrendTag;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class EntityInvariantTest {
 
@@ -84,6 +86,34 @@ class EntityInvariantTest {
         assertThat(token.isExpired(expiresAt)).isTrue();
         assertThat(token.isExpired(expiresAt.plusNanos(1_000))).isTrue();
         assertThatThrownBy(() -> token.isExpired(null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void passwordResetTokenBlocksReissueDuringCooldown() {
+        LocalDateTime createdAt = LocalDateTime.of(2026, 7, 26, 18, 0);
+        PasswordResetToken token = PasswordResetToken.create(
+                member(),
+                "a".repeat(64),
+                createdAt.plusMinutes(5)
+        );
+        ReflectionTestUtils.setField(token, "createdAt", createdAt);
+
+        assertThat(token.isReissueBlocked(
+                createdAt.plusSeconds(59),
+                Duration.ofMinutes(1)
+        )).isTrue();
+        assertThat(token.isReissueBlocked(
+                createdAt.plusMinutes(1),
+                Duration.ofMinutes(1)
+        )).isFalse();
+        assertThatThrownBy(() -> token.isReissueBlocked(
+                null,
+                Duration.ofMinutes(1)
+        )).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> token.isReissueBlocked(
+                createdAt,
+                null
+        )).isInstanceOf(NullPointerException.class);
     }
 
     @Test

@@ -74,6 +74,18 @@ class ProductionProfileConfigurationTest {
                     .isEqualTo("test@fitback.com");
             assertThat(environment.getProperty("spring.mail.password"))
                     .isEqualTo("test-mail-app-password");
+            assertThat(environment.getProperty(
+                    "spring.mail.properties.mail.smtp.connectiontimeout",
+                    Integer.class
+            )).isEqualTo(5000);
+            assertThat(environment.getProperty(
+                    "spring.mail.properties.mail.smtp.timeout",
+                    Integer.class
+            )).isEqualTo(3000);
+            assertThat(environment.getProperty(
+                    "spring.mail.properties.mail.smtp.writetimeout",
+                    Integer.class
+            )).isEqualTo(5000);
             assertThat(environment.getProperty("management.health.mail.enabled", Boolean.class))
                     .isFalse();
             assertThat(environment.getProperty("app.password-reset.frontend-url"))
@@ -82,6 +94,8 @@ class ProductionProfileConfigurationTest {
                     .isEqualTo("test@fitback.com");
             assertThat(environment.getProperty("app.password-reset.token-ttl"))
                     .isEqualTo("5m");
+            assertThat(environment.getProperty("app.password-reset.request-cooldown"))
+                    .isEqualTo("1m");
         });
     }
 

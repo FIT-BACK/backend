@@ -89,18 +89,26 @@ public class PasswordResetService {
             return null;
         }
 
+        LocalDateTime now = LocalDateTime.now(clock);
+        PasswordResetToken existingToken = passwordResetTokenRepository
+                .findById(member.getId())
+                .orElse(null);
+
+        //재요청 대기 시간에는 기존 토큰과 메일을 유지
+        if (existingToken != null
+                && existingToken.isReissueBlocked(now, properties.requestCooldown())) {
+            return null;
+        }
+
+        //재요청 대기 시간이 지나면 기존 토큰을 교체
+        if (existingToken != null) {
+            passwordResetTokenRepository.delete(existingToken);
+            passwordResetTokenRepository.flush();
+        }
+
         PasswordResetTokenUtil.GeneratedToken generatedToken =
                 passwordResetTokenUtil.generate();
-
-        //기존 토큰 삭제 후 새 토큰 저장
-        passwordResetTokenRepository.findById(member.getId())
-                .ifPresent(existingToken -> {
-                    passwordResetTokenRepository.delete(existingToken);
-                    passwordResetTokenRepository.flush();
-                });
-
-        LocalDateTime expiresAt = LocalDateTime.now(clock)
-                .plus(properties.tokenTtl());
+        LocalDateTime expiresAt = now.plus(properties.tokenTtl());
         PasswordResetToken newToken = PasswordResetToken.create(
                 member,
                 generatedToken.tokenHash(),

@@ -14,6 +14,9 @@ spring:
           starttls:
             enable: true
             required: true
+          connectiontimeout: 5000
+          timeout: 3000
+          writetimeout: 5000
 
   datasource:
     url: ${DB_URL:${LOCAL_DB_URL:jdbc:mysql://localhost:3306/fitback?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}}
@@ -83,3 +86,4 @@ app:
     frontend-url: ${FRONT_PASSWORD_RESET_URL:http://localhost:3000/reset-password}
     sender-email: ${MAIL_EMAIL}
     token-ttl: 5m
+    request-cooldown: 1m

@@ -17,7 +17,8 @@ class PasswordResetConfigTest {
                 .withPropertyValues(
                         "app.password-reset.frontend-url=http://localhost:3000/reset-password",
                         "app.password-reset.sender-email=test@fitback.com",
-                        "app.password-reset.token-ttl=5m"
+                        "app.password-reset.token-ttl=5m",
+                        "app.password-reset.request-cooldown=1m"
                 )
                 .run(context -> {
                     assertThat(context).hasNotFailed();
@@ -28,6 +29,7 @@ class PasswordResetConfigTest {
                             .isEqualTo("http://localhost:3000/reset-password");
                     assertThat(properties.senderEmail()).isEqualTo("test@fitback.com");
                     assertThat(properties.tokenTtl()).isEqualTo(Duration.ofMinutes(5));
+                    assertThat(properties.requestCooldown()).isEqualTo(Duration.ofMinutes(1));
                 });
     }
 
@@ -37,7 +39,8 @@ class PasswordResetConfigTest {
                 .withPropertyValues(
                         "app.password-reset.frontend-url= ",
                         "app.password-reset.sender-email=test@fitback.com",
-                        "app.password-reset.token-ttl=5m"
+                        "app.password-reset.token-ttl=5m",
+                        "app.password-reset.request-cooldown=1m"
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -54,7 +57,8 @@ class PasswordResetConfigTest {
                 .withPropertyValues(
                         "app.password-reset.frontend-url=http://localhost:3000/reset-password",
                         "app.password-reset.sender-email= ",
-                        "app.password-reset.token-ttl=5m"
+                        "app.password-reset.token-ttl=5m",
+                        "app.password-reset.request-cooldown=1m"
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -71,13 +75,51 @@ class PasswordResetConfigTest {
                 .withPropertyValues(
                         "app.password-reset.frontend-url=http://localhost:3000/reset-password",
                         "app.password-reset.sender-email=test@fitback.com",
-                        "app.password-reset.token-ttl=0s"
+                        "app.password-reset.token-ttl=0s",
+                        "app.password-reset.request-cooldown=1m"
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .hasStackTraceContaining(
                                     "app.password-reset.token-ttl must be positive"
+                            );
+                });
+    }
+
+    @Test
+    void rejectsNonPositiveRequestCooldown() {
+        contextRunner
+                .withPropertyValues(
+                        "app.password-reset.frontend-url=http://localhost:3000/reset-password",
+                        "app.password-reset.sender-email=test@fitback.com",
+                        "app.password-reset.token-ttl=5m",
+                        "app.password-reset.request-cooldown=0s"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining(
+                                    "app.password-reset.request-cooldown must be positive"
+                            );
+                });
+    }
+
+    @Test
+    void rejectsRequestCooldownNotShorterThanTokenTtl() {
+        contextRunner
+                .withPropertyValues(
+                        "app.password-reset.frontend-url=http://localhost:3000/reset-password",
+                        "app.password-reset.sender-email=test@fitback.com",
+                        "app.password-reset.token-ttl=5m",
+                        "app.password-reset.request-cooldown=5m"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining(
+                                    "app.password-reset.request-cooldown "
+                                            + "must be shorter than token-ttl"
                             );
                 });
     }

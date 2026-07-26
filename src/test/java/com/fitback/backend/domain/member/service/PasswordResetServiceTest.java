@@ -71,7 +71,8 @@ class PasswordResetServiceTest {
         PasswordResetProperties properties = new PasswordResetProperties(
                 "http://localhost:3000/reset-password",
                 "test@fitback.com",
-                Duration.ofMinutes(5)
+                Duration.ofMinutes(5),
+                Duration.ofMinutes(1)
         );
         passwordResetService = new PasswordResetService(
                 memberRepository,
@@ -92,6 +93,11 @@ class PasswordResetServiceTest {
                 member,
                 "a".repeat(64),
                 LocalDateTime.of(2026, 7, 26, 10, 1)
+        );
+        ReflectionTestUtils.setField(
+                existingToken,
+                "createdAt",
+                LocalDateTime.of(2026, 7, 26, 9, 58)
         );
         PasswordResetTokenUtil.GeneratedToken generatedToken =
                 new PasswordResetTokenUtil.GeneratedToken(
@@ -126,6 +132,35 @@ class PasswordResetServiceTest {
         order.verify(transactionManager).commit(transactionStatus);
         order.verify(passwordResetMailSender)
                 .sendResetLink("member@fitback.com", "reset-token");
+    }
+
+    @Test
+    void requestResetLinkKeepsExistingTokenDuringCooldown() {
+        Member member = createMember(1L, "member@fitback.com", LoginProvider.EMAIL);
+        PasswordResetToken existingToken = PasswordResetToken.create(
+                member,
+                "a".repeat(64),
+                LocalDateTime.of(2026, 7, 26, 10, 4)
+        );
+        ReflectionTestUtils.setField(
+                existingToken,
+                "createdAt",
+                LocalDateTime.of(2026, 7, 26, 9, 59, 30)
+        );
+
+        when(memberRepository.findByEmailForUpdate("member@fitback.com"))
+                .thenReturn(Optional.of(member));
+        when(passwordResetTokenRepository.findById(member.getId()))
+                .thenReturn(Optional.of(existingToken));
+
+        passwordResetService.requestResetLink(
+                new MemberRequest.PasswordResetLinkRequest("member@fitback.com")
+        );
+
+        verify(passwordResetTokenUtil, never()).generate();
+        verify(passwordResetTokenRepository, never()).delete(any());
+        verify(passwordResetTokenRepository, never()).saveAndFlush(any());
+        verify(passwordResetMailSender, never()).sendResetLink(any(), any());
     }
 
     @Test

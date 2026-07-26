@@ -38,7 +38,8 @@ class PasswordResetMailSenderTest {
         PasswordResetProperties properties = new PasswordResetProperties(
                 "http://localhost:3000/reset-password",
                 "sender@fitback.com",
-                Duration.ofMinutes(5)
+                Duration.ofMinutes(5),
+                Duration.ofMinutes(1)
         );
         passwordResetMailSender = new PasswordResetMailSender(mailSender, properties);
     }

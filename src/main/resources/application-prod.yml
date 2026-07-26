@@ -15,6 +15,9 @@ spring:
           starttls:
             enable: true
             required: true
+          connectiontimeout: 5000
+          timeout: 3000
+          writetimeout: 5000
 
   datasource:
     url: ${DB_URL}
@@ -86,3 +89,4 @@ app:
     frontend-url: ${FRONT_PASSWORD_RESET_URL}
     sender-email: ${MAIL_EMAIL}
     token-ttl: 5m
+    request-cooldown: 1m
