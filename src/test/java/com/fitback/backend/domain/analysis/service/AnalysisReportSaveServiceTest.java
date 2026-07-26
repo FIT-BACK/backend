@@ -27,6 +27,7 @@ import com.fitback.backend.domain.recommendation.entity.RecommendedItem;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -57,6 +58,9 @@ class AnalysisReportSaveServiceTest {
     @Mock
     private ImageUploadService imageUploadService;
 
+    @Mock
+    private EntityManager entityManager;
+
     private AnalysisReportSaveService service;
 
     @BeforeEach
@@ -66,7 +70,8 @@ class AnalysisReportSaveServiceTest {
                 closetSaveRepository,
                 savedAnalysisItemRepository,
                 recommendedItemRepository,
-                imageUploadService
+                imageUploadService,
+                entityManager
         );
     }
 
@@ -138,6 +143,7 @@ class AnalysisReportSaveServiceTest {
                 );
         assertThat(outcome.response().selectedItems().getFirst().price().amount())
                 .isEqualByComparingTo("28900");
+        verify(entityManager).refresh(any(ClosetSave.class));
     }
 
     @Test
