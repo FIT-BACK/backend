@@ -104,6 +104,9 @@ jobs:
             KAKAO_REST_API_KEY
             KAKAO_REST_API_SECRET
             FRONT_REDIRECT_URI
+            MAIL_EMAIL
+            MAIL_APP_PASSWORD
+            FRONT_PASSWORD_RESET_URL
             SPRING_FLYWAY_ENABLED
           ]
           missing_validation_env = required_validation_env.reject do |name|

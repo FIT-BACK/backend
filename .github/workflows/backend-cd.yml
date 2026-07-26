@@ -77,6 +77,9 @@ jobs:
             --env KAKAO_REST_API_KEY=fitback-cd-validation-kakao-client-id \
             --env KAKAO_REST_API_SECRET=fitback-cd-validation-kakao-client-secret \
             --env FRONT_REDIRECT_URI=https://frontend.example.invalid/oauth/success \
+            --env MAIL_EMAIL=validation@example.invalid \
+            --env MAIL_APP_PASSWORD=validation-app-password \
+            --env FRONT_PASSWORD_RESET_URL=https://frontend.example.invalid/reset-password \
             --env AWS_REGION=ap-northeast-2 \
             --env IMAGE_BUCKET=fitback-cd-validation-images \
             --env IMAGE_CDN_BASE_URL=https://images.example.invalid \

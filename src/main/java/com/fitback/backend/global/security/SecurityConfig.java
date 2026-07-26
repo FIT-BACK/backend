@@ -45,6 +45,8 @@ public class SecurityConfig {
             "/api/v1/auth/login",
             "/api/v1/auth/token/refresh",
             "/api/v1/auth/token/exchange",
+            "/api/v1/auth/password-reset/request",
+            "/api/v1/auth/password-reset",
             "/api/v1/auth/oauth2/**",
             "/api/v1/auth/callback/**"
     };

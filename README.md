@@ -43,6 +43,9 @@ SHOPPING_PROVIDER=fixture
 KAKAO_REST_API_KEY=team_kakao_rest_api_key
 KAKAO_REST_API_SECRET=team_kakao_client_secret
 FRONT_REDIRECT_URI=http://localhost:3000/oauth/success
+MAIL_EMAIL=your-email@gmail.com
+MAIL_APP_PASSWORD=your-google-app-password
+FRONT_PASSWORD_RESET_URL=http://localhost:3000/reset-password
 ```
 
 쇼핑 공급자는 최종 공급자가 확정되기 전까지 `fixture`를 기본값으로 사용합니다.

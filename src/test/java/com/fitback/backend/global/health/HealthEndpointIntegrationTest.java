@@ -35,7 +35,11 @@ import org.springframework.test.web.servlet.MockMvc;
         "HMAC_SECRET_KEY=test-hmac-secret-key-for-health-endpoint-tests",
         "KAKAO_REST_API_KEY=test-kakao-client-id",
         "KAKAO_REST_API_SECRET=test-kakao-client-secret",
-        "FRONT_REDIRECT_URI=http://localhost:3000/oauth/success"
+        "FRONT_REDIRECT_URI=http://localhost:3000/oauth/success",
+        "MAIL_EMAIL=test@example.com",
+        "MAIL_APP_PASSWORD=test-app-password",
+        "FRONT_PASSWORD_RESET_URL=http://localhost:3000/reset-password",
+        "management.health.mail.enabled=false"
 })
 class HealthEndpointIntegrationTest {
 

@@ -23,5 +23,9 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
     @Query("SELECT member FROM Member member WHERE member.id = :memberId")
     Optional<Member> findByIdForUpdate(@Param("memberId") Long memberId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT member FROM Member member WHERE member.email = :email")
+    Optional<Member> findByEmailForUpdate(@Param("email") String email);
+
     Optional<Member> findByLoginProviderAndSocialUid(LoginProvider loginProvider, String socialUid);
 }
