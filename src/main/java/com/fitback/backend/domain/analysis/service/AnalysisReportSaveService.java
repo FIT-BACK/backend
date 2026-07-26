@@ -21,6 +21,7 @@ import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -148,7 +149,7 @@ public class AnalysisReportSaveService {
                 )
                 .map(save -> new SavedState(
                         true,
-                        save.getCreatedAt(),
+                        savedAt(save),
                         selectedItems(save)
                 ))
                 .orElseGet(SavedState::unsaved);
@@ -177,7 +178,7 @@ public class AnalysisReportSaveService {
                 new AnalysisReportSaveResponse(
                         report.getId(),
                         true,
-                        save.getCreatedAt(),
+                        savedAt(save),
                         savedItems.stream()
                                 .map(SavedAnalysisItemResponse::from)
                                 .toList()
@@ -248,7 +249,7 @@ public class AnalysisReportSaveService {
                 report.getId(),
                 resolveImageUrl(report),
                 recommendationTagNames(report),
-                save.getCreatedAt()
+                savedAt(save)
         );
     }
 
@@ -256,9 +257,13 @@ public class AnalysisReportSaveService {
         return new AnalysisReportSaveResponse(
                 reportId,
                 true,
-                save.getCreatedAt(),
+                savedAt(save),
                 selectedItems(save)
         );
+    }
+
+    private LocalDateTime savedAt(ClosetSave save) {
+        return save.getCreatedAt().truncatedTo(ChronoUnit.MICROS);
     }
 
     private List<SavedAnalysisItemResponse> selectedItems(ClosetSave save) {
