@@ -22,6 +22,10 @@ public enum ErrorCode {
     ),
     ANALYSIS_IMAGE_STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ANALYSIS500_1", "분석 이미지를 저장할 수 없습니다."),
     TAG_NOT_FOUND(HttpStatus.NOT_FOUND, "TAG404_1", "태그를 찾을 수 없습니다."),
+    TREND_NOT_FOUND(HttpStatus.NOT_FOUND, "TREND404_1", "트렌드를 찾을 수 없습니다."),
+
+    CLOSET_NOT_FOUND(HttpStatus.NOT_FOUND, "CLOSET404_1", "저장한 항목을 찾을 수 없습니다."),
+    CLOSET_ALREADY_SAVED(HttpStatus.BAD_REQUEST, "CLOSET400_1", "이미 저장한 항목입니다."),
 
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "AUTH409_1", "이미 사용 중인 이메일입니다."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "AUTH401_1", "이메일 또는 비밀번호가 올바르지 않습니다."),
@@ -35,6 +39,7 @@ public enum ErrorCode {
     PASSWORD_CHANGE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "MEMBER400_2", "소셜 로그인 회원은 비밀번호를 변경할 수 없습니다."),
     MEMBER_TAG_NOT_FOUND(HttpStatus.BAD_REQUEST, "MEMBER400_3", "존재하지 않는 태그가 포함되어 있습니다."),
     REJOIN_BLOCKED(HttpStatus.FORBIDDEN, "MEMBER403_1", "탈퇴 후 30일 동안 재가입할 수 없습니다."),
+    MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER404_1", "회원을 찾을 수 없습니다."),
 
     NOTIFICATION_SETTING_EMPTY(HttpStatus.BAD_REQUEST, "NOTIFICATION400_1", "변경할 알림 설정 값이 없습니다."),
 
