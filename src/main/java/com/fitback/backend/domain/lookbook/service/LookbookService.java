@@ -1,5 +1,8 @@
 package com.fitback.backend.domain.lookbook.service;
 
+import com.fitback.backend.domain.analysis.entity.AnalysisReport;
+import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
+import com.fitback.backend.domain.analysis.service.AnalysisReportSaveService;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImageStatus;
 import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
@@ -16,6 +19,9 @@ import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
+import com.fitback.backend.domain.product.entity.Product;
+import com.fitback.backend.domain.product.repository.ProductRepository;
+import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
@@ -51,6 +57,10 @@ public class LookbookService {
     private final LookbookReportCommandService lookbookReportCommandService;
     private final LookbookReportRepository lookbookReportRepository;
     private final ImageAccessUrlProvider imageAccessUrlProvider;
+    private final AnalysisReportRepository analysisReportRepository;
+    private final AnalysisReportSaveService analysisReportSaveService;
+    private final RecommendedItemRepository recommendedItemRepository;
+    private final ProductRepository productRepository;
 
     // 룩북 업로드
     @Transactional
@@ -66,20 +76,16 @@ public class LookbookService {
 
         // 룩북 객체 생성 전 태그 유효성 검사
         validateAllTagsExist(tagIds, tags);
-        LookbookImages images = findAvailableOwnedImages(
+        LookbookAssets assets = resolveAssets(
                 member,
                 request.originalImageId(),
-                request.matchedImageId()
+                request.matchedImageId(),
+                request.matchedProductId(),
+                request.sourceReportId()
         );
 
         // 룩북 객체 생성 후 저장
-        Lookbook lookbook = Lookbook.create(
-                member,
-                images.originalImage(),
-                images.matchedImage(),
-                request.purchaseUrl(),
-                request.comment()
-        );
+        Lookbook lookbook = createLookbook(member, request, assets);
         Lookbook savedLookbook = lookbookRepository.save(lookbook);
 
         // tagId로 룩북-태그 객체 생성 후 저장
@@ -89,7 +95,7 @@ public class LookbookService {
                 .map(tagId -> LookbookTag.create(savedLookbook, tagsById.get(tagId)))
                 .toList();
         lookbookTagRepository.saveAll(lookbookTags);
-        activateReadyImages(images);
+        activateReadyImages(assets);
 
         return LookbookResponse.LookbookCreate.toLookbookCreate(savedLookbook);
     }
@@ -119,18 +125,15 @@ public class LookbookService {
         validateNoDuplicateTagIds(tagIds);
         List<Tag> tags = tagRepository.findAllById(tagIds);
         validateAllTagsExist(tagIds, tags);
-        LookbookImages images = findAvailableOwnedImages(
+        LookbookAssets assets = resolveAssets(
                 member,
                 request.originalImageId(),
-                request.matchedImageId()
+                request.matchedImageId(),
+                request.matchedProductId(),
+                request.sourceReportId()
         );
 
-        lookbook.update(
-                images.originalImage(),
-                images.matchedImage(),
-                request.purchaseUrl(),
-                request.comment()
-        );
+        updateLookbook(lookbook, request, assets);
 
         // 수정된 태그로 교체
         lookbookTagRepository.deleteAllByLookbookId(lookbookId);
@@ -140,7 +143,7 @@ public class LookbookService {
                 .map(tagId -> LookbookTag.create(lookbook, tagsById.get(tagId)))
                 .toList();
         lookbookTagRepository.saveAll(lookbookTags);
-        activateReadyImages(images);
+        activateReadyImages(assets);
 
         return LookbookResponse.LookbookUpdate.toLookbookUpdate(lookbook);
     }
@@ -220,7 +223,7 @@ public class LookbookService {
                 .map(lookbook -> LookbookResponse.LookbookItem.toLookbookItem(
                         lookbook,
                         imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
-                        imageAccessUrlProvider.createReadUrl(lookbook.getMatchedImage()),
+                        resolveMatchedImageUrl(lookbook),
                         tagNamesByLookbookId.getOrDefault(lookbook.getId(), List.of()),
                         likedLookbookIds.contains(lookbook.getId())
                 ))
@@ -269,7 +272,7 @@ public class LookbookService {
         return LookbookResponse.LookbookDetail.toLookbookDetail(
                 lookbook,
                 imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
-                imageAccessUrlProvider.createReadUrl(lookbook.getMatchedImage()),
+                resolveMatchedImageUrl(lookbook),
                 tags,
                 isLiked,
                 isOwner
@@ -452,11 +455,37 @@ public class LookbookService {
         }
     }
 
-    private LookbookImages findAvailableOwnedImages(
+    private LookbookAssets resolveAssets(
             Member member,
             String originalImageId,
-            String matchedImageId
+            String matchedImageId,
+            Long matchedProductId,
+            Long sourceReportId
     ) {
+        boolean hasMatchedImage = matchedImageId != null && !matchedImageId.isBlank();
+        boolean hasMatchedProduct = matchedProductId != null;
+        if (hasMatchedImage == hasMatchedProduct
+                || (hasMatchedProduct && sourceReportId == null)
+                || (!hasMatchedProduct && sourceReportId != null)) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "매칭 이미지 또는 분석 추천 상품 중 하나만 선택해야 합니다."
+            );
+        }
+
+        if (hasMatchedProduct) {
+            Image originalImage = findAvailableOwnedOriginalImage(member, originalImageId);
+            AnalysisReport sourceReport = findAuthorizedSourceReport(member, sourceReportId);
+            validateSourceReportOriginalImage(sourceReport, originalImage);
+            Product matchedProduct = findAuthorizedMatchedProduct(
+                    member,
+                    sourceReport,
+                    sourceReportId,
+                    matchedProductId
+            );
+            return new LookbookAssets(originalImage, null, matchedProduct);
+        }
+
         List<String> imageIds = List.of(originalImageId, matchedImageId);
         Map<String, Image> imagesById = lookbookImageRepository
                 .findAllOwnedImages(imageIds, member.getId())
@@ -465,9 +494,75 @@ public class LookbookService {
 
         Image originalImage = findImage(imagesById, originalImageId);
         Image matchedImage = findImage(imagesById, matchedImageId);
-        validateLookbookImage(originalImage);
+        validateOriginalImage(originalImage);
         validateLookbookImage(matchedImage);
-        return new LookbookImages(originalImage, matchedImage);
+        return new LookbookAssets(originalImage, matchedImage, null);
+    }
+
+    private Image findAvailableOwnedOriginalImage(Member member, String originalImageId) {
+        Map<String, Image> imagesById = lookbookImageRepository
+                .findAllOwnedImages(List.of(originalImageId), member.getId())
+                .stream()
+                .collect(Collectors.toMap(Image::getId, Function.identity()));
+        Image originalImage = findImage(imagesById, originalImageId);
+        validateOriginalImage(originalImage);
+        return originalImage;
+    }
+
+    private AnalysisReport findAuthorizedSourceReport(Member member, Long sourceReportId) {
+        return analysisReportRepository
+                .findByIdAndMemberIdAndDeletedAtIsNull(sourceReportId, member.getId())
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.ANALYSIS_REPORT_NOT_FOUND
+                ));
+    }
+
+    private void validateSourceReportOriginalImage(
+            AnalysisReport sourceReport,
+            Image originalImage
+    ) {
+        Image reportOriginalImage = sourceReport.getOriginalImage();
+        if (reportOriginalImage == null
+                || !Objects.equals(reportOriginalImage.getId(), originalImage.getId())) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "분석 리포트의 원본 이미지만 룩북에 사용할 수 있습니다."
+            );
+        }
+    }
+
+    private Product findAuthorizedMatchedProduct(
+            Member member,
+            AnalysisReport report,
+            Long sourceReportId,
+            Long matchedProductId
+    ) {
+        boolean currentResult = report.getRecommendationGeneratedAt() != null
+                && report.hasRecommendationInputRevision(report.getResultInputRevision());
+        boolean currentRecommendation = currentResult
+                && recommendedItemRepository
+                        .existsByReportIdAndProductId(sourceReportId, matchedProductId);
+        boolean savedSelection = !currentRecommendation
+                && analysisReportSaveService
+                        .getState(member.getId(), sourceReportId)
+                        .selectedItems()
+                        .stream()
+                        .anyMatch(item -> Objects.equals(item.productId(), matchedProductId));
+        if (!currentRecommendation && !savedSelection) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "해당 분석 결과에서 선택할 수 없는 상품입니다."
+            );
+        }
+        Product product = productRepository.findById(matchedProductId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+        if (product.getImageUrl() == null || product.getImageUrl().isBlank()) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "이미지가 없는 상품은 룩북에 사용할 수 없습니다."
+            );
+        }
+        return product;
     }
 
     private Image findImage(Map<String, Image> imagesById, String imageId) {
@@ -486,18 +581,94 @@ public class LookbookService {
         }
     }
 
-    private void activateReadyImages(LookbookImages images) {
+    private void validateOriginalImage(Image image) {
+        boolean availableStatus = image.getStatus() == ImageStatus.READY
+                || image.getStatus() == ImageStatus.ACTIVE;
+        boolean allowedPurpose = image.getPurpose().isLookbook()
+                || image.getPurpose().isAnalysis();
+        if (!allowedPurpose || !availableStatus) {
+            throw new BusinessException(ErrorCode.IMAGE_INVALID_STATE);
+        }
+    }
+
+    private Lookbook createLookbook(
+            Member member,
+            LookbookRequest.LookbookCreate request,
+            LookbookAssets assets
+    ) {
+        String purchaseUrl = resolvePurchaseUrl(request.purchaseUrl(), assets.matchedProduct());
+        if (assets.matchedProduct() != null) {
+            return Lookbook.createWithProduct(
+                    member,
+                    assets.originalImage(),
+                    assets.matchedProduct(),
+                    purchaseUrl,
+                    request.comment()
+            );
+        }
+        return Lookbook.create(
+                member,
+                assets.originalImage(),
+                assets.matchedImage(),
+                purchaseUrl,
+                request.comment()
+        );
+    }
+
+    private void updateLookbook(
+            Lookbook lookbook,
+            LookbookRequest.LookbookUpdate request,
+            LookbookAssets assets
+    ) {
+        String purchaseUrl = resolvePurchaseUrl(request.purchaseUrl(), assets.matchedProduct());
+        if (assets.matchedProduct() != null) {
+            lookbook.updateWithProduct(
+                    assets.originalImage(),
+                    assets.matchedProduct(),
+                    purchaseUrl,
+                    request.comment()
+            );
+            return;
+        }
+        lookbook.update(
+                assets.originalImage(),
+                assets.matchedImage(),
+                purchaseUrl,
+                request.comment()
+        );
+    }
+
+    private String resolvePurchaseUrl(String requestedUrl, Product matchedProduct) {
+        return requestedUrl != null || matchedProduct == null
+                ? requestedUrl
+                : matchedProduct.getPurchaseUrl();
+    }
+
+    private String resolveMatchedImageUrl(Lookbook lookbook) {
+        return lookbook.getMatchedProduct() == null
+                ? imageAccessUrlProvider.createReadUrl(lookbook.getMatchedImage())
+                : lookbook.getMatchedProductImageUrl();
+    }
+
+    private void activateReadyImages(LookbookAssets assets) {
+        List<String> imageIds = assets.matchedImage() == null
+                ? List.of(assets.originalImage().getId())
+                : List.of(
+                        assets.originalImage().getId(),
+                        assets.matchedImage().getId()
+                );
         lookbookImageRepository.activateReadyImages(
-                List.of(images.originalImage().getId(), images.matchedImage().getId()),
+                imageIds,
                 ImageStatus.READY,
                 ImageStatus.ACTIVE,
                 Instant.now()
         );
     }
 
-    private record LookbookImages(
+    private record LookbookAssets(
             Image originalImage,
-            Image matchedImage
+            Image matchedImage,
+            Product matchedProduct
     ) {
     }
 }

@@ -241,6 +241,7 @@ similarityScore DESC
 | PUT | `/api/v1/analyses/{reportId}/save` | 선택 상품을 포함한 분석 리포트 저장 | 필수 |
 | DELETE | `/api/v1/analyses/{reportId}/save` | 분석 리포트 저장 해제 | 필수 |
 | DELETE | `/api/v1/analyses/{reportId}` | 분석 리포트 삭제 | 필수 |
+| POST | `/api/v1/lookbooks` | 업로드 이미지 또는 분석 추천 상품으로 룩북 생성 | 필수 |
 
 Issue `#98`은 `GET /analyses/{reportId}` 자체를 새로 구현하지 않고, 기존 상세 응답에
 카테고리별 `recommendationGroups` fragment를 추가하는 계약만 정의한다.
@@ -907,7 +908,9 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 
 본인의 삭제되지 않은 리포트 상세와 확정 기본·직접 입력 태그, 추천 그룹을 반환한다. private
 이미지 URL은 10분 유효한 CloudFront signed URL이다. 명시적 저장 여부인 `saved`, `savedAt`과
-저장 시점의 카테고리별 `selectedItems`도 함께 반환한다.
+저장 시점의 카테고리별 `selectedItems`도 함께 반환한다. SCR-09 연동을 위해 S3 기반 분석은
+`originalImageId`도 반환하며, `selectedItems`에는 카테고리별로 선택한 모든 상품 이미지가
+포함된다.
 
 ### `PUT /api/v1/analyses/{reportId}/save`
 
@@ -944,3 +947,45 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 리포트를 soft delete 처리한다. 삭제된 리포트는 목록과 상세 조회에서 제외되며 연결된 이미지는
 보존 기간 이후 정리 작업의 대상이 된다. 저장된 리포트라면 클로젯 저장 관계와 선택 상품
 스냅샷을 먼저 제거한다.
+
+---
+
+## 17. 분석 결과 기반 룩북 업로드
+
+### `POST /api/v1/lookbooks`
+
+직접 진입한 SCR-09는 기존처럼 `originalImageId`, `matchedImageId`를 전송한다. SCR-08에서
+진입한 경우에는 분석 원본 `originalImageId`를 재사용하고, 화면에서 대표로 정한 상품을
+`matchedProductId`와 `sourceReportId`로 전송한다.
+
+```json
+{
+  "originalImageId": "5f8ca021-02fe-4fba-982f-8de356789abc",
+  "matchedImageId": null,
+  "matchedProductId": 100,
+  "sourceReportId": 501,
+  "tagIds": [12, 21],
+  "purchaseUrl": null,
+  "comment": "분석 결과로 완성한 룩"
+}
+```
+
+`matchedImageId`와 `matchedProductId`는 정확히 하나만 전달해야 한다. 상품 경로에서는
+`sourceReportId`가 본인 소유의 삭제되지 않은 리포트인지, 해당 상품이 현재 추천 결과 또는
+저장된 선택 상품인지 검증한다. 구매 링크를 생략하면 선택 상품의 구매 URL을 사용한다.
+목록·상세 응답의 `matchedImageUrl`은 어느 경로로 생성했든 동일하게 표시 가능하며,
+상품 경로인 경우 `matchedProductId`도 반환한다.
+
+### 오류
+
+| 조건 | HTTP | code |
+| --- | ---: | --- |
+| 매칭 이미지·상품을 모두 선택하거나 모두 생략한 경우 | 400 | `COMMON400_1` |
+| 상품 경로에서 `sourceReportId`를 생략하거나 이미지 경로에 전달한 경우 | 400 | `COMMON400_1` |
+| 원본 이미지가 해당 분석 리포트의 원본 이미지와 다른 경우 | 400 | `COMMON400_1` |
+| 선택 상품이 현재 추천 결과 또는 저장된 선택 상품에 없는 경우 | 400 | `COMMON400_1` |
+| 선택 상품에 표시할 이미지가 없는 경우 | 400 | `COMMON400_1` |
+| 분석 리포트가 없거나 본인 소유가 아니거나 삭제된 경우 | 404 | `ANALYSIS404_1` |
+| 이미지가 없거나 본인 소유가 아닌 경우 | 404 | `IMAGE404_1` |
+| 상품이 존재하지 않는 경우 | 404 | `COMMON404_1` |
+| 이미지 목적 또는 상태가 룩북에서 사용할 수 없는 경우 | 409 | `IMAGE409_1` |

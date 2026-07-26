@@ -87,6 +87,7 @@ public final class LookbookResponse {
             Long lookbookId,
             String originalImageUrl,
             String matchedImageUrl,
+            Long matchedProductId,
             String authorNickname,
             String authorProfileImageUrl,
             List<String> tags,
@@ -105,6 +106,9 @@ public final class LookbookResponse {
                     .lookbookId(lookbook.getId())
                     .originalImageUrl(originalImageUrl)
                     .matchedImageUrl(matchedImageUrl)
+                    .matchedProductId(lookbook.getMatchedProduct() == null
+                            ? null
+                            : lookbook.getMatchedProduct().getId())
                     .authorNickname(lookbook.getMember().getNickname())
                     .authorProfileImageUrl(lookbook.getMember().getProfileImageUrl())
                     .tags(List.copyOf(tags))
@@ -119,6 +123,7 @@ public final class LookbookResponse {
     public record LookbookDetail(
             String originalImageUrl,
             String matchedImageUrl,
+            Long matchedProductId,
             String authorNickname,
             String authorProfileImageUrl,
             LocalDateTime createdAt,
@@ -141,6 +146,9 @@ public final class LookbookResponse {
             return LookbookDetail.builder()
                     .originalImageUrl(originalImageUrl)
                     .matchedImageUrl(matchedImageUrl)
+                    .matchedProductId(lookbook.getMatchedProduct() == null
+                            ? null
+                            : lookbook.getMatchedProduct().getId())
                     .authorNickname(lookbook.getMember().getNickname())
                     .authorProfileImageUrl(lookbook.getMember().getProfileImageUrl())
                     .createdAt(lookbook.getCreatedAt())

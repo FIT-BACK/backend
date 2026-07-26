@@ -7,6 +7,7 @@ import java.util.List;
 
 public record AnalysisDetailResponse(
         Long reportId,
+        String originalImageId,
         String imageUrl,
         Integer matchPercentage,
         List<String> tags,
