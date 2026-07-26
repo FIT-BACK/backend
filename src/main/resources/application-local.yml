@@ -81,3 +81,4 @@ app:
     temp-token-ttl: 180000
   password-reset:
     frontend-url: ${FRONT_PASSWORD_RESET_URL:http://localhost:3000/reset-password}
+    token-ttl: 5m
