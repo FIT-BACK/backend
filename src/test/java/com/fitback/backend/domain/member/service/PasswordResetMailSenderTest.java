@@ -52,10 +52,10 @@ class PasswordResetMailSenderTest {
         );
 
         verify(mailSender).send(message);
-        assertThat(message.getFrom()[0].toString()).isEqualTo("sender@fitback.com");
+        assertThat(message.getFrom()[0].toString()).isEqualTo("FITBACK <sender@fitback.com>");
         assertThat(message.getRecipients(Message.RecipientType.TO)[0].toString())
                 .isEqualTo("member@fitback.com");
-        assertThat(message.getSubject()).isEqualTo("[FITBACK] 비밀번호 재설정 안내");
+        assertThat(message.getSubject()).isEqualTo("[FITBACK] 비밀번호 재설정 링크 안내");
 
         String html = message.getContent().toString();
         assertThat(html)
@@ -63,6 +63,7 @@ class PasswordResetMailSenderTest {
                         "href=\"http://localhost:3000/reset-password"
                                 + "?resetToken=reset-token\""
                 )
+                .contains("비밀번호 재설정하기")
                 .containsOnlyOnce("reset-token");
     }
 
