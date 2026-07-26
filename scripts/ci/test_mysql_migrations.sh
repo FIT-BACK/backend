@@ -80,7 +80,7 @@ for database in fitback fitback_existing_refresh_token; do
           | docker exec -i "$container_name" mysql -uroot "$database"
       else
         printf '%s\n' \
-          'CREATE TABLE lookbook (lookbook_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, matched_image_url VARCHAR(2048) NOT NULL, original_image_url VARCHAR(2048) NOT NULL, purchase_url VARCHAR(2048) NULL, member_id BIGINT NOT NULL, CONSTRAINT FK_LOOKBOOK_MEMBER_LEGACY_TEST FOREIGN KEY (member_id) REFERENCES member (member_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;' \
+          'CREATE TABLE lookbook (lookbook_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, matched_image_url VARCHAR(2048) NOT NULL, original_image_url VARCHAR(2048) NOT NULL, purchase_url VARCHAR(2048) NULL, member_id BIGINT NOT NULL, CONSTRAINT FK_LOOKBOOK_MEMBER_LEGACY_TEST FOREIGN KEY (member_id) REFERENCES member (member_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;' \
           | docker exec -i "$container_name" mysql -uroot "$database"
       fi
     fi
@@ -581,6 +581,7 @@ validate_lookbook_product_link_contract() {
   local legacy_row
   local like_id
   local report_columns
+  local image_reference_collations
 
   columns="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
@@ -615,6 +616,23 @@ validate_lookbook_product_link_contract() {
     'report_count:NO:int')" ]; then
     echo "Unexpected lookbook match source columns in $database:" >&2
     printf '%s\n' "$columns" >&2
+    exit 1
+  fi
+
+  image_reference_collations="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_NAME, ':', COLLATION_NAME)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'lookbook'
+          AND COLUMN_NAME IN ('matched_image_id', 'original_image_id')
+        ORDER BY COLUMN_NAME;")"
+
+  if [ "$image_reference_collations" != "$(printf '%s\n' \
+    'matched_image_id:utf8mb4_unicode_ci' \
+    'original_image_id:utf8mb4_unicode_ci')" ]; then
+    echo "Unexpected lookbook image reference collations in $database:" >&2
+    printf '%s\n' "$image_reference_collations" >&2
     exit 1
   fi
 
