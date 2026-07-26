@@ -15,6 +15,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 import java.util.Optional;
 
@@ -35,6 +37,10 @@ class KakaoMemberRegistrationServiceTest {
     private RejoinBlockChecker rejoinBlockChecker;
     @Mock
     private NotificationSettingService notificationSettingService;
+    @Mock
+    private PlatformTransactionManager transactionManager;
+    @Mock
+    private TransactionStatus transactionStatus;
 
     @InjectMocks
     private KakaoMemberRegistrationService kakaoMemberRegistrationService;
@@ -42,6 +48,7 @@ class KakaoMemberRegistrationServiceTest {
     //카카오 신규 회원 생성 - 회원 저장 후 기본 알림 설정 생성
     @Test
     void registerNewKakaoMemberCreatesDefaultNotificationSettingTest() {
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         when(memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, "12345"))
                 .thenReturn(Optional.empty());
         when(memberRepository.existsByEmail("kakao@fitback.com")).thenReturn(false);
@@ -70,6 +77,7 @@ class KakaoMemberRegistrationServiceTest {
     @Test
     void findExistingKakaoMemberReturnsExistingMemberTest() {
         Member existingMember = Member.createSocial("kakao@fitback.com", "nick", LoginProvider.KAKAO, "12345");
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         when(memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, "12345"))
                 .thenReturn(Optional.of(existingMember));
 
@@ -85,6 +93,7 @@ class KakaoMemberRegistrationServiceTest {
     //카카오 신규 회원 생성 실패 - 같은 이메일 계정이 있으면 기본 알림 설정 생성 안 함
     @Test
     void registerNewKakaoMemberDuplicateEmailNoNotificationSettingTest() {
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         when(memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, "12345"))
                 .thenReturn(Optional.empty());
         when(memberRepository.existsByEmail("dup@fitback.com")).thenReturn(true);
@@ -101,6 +110,7 @@ class KakaoMemberRegistrationServiceTest {
     //카카오 신규 회원 생성 실패 - 재가입 차단이면 기본 알림 설정 생성 안 함
     @Test
     void registerNewKakaoMemberRejoinBlockedNoNotificationSettingTest() {
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         when(memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, "12345"))
                 .thenReturn(Optional.empty());
         when(memberRepository.existsByEmail("blocked@fitback.com")).thenReturn(false);
@@ -115,23 +125,75 @@ class KakaoMemberRegistrationServiceTest {
         verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
     }
 
-    //카카오 신규 회원 생성 실패 - 동시 가입 유니크 충돌도 OAuth 실패로 변환
+    //카카오 신규 회원 동시 가입 - 소셜 UID 충돌 후 생성된 기존 회원 반환
     @Test
-    void registerNewKakaoMemberDuplicateConstraintThrowsOAuthExceptionTest() {
+    void concurrentKakaoMemberSignupReturnsExistingMemberTest() {
+        Member existingMember = Member.createSocial(
+                "race@fitback.com",
+                "nick",
+                LoginProvider.KAKAO,
+                "12345"
+        );
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         when(memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, "12345"))
-                .thenReturn(Optional.empty());
+                .thenReturn(Optional.empty(), Optional.of(existingMember));
         when(memberRepository.existsByEmail("race@fitback.com")).thenReturn(false);
         when(rejoinBlockChecker.isRejoinBlocked("race@fitback.com")).thenReturn(false);
         when(memberRepository.existsByNickname(anyString())).thenReturn(false);
         when(memberRepository.saveAndFlush(any(Member.class)))
                 .thenThrow(new DataIntegrityViolationException("duplicate kakao member"));
 
-        assertThatThrownBy(() -> kakaoMemberRegistrationService.findOrRegister("race@fitback.com", "12345"))
+        KakaoMemberRegistrationService.KakaoMemberResult result =
+                kakaoMemberRegistrationService.findOrRegister("race@fitback.com", "12345");
+
+        assertThat(result.member()).isEqualTo(existingMember);
+        assertThat(result.isNewMember()).isFalse();
+        verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
+    }
+
+    //카카오 신규 회원 동시 가입 실패 - 실제 이메일 중복인 경우에만 이메일 중복 오류 반환
+    @Test
+    void concurrentKakaoMemberSignupDuplicateEmailThrowsOAuthExceptionTest() {
+        DataIntegrityViolationException duplicateException =
+                new DataIntegrityViolationException("duplicate email");
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
+        when(memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, "12345"))
+                .thenReturn(Optional.empty(), Optional.empty());
+        when(memberRepository.existsByEmail("race@fitback.com")).thenReturn(false, true);
+        when(rejoinBlockChecker.isRejoinBlocked("race@fitback.com")).thenReturn(false);
+        when(memberRepository.existsByNickname(anyString())).thenReturn(false);
+        when(memberRepository.saveAndFlush(any(Member.class))).thenThrow(duplicateException);
+
+        assertThatThrownBy(() -> kakaoMemberRegistrationService.findOrRegister(
+                "race@fitback.com",
+                "12345"
+        ))
                 .isInstanceOfSatisfying(OAuth2AuthenticationException.class, exception -> {
                     assertThat(exception.getError().getErrorCode())
                             .isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS.getCode());
-                    assertThat(exception).hasCauseInstanceOf(DataIntegrityViolationException.class);
+                    assertThat(exception).hasCause(duplicateException);
                 });
+
+        verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
+    }
+
+    //카카오 신규 회원 생성 실패 - 원인을 확인할 수 없는 DB 오류는 그대로 전달
+    @Test
+    void registerNewKakaoMemberUnexpectedConstraintRethrowsExceptionTest() {
+        DataIntegrityViolationException unexpectedException =
+                new DataIntegrityViolationException("unexpected constraint");
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
+        when(memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, "12345"))
+                .thenReturn(Optional.empty(), Optional.empty());
+        when(memberRepository.existsByEmail("race@fitback.com")).thenReturn(false, false);
+        when(rejoinBlockChecker.isRejoinBlocked("race@fitback.com")).thenReturn(false);
+        when(memberRepository.existsByNickname(anyString())).thenReturn(false);
+        when(memberRepository.saveAndFlush(any(Member.class))).thenThrow(unexpectedException);
+
+        assertThatThrownBy(() -> kakaoMemberRegistrationService.findOrRegister(
+                "race@fitback.com",
+                "12345"
+        )).isSameAs(unexpectedException);
 
         verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
     }

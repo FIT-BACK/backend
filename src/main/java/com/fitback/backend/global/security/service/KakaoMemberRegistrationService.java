@@ -8,34 +8,58 @@ import com.fitback.backend.domain.notification.service.NotificationSettingServic
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.exception.OAuthExceptionFactory;
 import com.fitback.backend.global.util.LowercaseNormalizer;
-import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class KakaoMemberRegistrationService {
 
     private final MemberRepository memberRepository;
     private final RejoinBlockChecker rejoinBlockChecker;
     private final NotificationSettingService notificationSettingService;
+    private final TransactionTemplate transactionTemplate;
+
+    public KakaoMemberRegistrationService(
+            MemberRepository memberRepository,
+            RejoinBlockChecker rejoinBlockChecker,
+            NotificationSettingService notificationSettingService,
+            PlatformTransactionManager transactionManager
+    ) {
+        this.memberRepository = memberRepository;
+        this.rejoinBlockChecker = rejoinBlockChecker;
+        this.notificationSettingService = notificationSettingService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        );
+    }
 
     public record KakaoMemberResult(Member member, boolean isNewMember) {}
 
-    @Transactional
     public KakaoMemberResult findOrRegister(String email, String socialUid) {
-        return memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, socialUid)
-                .map(member -> new KakaoMemberResult(member, false))
-                .orElseGet(() -> new KakaoMemberResult(registerNewKakaoMember(email, socialUid), true));
-    }
-
-    private Member registerNewKakaoMember(String email, String socialUid) {
         String normalizedEmail = LowercaseNormalizer.normalize(email);
 
+        try {
+            return Objects.requireNonNull(transactionTemplate.execute(status ->
+                    memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, socialUid)
+                            .map(member -> new KakaoMemberResult(member, false))
+                            .orElseGet(() -> new KakaoMemberResult(
+                                    registerNewKakaoMember(normalizedEmail, socialUid),
+                                    true
+                            ))
+            ));
+        } catch (DataIntegrityViolationException exception) {
+            return resolveConcurrentSignup(normalizedEmail, socialUid, exception);
+        }
+    }
+
+    private Member registerNewKakaoMember(String normalizedEmail, String socialUid) {
         //같은 email의 기존 계정이 있다면 가입 막기
         if (memberRepository.existsByEmail(normalizedEmail)) {
             throw OAuthExceptionFactory.create(ErrorCode.EMAIL_ALREADY_EXISTS);
@@ -52,20 +76,28 @@ public class KakaoMemberRegistrationService {
             tempNickname = "user_" + UUID.randomUUID().toString().substring(0, 8);
         } while (memberRepository.existsByNickname(tempNickname));
 
-        try {
-            Member newMember = Member.createSocial(normalizedEmail, tempNickname, LoginProvider.KAKAO, socialUid);
-            Member savedMember = memberRepository.saveAndFlush(newMember);
+        Member newMember = Member.createSocial(normalizedEmail, tempNickname, LoginProvider.KAKAO, socialUid);
+        Member savedMember = memberRepository.saveAndFlush(newMember);
 
-            //카카오 신규 회원도 기본 알림 설정값 생성
-            notificationSettingService.createDefaultSetting(savedMember);
+        //카카오 신규 회원도 기본 알림 설정값 생성
+        notificationSettingService.createDefaultSetting(savedMember);
 
-            return savedMember;
-        } catch (DataIntegrityViolationException exception) {
-            throw duplicateSignupException(exception);
-        }
+        return savedMember;
     }
 
-    private OAuth2AuthenticationException duplicateSignupException(DataIntegrityViolationException exception) {
-        return OAuthExceptionFactory.create(ErrorCode.EMAIL_ALREADY_EXISTS, exception);
+    private KakaoMemberResult resolveConcurrentSignup(
+            String normalizedEmail,
+            String socialUid,
+            DataIntegrityViolationException exception
+    ) {
+        //가입 트랜잭션이 롤백된 후 같은 카카오 회원이 생성됐는지 다시 확인
+        return memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, socialUid)
+                .map(member -> new KakaoMemberResult(member, false))
+                .orElseGet(() -> {
+                    if (memberRepository.existsByEmail(normalizedEmail)) {
+                        throw OAuthExceptionFactory.create(ErrorCode.EMAIL_ALREADY_EXISTS, exception);
+                    }
+                    throw exception;
+                });
     }
 }
