@@ -9,11 +9,12 @@
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
 | 연동 참고 | Auth `#20`의 `AuthMember` principal과 현재 `AnalysisReport`의 분석 결과를 입력으로 사용 |
-| 문서 성격 | Issue `#98` 기준 계약과 후속 기능 Issue `#106`, `#111`, `#119` 구현 상태 반영 |
+| 문서 성격 | Issue `#98` 기준 계약과 후속 기능 Issue `#61`, `#106`, `#111`, `#119` 구현 상태 반영 |
 
 이 문서는 제공된 임시 API 명세의 URI와 화면 흐름을 최대한 유지하면서 현재 backend 구조와
 확정된 Recommendation/Product 정책을 구체화한다. 이 범위 밖 Auth, Member, Tag, Trend,
-Lookbook, Closet API는 해당 도메인의 명세를 따른다.
+Lookbook, Closet API는 해당 도메인의 명세를 따른다. 단, 공통 태그 선택 UI가 사용하는
+기본 목록 조회 계약은 17절에 함께 기록한다.
 
 ### 요구사항 반영 범위
 
@@ -239,6 +240,7 @@ similarityScore DESC
 | GET | `/api/v1/analyses` | 내 분석 리포트 목록 | 필수 |
 | GET | `/api/v1/analyses/{reportId}` | 기존 분석 상세와 추천 fragment 조회 | 필수 |
 | DELETE | `/api/v1/analyses/{reportId}` | 분석 리포트 삭제 | 필수 |
+| GET | `/api/v1/tags` | 태그 선택·자동완성용 목록 조회 | 필수 |
 
 Issue `#98`은 `GET /analyses/{reportId}` 자체를 새로 구현하지 않고, 기존 상세 응답에
 카테고리별 `recommendationGroups` fragment를 추가하는 계약만 정의한다.
@@ -914,3 +916,21 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 
 리포트를 soft delete 처리한다. 삭제된 리포트는 목록과 상세 조회에서 제외되며 연결된 이미지는
 보존 기간 이후 정리 작업의 대상이 된다.
+
+---
+
+## 17. 태그 목록
+
+### `GET /api/v1/tags?tagType=&query=&limit=50`
+
+SCR-03·07·09·12의 태그 선택·추천 목록과 자동완성에 사용할 태그를 이름순으로 조회한다.
+인증이 필요하며 다음 조건은 모두 선택적이다.
+
+| Query | 타입 | 기본값 | 설명 |
+| --- | --- | --- | --- |
+| `tagType` | `SILHOUETTE`, `COLOR`, `DETAIL` | 전체 | 태그 유형 |
+| `query` | String, 최대 50자 | 전체 | 태그명 일부 검색. 선행 `#`과 앞뒤 공백은 제거 |
+| `limit` | 1~50 | 50 | 최대 반환 개수 |
+
+응답 `data`는 `items`, `count`를 포함한다. 각 item은 `tagId`, `tagName`, `tagType`을
+반환한다. 이 API는 태그 사전 조회만 담당하며 룩북·트렌드·브랜드 통합 검색은 포함하지 않는다.
