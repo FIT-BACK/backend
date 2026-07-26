@@ -20,6 +20,7 @@ import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepos
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
+import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumMap;
@@ -48,6 +49,7 @@ public class AnalysisReportSaveService {
     private final SavedAnalysisItemRepository savedAnalysisItemRepository;
     private final RecommendedItemRepository recommendedItemRepository;
     private final ImageUploadService imageUploadService;
+    private final EntityManager entityManager;
 
     @Transactional
     public SaveOutcome save(
@@ -169,6 +171,7 @@ public class AnalysisReportSaveService {
                 ClosetTargetType.ANALYSIS_REPORT,
                 report.getId()
         ));
+        entityManager.refresh(save);
         List<SavedAnalysisItem> savedItems = savedAnalysisItemRepository.saveAll(
                 selections.stream()
                         .map(item -> SavedAnalysisItem.from(save, item))
