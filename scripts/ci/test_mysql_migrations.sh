@@ -71,7 +71,7 @@ for database in fitback fitback_existing_refresh_token; do
         "('legacy-profile', 9001, 'prod/images/profile/legacy-profile.jpg', 'PROFILE', 'image/jpeg', 1024, 'REJECTED', 'PRIVATE', 0, NOW());" \
         | docker exec -i "$container_name" mysql -uroot "$database"
     fi
-    if [ "$(basename "$migration")" = 'V13__link_lookbook_to_recommended_product.sql' ]; then
+    if [ "$(basename "$migration")" = 'V14__link_lookbook_to_recommended_product.sql' ]; then
       printf '%s\n' \
         'CREATE TABLE lookbook (lookbook_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, member_id BIGINT NOT NULL, original_image_id VARCHAR(36) NOT NULL, matched_image_id VARCHAR(36) NOT NULL, purchase_url VARCHAR(2048) NULL, comment VARCHAR(500) NULL, like_count INT NOT NULL DEFAULT 0, report_count INT NOT NULL DEFAULT 0, moderation_status VARCHAR(20) NOT NULL DEFAULT '\''VISIBLE'\'', auto_hidden_at DATETIME(6) NULL, deleted_at DATETIME(6) NULL, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NULL, CONSTRAINT FK_LOOKBOOK_MEMBER_TEST FOREIGN KEY (member_id) REFERENCES member (member_id), CONSTRAINT FK_LOOKBOOK_ORIGINAL_IMAGE_TEST FOREIGN KEY (original_image_id) REFERENCES image (image_id), CONSTRAINT FK_LOOKBOOK_MATCHED_IMAGE_TEST FOREIGN KEY (matched_image_id) REFERENCES image (image_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;' \
         "INSERT INTO lookbook (member_id, original_image_id, matched_image_id) VALUES (9001, 'legacy-lookbook-original', 'legacy-lookbook-matched');" \
