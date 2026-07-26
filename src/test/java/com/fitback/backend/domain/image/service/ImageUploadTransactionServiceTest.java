@@ -51,6 +51,7 @@ class ImageUploadTransactionServiceTest {
     @Test
     void rejectsImageWhenStoredSignatureDoesNotMatch() {
         Image image = pendingImage(NOW.plusSeconds(300));
+        ReflectionTestUtils.setField(image, "status", ImageStatus.PENDING_UPLOAD);
         byte[] signature = new byte[]{0x00, 0x01, 0x02};
         when(imageRepository.findByIdAndOwnerId("image-id", 7L))
                 .thenReturn(Optional.of(image));

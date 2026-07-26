@@ -145,7 +145,7 @@ public class Image extends BaseCreateTimeEntity {
     }
 
     public void renewUpload(Instant expiresAt) {
-        requireStatus(ImageStatus.PENDING);
+        requirePendingUploadStatus();
         this.presignedExpiresAt = Objects.requireNonNull(expiresAt, "expiresAt must not be null");
     }
 
@@ -154,7 +154,7 @@ public class Image extends BaseCreateTimeEntity {
             String actualContentType,
             LocalDateTime completedAt
     ) {
-        requireStatus(ImageStatus.PENDING);
+        requirePendingUploadStatus();
         this.uploadedAt = Objects.requireNonNull(completedAt, "completedAt must not be null");
         this.presignedExpiresAt = null;
         if (fileSize != actualFileSize || !contentType.equalsIgnoreCase(actualContentType)) {
@@ -165,7 +165,7 @@ public class Image extends BaseCreateTimeEntity {
     }
 
     public void reject(LocalDateTime rejectedAt) {
-        requireStatus(ImageStatus.PENDING);
+        requirePendingUploadStatus();
         this.status = ImageStatus.REJECTED;
         this.uploadedAt = Objects.requireNonNull(rejectedAt, "rejectedAt must not be null");
         this.presignedExpiresAt = null;
@@ -173,8 +173,8 @@ public class Image extends BaseCreateTimeEntity {
 
     public void activateForAnalysis(Long memberId, Instant activatedAt) {
         requireOwner(memberId);
-        if (purpose != ImagePurpose.ANALYSIS_ORIGINAL) {
-            throw new IllegalStateException("image purpose must be ANALYSIS_ORIGINAL");
+        if (!purpose.isAnalysis()) {
+            throw new IllegalStateException("image purpose must be ANALYSIS");
         }
         requireStatus(ImageStatus.READY);
         this.status = ImageStatus.ACTIVE;
@@ -182,7 +182,7 @@ public class Image extends BaseCreateTimeEntity {
     }
 
     public void claimForDeletion(Instant requestedAt) {
-        if (status != ImageStatus.PENDING
+        if (!status.isPendingUpload()
                 && status != ImageStatus.READY
                 && status != ImageStatus.REJECTED
                 && status != ImageStatus.DELETE_FAILED) {
@@ -220,6 +220,12 @@ public class Image extends BaseCreateTimeEntity {
     private void requireStatus(ImageStatus expected) {
         if (status != expected) {
             throw new IllegalStateException("image status must be " + expected);
+        }
+    }
+
+    private void requirePendingUploadStatus() {
+        if (!status.isPendingUpload()) {
+            throw new IllegalStateException("image status must be pending upload");
         }
     }
 

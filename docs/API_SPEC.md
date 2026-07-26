@@ -4,12 +4,12 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 기준일 | 2026-07-22 |
-| 적용 범위 | 원상품 후보·가격 확인, 상품 검색·상세, 추천 생성·조회, 상품 찜, 사용자 이미지 업로드·완료, 분석 리포트 |
+| 기준일 | 2026-07-26 |
+| 적용 범위 | Recommendation/Product MVP: 추천 결과 생성, 상품 검색·상세, 쇼핑 API 연동, 추천 상품 저장, 카테고리별 그룹핑. Image/Analysis는 기존 계약 참조 |
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
-| 연동 참고 | Auth `#20`은 PR `#34`로 병합되어 `AuthMember` principal 계약을 확인함. Analysis `#35`는 실제 연동 전 병합본 재확인 |
-| 문서 성격 | Phase 0 계약. Controller·Entity·외부 Adapter 구현은 후속 Phase에서 진행 |
+| 연동 참고 | Auth `#20`의 `AuthMember` principal과 현재 `AnalysisReport`의 분석 결과를 입력으로 사용 |
+| 문서 성격 | Issue `#98` 기준 계약과 후속 기능 Issue `#106`, `#111`, `#119`, `#124` 구현 상태 반영 |
 
 이 문서는 제공된 임시 API 명세의 URI와 화면 흐름을 최대한 유지하면서 현재 backend 구조와
 확정된 Recommendation/Product 정책을 구체화한다. 이 범위 밖 Auth, Member, Tag, Trend,
@@ -20,10 +20,10 @@ Lookbook, Closet API는 해당 도메인의 명세를 따른다.
 | 요구 | API 반영 |
 | --- | --- |
 | 쇼핑몰 파트너 미확정 | partner 전용 ID·URI를 공개 계약에 넣지 않고 provider-neutral token/Product 사용 |
-| 비용 최소화 | pagination, Top 5, live lookup 최소화, fixture fallback을 전제로 함 |
-| 원상품 가격+유사도 | 선택 가능한 원상품 가격과 Score V1, similarity-only fallback 정의 |
-| 사용자 찜 | 추천 현재 세트와 분리된 `/members/me/saved-products` 정의 |
-| 원상품 자동 확정 금지 | 자동 결과는 candidate이며 사용자 확정 단계 분리 |
+| 비용 최소화 | pagination, Top 10, live lookup 최소화, fixture fallback을 전제로 함 |
+| 추천 생성 | 기존 분석 태그 또는 요청에서 확정한 기본·직접 입력 태그와 매칭값으로 추천 결과 생성 |
+| 추천 상품 저장(찜) | 추천 현재 세트와 분리된 `/members/me/saved-products` 정의 |
+| 범위 제한 | 원상품 후보 탐색·기준 가격 확정 모델은 제외 |
 | 3D 가상 피팅 제외 | 이 문서와 Recommendation/Product MVP endpoint에서 제외 |
 | 외부 데이터 정책 준수 | candidateToken, materialization, snapshot/identity-only 경계 정의 |
 
@@ -114,114 +114,41 @@ OTHER
 ```
 
 - 추천 응답은 8개 그룹을 항상 포함한다.
-- 각 그룹은 최대 5개다.
+- 각 그룹은 최대 10개다.
 - 항목이 없는 그룹도 `items: []`로 반환한다.
 - 외부 카테고리는 Adapter에서 위 enum으로 매핑한다.
 - 매핑할 수 없는 구매 가능 패션 상품은 `OTHER`다.
 
-### 2.2 원상품 상태와 가격 근거
+### 2.2 추천 입력
 
-| 구분 | 값 | 의미 |
-| --- | --- | --- |
-| 매칭 상태 | `SUGGESTED` | 자동 탐색 후보이며 아직 사용자 미확정 |
-| 매칭 상태 | `USER_CONFIRMED` | 사용자가 원상품 후보 또는 직접 입력 정보를 확정 |
-| 매칭 상태 | `REJECTED` | 사용자가 후보를 거절 |
-| 가격 검증 | `PROVIDER_VERIFIED` | 외부 공급자가 조회 시점 가격을 제공 |
-| 가격 검증 | `USER_ENTERED` | 사용자가 직접 입력했으며 외부 검증 가격이 아님 |
-| 가격 검증 | `ADMIN_VERIFIED` | 운영자가 근거를 확인 |
-| 가격 검증 | `UNKNOWN` | 비교 가능한 가격 근거가 없음 |
-| 기준 가격 유형 | `LIST` | 확인된 정가를 비교 기준으로 선택 |
-| 기준 가격 유형 | `CURRENT_SALE` | 확인된 현재 판매가를 비교 기준으로 선택 |
+- Request body를 생략하면 기존 `AnalysisReport`의 표시 가능한 분석 태그와 현재 매칭값을 사용한다.
+- Request body를 보내면 `confirmedTagIds`, `customTagNames`, `matchPercentage`를 하나의 추천 입력으로
+  확정한다. `memberId`는 받지 않는다.
+- 기본 태그와 직접 입력 태그는 중복 제거 후 합계 1~8개이며, 직접 입력 태그는 각 1~50자다.
+- `matchPercentage`는 0~100 정수다.
+- 같은 정규화 입력을 다시 보내면 리포트의 `recommendationInputRevision`을 증가시키지 않는다.
+- 다른 입력을 확정하면 기본 태그, 직접 입력 태그, 매칭값을 함께 교체하고 revision을 한 번 증가시킨다.
+- 분석 이미지 상태는 추천 생성 과정에서 변경하지 않는다.
+- body를 생략한 요청은 표시 가능한 기존 분석 태그가 없으면 추천을 생성하지 않는다.
+- 원상품 후보 탐색, 원상품 선택, 기준 가격 확정은 이번 Recommendation/Product 범위가 아니다.
 
-원상품 선택은 추천 생성의 필수조건이 아니다. 선택 또는 비교 가격이 없으면 추천은
-similarity-only로 생성한다.
+### 2.3 유사도 점수
 
-MVP는 report당 원상품 선택 하나를 유지한다. 가격 점수는 원상품과 내부 카테고리가 같은
-후보에만 적용하고 다른 7개 그룹은 similarity-only로 평가한다. 한 이미지에서 여러 원상품을
-각각 확정하는 기능은 사용성 검증 후 별도 이슈로 확장한다.
+- 모든 `similarityScore`는 0~100으로 정규화한다.
+- `finalScore`는 이번 범위에서 `similarityScore`와 같다.
+- 상품 가격은 검색·상세·찜 화면 표시용이며 추천 점수나 가성비 문구에 사용하지 않는다.
+- 공급자 raw score를 그대로 내부 점수로 저장하지 않는다.
+- `SIMILARITY_V1`은 Adapter가 제공한 0~1 score를 0~100으로 변환하고 소수 둘째 자리에서
+  `HALF_UP`으로 저장한다.
+- score가 없으면 상품명·브랜드·카테고리에 분석 태그가 포함된 후보는 70점, 일치하지 않는
+  후보는 0점으로 계산한다.
+- 80점 이상은 `HIGH_SIMILARITY`, 분석 태그 문자열이 일치하면 `TAG_MATCH`, 그 외에는
+  `PROVIDER_SIMILARITY` reason code를 사용하며 code 목록은 정렬해 저장한다.
 
-### 2.3 Score V1
-
-모든 점수는 0~100으로 정규화한다.
-
-```text
-referenceComparablePrice =
-  priceVerificationType이 PROVIDER_VERIFIED 또는 ADMIN_VERIFIED이고
-  referencePriceType=LIST이면 referenceListPrice
-  referencePriceType=CURRENT_SALE이면 referenceCurrentPrice
-
-candidateEffectivePrice =
-  유효한 salePrice가 있으면 salePrice
-  아니면 currentPrice
-
-rawPriceSavingRate =
-  (referenceComparablePrice - candidateEffectivePrice)
-  / referenceComparablePrice
-
-priceScore = clamp(rawPriceSavingRate * 100, 0, 100)
-priceSavingRate = rawPriceSavingRate
-finalScore = similarityScore * 0.70 + priceScore * 0.30
-```
-
-계산 정밀도:
-
-- 입력 금액과 가중치는 `BigDecimal`을 사용한다.
-- 나눗셈 중간값은 `MathContext.DECIMAL128`을 사용한다.
-- `priceScore` 계산용 `rawPriceSavingRate * 100`만 반올림 전에 0~100으로 clamp한다.
-- 저장·응답 `priceSavingRate`는 비싼 후보의 음수도 보존하는 signed ratio이며 scale 6,
-  점수는 scale 2로
-  `RoundingMode.HALF_UP` 반올림한다.
-- DB는 전체 `DECIMAL(19,2)` 가격 범위와 최소 기준가 0.01의 signed ratio를 담도록
-  `DECIMAL(26,6)`을 사용한다.
-- `finalScore`는 scale 2의 similarity/price score에 `0.70`, `0.30`을 곱한 뒤 마지막에
-  한 번 scale 2로 반올림한다.
-
-`valueMatch=true` 조건:
-
-1. `similarityScore >= 60`
-2. 기준 가격 검증 유형이 `PROVIDER_VERIFIED` 또는 `ADMIN_VERIFIED`
-3. 원상품과 후보의 내부 카테고리가 같음
-4. 기준·후보 통화가 같음
-5. 후보 유효 가격이 기준 가격보다 낮음
-
-원상품 선택이 없거나 카테고리가 다르거나 가격이 없거나 통화가 다르면 다음과 같다.
+### 2.4 동점 정렬
 
 ```text
-priceScore = null
-priceSavingRate = null
-finalScore = similarityScore
-valueMatch = false
-comparisonStatus = SIMILARITY_ONLY
-```
-
-비싼 후보는 가격만으로 제외하지 않는다. 비교 가능한 가격이 있으면 `priceScore=0`이며
-유사도와 함께 최종 점수를 계산한다. 가격이 없거나 통화가 다른 후보도 제외하지 않고
-similarity-only로 평가한다.
-
-### 2.4 `matchPercentage`
-
-- 요청 범위는 0~100이고 기본값은 Analysis 계약의 70이다.
-- 최소 유사도 필터이며 Score V1의 70:30 가중치가 아니다.
-- `similarityScore < matchPercentage`인 후보는 결과에서 제외한다.
-- `valueMatch`의 절대 유사도 기준 60은 별도로 유지한다.
-
-### 2.5 유사도 점수 경계
-
-- 이 계약의 70:30은 **0~100으로 정규화된 similarityScore 이후의 최종 조합**을 뜻한다.
-- 공급자 raw score를 그대로 사용하지 않는다.
-- 공급자별 normalization과 태그 근거 fallback은 Phase 2 PoC로 calibration 근거를 확보하고
-  Phase 6 구현 이슈에서 확정한다.
-- 확정 전 Phase 1 fixture는 명시된 deterministic fixture score만 반환하며 운영 정확도를
-  주장하지 않는다.
-- Phase 6은 normalization/fallback 결정과 contract test 없이 완료할 수 없고, 산식 변경 시
-  `scoreVersion`과 이 문서를 함께 갱신한다.
-
-### 2.6 동점 정렬
-
-```text
-finalScore DESC
--> similarityScore DESC
--> candidateEffectivePrice ASC (가격 없음은 마지막)
+similarityScore DESC
 -> sourceApi ASC
 -> externalProductId ASC
 -> candidateFingerprint ASC (externalProductId가 없는 요청 내 후보)
@@ -230,7 +157,7 @@ finalScore DESC
 
 `candidateFingerprint`는 서버 내부 동점·중복 제거 값이며 API 응답 필드가 아니다.
 
-### 2.7 상품 표시와 데이터 상태
+### 2.5 상품 표시와 데이터 상태
 
 `availability`는 상품의 판매·조회 상태를 나타낸다.
 
@@ -249,31 +176,26 @@ finalScore DESC
 | `LIVE` | 현재 요청에서 공급자 live lookup으로 확인했거나 유효한 최신 snapshot을 사용함 |
 | `STALE_SNAPSHOT` | live lookup 실패로 허용된 과거 snapshot 또는 저장된 최소 관계 데이터로 부분 응답함 |
 
-### 2.8 추천 상태와 가격 비교 모드
+### 2.6 추천 상태
 
 | 구분 | 값 | 의미 |
 | --- | --- | --- |
 | `RecommendationStatus` | `NOT_GENERATED` | 현재 추천 세트가 없음 |
-| `RecommendationStatus` | `CURRENT` | 현재 입력·원상품 revision으로 생성된 세트 |
-| `RecommendationStatus` | `STALE` | 현재 입력 또는 원상품 revision과 다른 기존 세트 |
-| `ComparisonStatus` | `COMPARABLE` | 같은 카테고리·통화의 검증 가격으로 가격 비교 가능 |
-| `ComparisonStatus` | `SIMILARITY_ONLY` | 가격 비교 없이 유사도만 사용 |
+| `RecommendationStatus` | `CURRENT` | 현재 분석 결과를 입력으로 생성된 세트 |
+| `RecommendationStatus` | `STALE` | 현재 분석 결과 version과 다른 입력으로 생성된 기존 세트 |
 
-`SIMILARITY_ONLY`는 추천 항목별 비교 모드이며 `recommendationStatus`로 사용하지 않는다.
 `AnalysisReport`의 마지막 성공 result metadata로 상태를 계산하므로 추천 항목이 0개여도
 `CURRENT`와 `NOT_GENERATED`를 구분한다.
 
-### 2.9 Candidate token
+### 2.7 Candidate token
 
 - 외부 검색 후보를 DB에 자동 저장하지 않는다.
 - 상세·찜을 지원할 수 있는 raw 후보에는 서버가 서명한 opaque `candidateToken`을 반환한다.
 - token에는 공급자 identity, capability, 만료 시각, 서버 검증용 서명이 포함될 수 있지만
   클라이언트 계약은 문자열 하나뿐이다.
 - token 유효시간은 기본 10분이며 운영 설정으로 조정할 수 있다.
-- token은 발급 당시 인증 회원과 `allowedPurposes` 집합에 묶는다. 목적은
-  `REFERENCE_SELECTION`, `PRODUCT_MATERIALIZATION` 중 하나 이상이다.
-- 원상품 후보 token은 항상 `REFERENCE_SELECTION`을 포함하고, 상세·찜까지 지원하면
-  `PRODUCT_MATERIALIZATION`도 포함한다. 상품 검색 token은 materialization 목적만 포함한다.
+- token은 발급 당시 인증 회원과 `PRODUCT_MATERIALIZATION` 목적에 묶는다.
+- 상품 검색 token은 상세·찜이 가능한 후보에만 발급한다.
 - 다른 회원 또는 허용되지 않은 목적에서 사용하면 invalid다.
 - 같은 회원은 만료 전 허용된 목적에서 재사용할 수 있으며 materialization은 동일 Product를
   반환한다. 만료 뒤에는 새 검색이 필요하다.
@@ -288,210 +210,45 @@ finalScore DESC
 
 ## 3. API 요약
 
+### 3.1 Recommendation/Product 현재 범위
+
 | Method | Endpoint | 이름 | 인증 |
 | --- | --- | --- | --- |
-| POST | `/api/v1/analyses/{reportId}/reference-product-candidates` | 원상품 후보 탐색 | 필수 |
-| PUT | `/api/v1/analyses/{reportId}/reference-product` | 원상품·기준 가격 확정 | 필수 |
-| GET | `/api/v1/analyses/{reportId}/reference-product` | 원상품·기준 가격 조회 | 필수 |
 | GET | `/api/v1/products` | 상품 검색 | 필수 |
-| POST | `/api/v1/product-references` | 외부 후보 materialize | 필수 |
+| POST | `/api/v1/product-references` | 외부 상품 후보 materialize | 필수 |
 | GET | `/api/v1/products/{productId}` | 상품 상세 | 필수 |
-| PATCH | `/api/v1/analyses/{reportId}/recommendations` | 태그 확정 및 추천 생성 | 필수 |
-| GET | `/api/v1/analyses/{reportId}` | 분석 결과와 추천 조회 | 필수 |
-| PUT | `/api/v1/members/me/saved-products/{productId}` | 상품 찜 | 필수 |
-| GET | `/api/v1/members/me/saved-products` | 상품 찜 목록 | 필수 |
-| DELETE | `/api/v1/members/me/saved-products/{productId}` | 상품 찜 해제 | 필수 |
-| POST | `/api/v1/images/presigned-uploads` | 이미지 Presigned PUT URL 발급 | 필수 |
+| POST | `/api/v1/analyses/{reportId}/recommendations` | 기존 분석 결과 기반 추천 생성 | 필수 |
+| PUT | `/api/v1/members/me/saved-products/{productId}` | 추천 상품 저장 | 필수 |
+| GET | `/api/v1/members/me/saved-products` | 저장 상품 목록 | 필수 |
+| DELETE | `/api/v1/members/me/saved-products/{productId}` | 저장 상품 해제 | 필수 |
+
+`POST /product-references`는 외부 검색 결과를 상세·저장 가능한 내부 Product로 전환하기 위한
+상품 검색·상세 지원 endpoint다. 별도의 원상품 선택 기능을 의미하지 않는다.
+
+### 3.2 기존 Image/Analysis 기준 API
+
+아래 API는 이 문서에 함께 기록된 기존 계약이며 Issue `#98`의 Recommendation/Product 구현
+범위에는 포함하지 않는다.
+
+| Method | Endpoint | 이름 | 인증 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/images/upload-requests` | 이미지 Presigned POST 정보 발급 | 필수 |
 | POST | `/api/v1/images/{imageId}/complete` | 이미지 업로드 완료 검증 | 필수 |
 | POST | `/api/v1/images/{imageId}/upload-request` | 이미지 업로드 URL 재발급 | 필수 |
 | POST | `/api/v1/analyses` | 이미지 기반 분석 리포트 생성 | 필수 |
-| GET | `/api/v1/analyses` | 내 분석 리포트 목록 | 필수 |
+| GET | `/api/v1/analyses` | 마이 클로젯에 저장한 분석 리포트 목록 | 필수 |
+| GET | `/api/v1/analyses/{reportId}` | 기존 분석 상세와 추천 fragment 조회 | 필수 |
+| PUT | `/api/v1/analyses/{reportId}/save` | 선택 상품을 포함한 분석 리포트 저장 | 필수 |
+| DELETE | `/api/v1/analyses/{reportId}/save` | 분석 리포트 저장 해제 | 필수 |
 | DELETE | `/api/v1/analyses/{reportId}` | 분석 리포트 삭제 | 필수 |
+| POST | `/api/v1/lookbooks` | 업로드 이미지 또는 분석 추천 상품으로 룩북 생성 | 필수 |
+
+Issue `#98`은 `GET /analyses/{reportId}` 자체를 새로 구현하지 않고, 기존 상세 응답에
+카테고리별 `recommendationGroups` fragment를 추가하는 계약만 정의한다.
 
 ---
 
-## 4. 원상품 후보 탐색
-
-### `POST /api/v1/analyses/{reportId}/reference-product-candidates`
-
-분석 리포트의 업로드 이미지를 이용해 원상품 후보와 확인 가능한 가격 근거를 찾는다.
-외부 결과는 후보일 뿐 정확한 SKU나 공식 출시가를 자동 확정하지 않는다.
-
-### Request
-
-body는 없다. 서버는 `AnalysisReport.imageUrl`과 확정된 태그를 사용한다.
-
-### Response `200 OK`
-
-```json
-{
-  "success": true,
-  "code": "COMMON200_1",
-  "message": "성공적으로 요청을 처리했습니다.",
-  "data": {
-    "reportId": 501,
-    "items": [
-      {
-        "candidateToken": "opaque-signed-token",
-        "name": "Designer Oversized Shirt",
-        "brandName": "Example Brand",
-        "sellerName": "Example Store",
-        "category": "TOP",
-        "imageUrl": "https://provider.example/items/123.jpg",
-        "sourceUrl": "https://provider.example/items/123",
-        "similarityScore": 91.40,
-        "listPrice": {
-          "amount": 380000.00,
-          "currency": "KRW",
-          "type": "LIST",
-          "observedAt": "2026-07-18T03:00:00Z"
-        },
-        "currentPrice": {
-          "amount": 342000.00,
-          "currency": "KRW",
-          "type": "CURRENT",
-          "observedAt": "2026-07-18T03:00:00Z"
-        },
-        "priceVerificationType": "PROVIDER_VERIFIED",
-        "detailSupported": true,
-        "wishlistSupported": true,
-        "expiresAt": "2026-07-18T03:10:00Z"
-      }
-    ],
-    "partial": false,
-    "warnings": []
-  }
-}
-```
-
-### 규칙
-
-- 후보 탐색 요청 자체는 Product DB write를 수행하지 않는다.
-- 공급자별 결과를 한 요청 안에서 fingerprint로 중복 제거한다.
-- 안정 identity 또는 허용된 snapshot 전략이 없으면 `candidateToken=null`,
-  `detailSupported=false`, `wishlistSupported=false`다.
-- 한 공급자만 실패하고 다른 공급자 결과가 있으면 200 partial response를 허용한다.
-- 모든 공급자가 실패하고 fixture fallback도 없으면 `PRODUCT503_1`을 반환한다.
-
----
-
-## 5. 원상품·기준 가격 확정
-
-### `PUT /api/v1/analyses/{reportId}/reference-product`
-
-자동 후보 하나를 선택하거나 후보가 없을 때 원상품 정보를 직접 입력한다.
-
-### Request — 후보 선택
-
-```json
-{
-  "selectionType": "CANDIDATE",
-  "candidateToken": "opaque-signed-token",
-  "referencePriceType": "LIST"
-}
-```
-
-### Request — 직접 입력
-
-```json
-{
-  "selectionType": "MANUAL",
-  "manualInput": {
-    "name": "무대 착장 와이드 팬츠",
-    "brandName": "Example Brand",
-    "category": "BOTTOM",
-    "sourceUrl": "https://brand.example/products/123",
-    "imageUrl": null,
-    "price": {
-      "amount": 380000.00,
-      "currency": "KRW",
-      "type": "LIST",
-      "observedAt": "2026-07-18T03:00:00Z"
-    }
-  }
-}
-```
-
-직접 입력에서 `price`는 선택이다. 입력했으면 `amount > 0`, 통화, 유형, 관측 시각이
-필수이며 `priceVerificationType=USER_ENTERED`로 저장한다.
-
-- `CANDIDATE`는 현재 회원에게 발급된 `REFERENCE_SELECTION` token과 실제 존재하는
-  `referencePriceType`을 요구한다. 가격을 선택하지 않으면 유형도 보내지 않는다.
-- 선택한 비교 기준 가격은 0보다 커야 한다. 0원·음수는 비교 가격으로 확정하지 않는다.
-- `MANUAL`은 `name`, 내부 `category`, `sourceUrl`이 필수다.
-- `selectionType`과 맞지 않는 다른 variant 필드는 보내지 않는다.
-
-### Response `200 OK`
-
-```json
-{
-  "success": true,
-  "code": "COMMON200_1",
-  "message": "성공적으로 요청을 처리했습니다.",
-  "data": {
-    "reportId": 501,
-    "selection": {
-      "selectionId": 71,
-      "revision": 2,
-      "matchStatus": "USER_CONFIRMED",
-      "name": "Designer Oversized Shirt",
-      "brandName": "Example Brand",
-      "category": "TOP",
-      "sourceUrl": "https://provider.example/items/123",
-      "imageUrl": "https://provider.example/items/123.jpg",
-      "referencePrice": {
-        "amount": 380000.00,
-        "currency": "KRW",
-        "type": "LIST",
-        "verificationType": "PROVIDER_VERIFIED",
-        "observedAt": "2026-07-18T03:00:00Z"
-      }
-    },
-    "recommendationStatus": "NOT_GENERATED"
-  }
-}
-```
-
-### 규칙
-
-- report당 현재 선택 하나를 upsert한다.
-- 의미 있는 원상품·가격 변경 때 `revision`을 1 증가시킨다.
-- 같은 내용을 다시 PUT하면 revision을 증가시키지 않는 멱등 요청이다.
-- 현재 세트가 없으면 `NOT_GENERATED`, 변경 전 세트가 남아 있으면 `STALE`, idempotent PUT 뒤
-  현재 revision 기반 세트가 있으면 `CURRENT`다.
-- 변경 전 추천 결과는 삭제하지 않고 `STALE`로 판정하며 가성비 문구를 숨긴다.
-- 후보 token은 live lookup과 저장 정책을 다시 검증한다.
-- 직접 입력 정보를 외부 검증 가격처럼 표시하지 않는다.
-
----
-
-## 6. 원상품·기준 가격 조회
-
-### `GET /api/v1/analyses/{reportId}/reference-product`
-
-### Response `200 OK`
-
-응답 shape은 PUT과 동일하게 `selection`을 항상 사용한다. 아직 선택하지 않았으면 404로
-만들지 않고 다음을 반환한다.
-
-```json
-{
-  "success": true,
-  "code": "COMMON200_1",
-  "message": "성공적으로 요청을 처리했습니다.",
-  "data": {
-    "reportId": 501,
-    "selection": null,
-    "recommendationStatus": "NOT_GENERATED"
-  }
-}
-```
-
-원상품 선택이 없어도 similarity-only 현재 세트가 이미 있으면 `recommendationStatus=CURRENT`다.
-
----
-
-## 7. 상품 검색
+## 4. 상품 검색
 
 ### `GET /api/v1/products`
 
@@ -535,7 +292,7 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
         },
         "availability": "AVAILABLE",
         "detailSupported": true,
-        "wishlistSupported": true
+        "saveSupported": true
       }
     ],
     "nextCursor": "opaque-next-cursor",
@@ -557,7 +314,7 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
 
 ---
 
-## 8. 외부 후보 materialize
+## 5. 외부 후보 materialize
 
 ### `POST /api/v1/product-references`
 
@@ -568,6 +325,8 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
   "candidateToken": "opaque-signed-token"
 }
 ```
+
+`candidateToken`은 공백일 수 없으며 최대 4096자다.
 
 ### Response — 새 Product `201 Created`
 
@@ -598,7 +357,7 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
 
 ---
 
-## 9. 상품 상세
+## 6. 상품 상세
 
 ### `GET /api/v1/products/{productId}`
 
@@ -642,27 +401,29 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
 - provider not found는 Product를 hard delete하지 않고 `UNAVAILABLE`로 표시한다.
 - 찜 해제는 상세 조회 성공 여부와 무관하게 동작한다.
 
+Issue #106 구현은 fixture 기본 런타임에서 검색 GET의 무저장, 회원·목적·10분 만료
+candidate token, 안정 provider identity의 멱등 materialize와 상세 live lookup 계약을
+검증한다. Shopify 런타임 및 실제 외부 호출은 활성화하지 않는다.
+
 ---
 
-## 10. 태그 확정 및 추천 생성
+## 7. 추천 결과 생성
 
-### `PATCH /api/v1/analyses/{reportId}/recommendations`
+### `POST /api/v1/analyses/{reportId}/recommendations`
 
-임시 명세와 같이 태그·매칭값 확정과 추천 생성을 하나의 공개 API로 유지한다.
-
-### Request
+Issue #119에서 인증 회원의 기존 분석 결과를 사용하거나 요청 body의 확정 입력을 먼저 반영한 뒤
+현재 추천 세트를 생성하거나 교체한다. Request body는 선택 사항이다.
 
 ```json
 {
-  "confirmedTagIds": [12, 21, 33],
+  "confirmedTagIds": [11, 27],
+  "customTagNames": ["출근룩"],
   "matchPercentage": 70
 }
 ```
 
-| 필드 | 타입 | 필수 | 규칙 |
-| --- | --- | --- | --- |
-| `confirmedTagIds` | Array\<Long\> | O | 비어 있지 않은 중복 없는 존재하는 Tag ID |
-| `matchPercentage` | Integer | X | 0~100 최소 유사도 필터. 생략하면 70 |
+body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입력 태그 합계는 중복 제거 후 1~8개다.
+기존 body 없는 호출도 하위 호환으로 유지한다.
 
 ### Response `200 OK`
 
@@ -675,11 +436,10 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
   "message": "성공적으로 요청을 처리했습니다.",
   "data": {
     "reportId": 501,
-    "tags": ["미니멀", "와이드핏", "베이지톤"],
+    "analysisTags": ["미니멀", "와이드핏", "베이지톤"],
     "matchPercentage": 70,
-    "scoreVersion": "V1",
+    "scoreVersion": "SIMILARITY_THRESHOLD_V2",
     "recommendationStatus": "CURRENT",
-    "referenceRevision": 2,
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
       {
@@ -699,12 +459,8 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
             },
             "purchaseUrl": "https://mall.example/products/100",
             "similarityScore": 82.00,
-            "priceScore": 92.39,
-            "finalScore": 85.12,
-            "priceSavingRate": 0.923947,
-            "valueMatch": true,
-            "comparisonStatus": "COMPARABLE",
-            "reasonCodes": ["HIGH_SIMILARITY", "LOWER_PRICE"],
+            "finalScore": 82.00,
+            "reasonCodes": ["HIGH_SIMILARITY"],
             "availability": "AVAILABLE",
             "isSaved": false
           }
@@ -723,75 +479,40 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
 }
 ```
 
-가격 비교를 할 수 없는 항목은 다음 필드를 사용한다.
-
-```json
-{
-  "priceScore": null,
-  "finalScore": 82.00,
-  "priceSavingRate": null,
-  "valueMatch": false,
-  "comparisonStatus": "SIMILARITY_ONLY",
-  "reasonCodes": ["HIGH_SIMILARITY", "REFERENCE_PRICE_UNAVAILABLE"]
-}
-```
-
-기준·후보 통화가 다른 항목도 같은 comparison mode를 사용하되 reason을 구분한다.
-
-```json
-{
-  "priceScore": null,
-  "finalScore": 82.00,
-  "priceSavingRate": null,
-  "valueMatch": false,
-  "comparisonStatus": "SIMILARITY_ONLY",
-  "reasonCodes": ["HIGH_SIMILARITY", "CURRENCY_MISMATCH"]
-}
-```
-
-기준 가격이 없으면 `REFERENCE_PRICE_UNAVAILABLE`, `USER_ENTERED` 가격만 있어 가격 비교에서
-제외하면 `REFERENCE_PRICE_UNVERIFIED`를 사용한다. 사용자 입력 가격은 응답에 검증 가격이나
-가성비 근거로 표시하지 않는다.
-
-### 트랜잭션과 동시성
+### 생성·교체 규칙
 
 ```text
-1. 소유권·리포트 상태·Tag ID 검증
-2. 짧은 transaction A
-   - confirmedTagIds와 matchPercentage 저장
-   - analysis recommendationInputRevision 증가
-   - 현재 reference selection ID와 revision을 요청 snapshot으로 캡처
-3. transaction 밖
-   - 외부 후보 탐색, normalize, category mapping, dedupe, Score V1 계산
-4. 짧은 transaction B
-   - report row lock 또는 optimistic compare
-   - 현재 recommendationInputRevision과 요청 revision 비교
-   - 현재 reference selection ID/revision과 요청 snapshot 비교
-   - 둘 다 같을 때만 기존 현재 세트를 새 세트로 원자적 교체
-   - 빈 세트도 result input/reference revision, scoreVersion, generatedAt metadata 갱신
+1. 리포트 소유권을 검증하고, body가 있으면 확정 태그와 매칭값을 write lock에서 멱등 반영한다.
+2. 현재 입력 revision, 매칭값, 정렬된 기본·직접 입력 태그 key를 snapshot으로 캡처한다.
+3. DB transaction 밖에서 쇼핑 API 후보 조회, 정규화, category mapping, 중복 제거,
+   similarity score 계산을 수행한다.
+4. 짧은 write transaction에서 입력 version을 다시 비교한다.
+5. 입력이 같을 때만 기존 현재 세트를 새 세트로 원자적으로 교체하고 결과 metadata를 갱신한다.
 ```
 
 - 외부 호출을 DB transaction 안에서 수행하지 않는다.
 - 새 세트 저장에 성공하기 전 기존 세트를 삭제하지 않는다.
-- transaction B가 실패하면 전체 새 세트를 rollback하고 기존 세트를 유지한다.
-- 외부 호출 중 입력 또는 reference selection/revision이 바뀌면 `RECOMMENDATION409_1`이며
-  기존 세트를 유지한다.
-- 외부 공급자가 모두 실패하면 `PRODUCT503_1`이며 기존 세트는 유지된다.
-- provider identity 또는 허용 snapshot으로 materialize할 수 없는 후보는 현재 추천 세트에서
-  제외하고 `MATERIALIZATION_UNSUPPORTED` warning을 남긴다.
-- 공급자가 후보를 반환했지만 전부 저장정책상 materialize 불가하면 `PRODUCT503_3`이며
-  요청 단위 ephemeral 추천은 만들지 않고 기존 세트를 유지한다.
-- transaction A가 이미 반영됐으므로 기존 세트는 input revision 불일치로 `STALE`이다.
-- 추천 세트 교체·삭제는 `SavedProduct`를 변경하지 않는다.
+- 입력 revision, 태그 key 또는 매칭값이 달라지면 `RECOMMENDATION409_1`을 반환하고 기존 세트를 유지한다.
+- body 요청은 `matchPercentage` 미만 후보를 materialization 전에 제외하고
+  `SIMILARITY_THRESHOLD_V2`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
+- body 없는 하위 호환 요청은 임계값 필터 없이 `SIMILARITY_V1`을 유지한다.
+- 외부 공급자가 모두 실패하면 `PRODUCT503_1`이며 기존 세트를 유지한다.
+- materialize할 수 없는 후보는 현재 세트에서 제외하고 warning을 남긴다.
+- 후보가 모두 저장 정책상 materialize 불가하면 `PRODUCT503_3`이며 기존 세트를 유지한다.
+- 각 그룹은 최대 10개이며 8개 그룹을 고정 순서로 반환한다.
+- 추천 세트 교체는 `SavedProduct`를 변경하지 않는다.
+- 일부 태그 query가 실패하면 `PROVIDER_PARTIAL_FAILURE`, 저장 불가 후보를 제외하면
+  `MATERIALIZATION_SKIPPED` warning과 `partial=true`를 반환한다.
+- 추천 응답과 상품 상세 응답의 `isSaved`는 인증 회원의 `SavedProduct` 관계를 기준으로 반환한다.
 
 ---
 
-## 11. 분석 결과와 추천 조회 연동
+## 8. 분석 결과와 추천 조회 연동
 
 ### `GET /api/v1/analyses/{reportId}`
 
-Analysis `#35`의 상세 응답에 아래 Recommendation fragment를 포함한다. 최종 병합 DTO가
-달라지면 Analysis와 Recommendation 담당자가 한 PR에서 명세와 코드를 함께 동기화한다.
+기존 Analysis 상세 응답에 아래 Recommendation fragment를 포함한다. Analysis 상세 조회 자체의
+소유권·soft delete 계약은 Analysis 도메인의 기존 명세를 따른다.
 
 ```json
 {
@@ -801,9 +522,8 @@ Analysis `#35`의 상세 응답에 아래 Recommendation fragment를 포함한�
   "data": {
     "reportId": 501,
     "tags": ["미니멀", "와이드핏", "베이지톤"],
-    "matchPercentage": 70,
     "recommendationStatus": "CURRENT",
-    "scoreVersion": "V1",
+    "scoreVersion": "SIMILARITY_V1",
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
       {"category": "TOP", "items": []},
@@ -821,15 +541,15 @@ Analysis `#35`의 상세 응답에 아래 Recommendation fragment를 포함한�
 ### 조회 규칙
 
 - 아직 생성하지 않았으면 `recommendationStatus=NOT_GENERATED`와 8개 빈 그룹을 반환한다.
-- 입력 또는 reference revision이 다르면 `STALE`로 반환하고 가성비 문구를 숨긴다.
+- 현재 분석 결과 version과 마지막 생성 입력 version이 다르면 `STALE`로 반환한다.
 - 일부 live hydrate 실패는 가능한 항목을 반환하고 `partial=true`, `warnings`에 reason code를 둔다.
-- 전체를 표시할 수 없으면 provider 오류를 반환하되 저장된 찜 관계나 현재 세트를 삭제하지 않는다.
+- 전체를 표시할 수 없으면 provider 오류를 반환하되 저장 상품 관계나 현재 세트를 삭제하지 않는다.
 
 ---
 
-## 12. 상품 찜
+## 9. 추천 상품 저장
 
-### 12.1 찜 생성
+### 9.1 저장 생성
 
 #### `PUT /api/v1/members/me/saved-products/{productId}`
 
@@ -853,7 +573,7 @@ body는 없다.
 - materialize된 Product만 받을 수 있다.
 - client가 외부 상품 snapshot 필드를 함께 보내지 않는다.
 
-### 12.2 찜 목록
+### 9.2 저장 목록
 
 #### `GET /api/v1/members/me/saved-products?cursor=&pageSize=`
 
@@ -891,6 +611,8 @@ body는 없다.
 ```
 
 - 정렬은 `savedAt DESC, productId DESC`다.
+- `pageSize` 기본값은 10이며 허용 범위는 1~20이다.
+- `cursor`는 마지막 항목의 저장 시각과 상품 ID를 서버가 인코딩한 opaque 문자열이다.
 - 품절·not found·일시 장애여도 찜 관계는 유지한다.
 - live hydrate 실패 시 허용된 snapshot과 `dataStatus=STALE_SNAPSHOT`,
   `availability=TEMPORARILY_UNRESOLVED` 상태를 반환한다.
@@ -898,7 +620,7 @@ body는 없다.
 - 표시 가능한 데이터가 없는 항목도 관계를 숨기거나 삭제하지 않고 최소 `productId`,
   `dataStatus=STALE_SNAPSHOT`, `savedAt`을 반환한다.
 
-### 12.3 찜 해제
+### 9.3 저장 해제
 
 #### `DELETE /api/v1/members/me/saved-products/{productId}`
 
@@ -920,7 +642,7 @@ body는 없다.
 
 ---
 
-## 13. 오류 계약
+## 10. 오류 계약
 
 | Java 식별자 | Wire code | HTTP | 적용 조건 |
 | --- | --- | ---: | --- |
@@ -928,134 +650,138 @@ body는 없다.
 | `VALIDATION_ERROR` | `COMMON400_2` | 400 | 필드 형식·범위·필수값 위반 |
 | `ANALYSIS_REPORT_NOT_FOUND` | `ANALYSIS404_1` | 404 | 리포트가 없거나 현재 회원 소유가 아님 |
 | `ANALYSIS_NOT_READY` | `ANALYSIS409_1` | 409 | 추천 입력으로 사용할 수 없는 분석 상태 |
-| `TAG_NOT_FOUND` | `TAG404_1` | 404 | 요청 Tag ID 중 존재하지 않는 값이 있음 |
+| `TAG_NOT_FOUND` | `TAG404_1` | 404 | 확정 요청의 기본 태그 ID가 존재하지 않음 |
 | `PRODUCT_NOT_FOUND` | `PRODUCT404_1` | 404 | 내부 Product가 없음 |
 | `PRODUCT_REFERENCE_INVALID` | `PRODUCT422_1` | 422 | candidate token 서명·형식·만료 오류 |
 | `PRODUCT_REFERENCE_UNSUPPORTED` | `PRODUCT422_2` | 422 | 안정 identity와 허용 snapshot 전략이 모두 없음 |
 | `PRODUCT_PROVIDER_RESPONSE_INVALID` | `PRODUCT502_1` | 502 | 공급자 응답을 계약대로 해석할 수 없음 |
 | `PRODUCT_PROVIDER_UNAVAILABLE` | `PRODUCT503_1` | 503 | timeout, 5xx, 연결 실패 |
 | `PRODUCT_PROVIDER_QUOTA_EXCEEDED` | `PRODUCT503_2` | 503 | 429 또는 공급자 quota 초과 |
-| `PRODUCT_PROVIDER_PERSISTENCE_UNSUPPORTED` | `PRODUCT503_3` | 503 | 반환 후보를 허용된 방식으로 하나도 materialize할 수 없음 |
-| `RECOMMENDATION_INPUT_CHANGED` | `RECOMMENDATION409_1` | 409 | 외부 호출 중 태그·match 또는 reference revision이 변경됨 |
+| `PRODUCT_PROVIDER_PERSISTENCE_UNSUPPORTED` | `PRODUCT503_3` | 503 | 후보를 허용된 방식으로 하나도 materialize할 수 없음 |
+| `RECOMMENDATION_INPUT_CHANGED` | `RECOMMENDATION409_1` | 409 | 외부 호출 중 분석 결과 version이 변경됨 |
 | `IMAGE_UNSUPPORTED_CONTENT_TYPE` | `IMAGE400_1` | 400 | JPEG, PNG, WebP 이외의 업로드 MIME type |
 
 정책:
 
 - 타인 리포트에 403을 반환하지 않는다.
-- 가격 없음·통화 불일치는 요청 오류가 아니라 similarity-only 조건이다.
-- 찜 DELETE는 관계가 없어도 성공하므로 saved-product not-found 오류가 없다.
+- 상품 가격은 표시 데이터이며 가격 없음·통화 차이는 추천 생성 오류가 아니다.
+- 저장 상품 DELETE는 관계가 없어도 성공한다.
 - provider 오류 응답에는 API key, 원문 요청 URL, candidate token, 외부 원문 body를 넣지 않는다.
-- domain ErrorCode 구현 전에는 이 표의 식별자와 wire code를 동시에 임의 변경하지 않는다.
+- domain `ErrorCode`와 이 표의 식별자·wire code를 함께 동기화한다.
 
 ---
 
-## 14. 외부 공급자와 저장 정책
+## 11. 외부 공급자와 저장 정책
 
-### 14.1 Port 경계
+### 11.1 Port 경계
 
 ```text
-ReferenceProductDiscoveryPort  # 이미지 기반 원상품 후보
-ProductPriceVerificationPort   # 원상품 가격 검증
-ProductCatalogPort             # 키워드 검색·상세·live lookup
+ProductCatalogPort             # 상품 검색·상세·추천 후보 조회·live lookup
 AffiliateLinkPort              # 제휴 링크를 실제 채택할 때만
 ```
 
-Controller와 Service는 Shopify, Lykdat, ADPICK 같은 공급자 이름을 DTO 계약에 노출하지 않는다.
+Controller와 Service는 Shopify 등 공급자 이름을 DTO 계약에 노출하지 않는다. 실제 운영 Adapter의
+채택, 가격, quota는 공식 근거가 확정된 뒤 별도 운영 결정으로 기록한다.
 
-### 14.2 검색·저장 분리
+### 11.2 검색·저장 분리
 
-- 상품 검색과 원상품 후보 탐색은 DB write를 하지 않는다.
-- `POST /product-references`, 사용자의 원상품 확정, 추천 결과 materialization만 명시적으로 저장한다.
+- 상품 검색은 DB write를 하지 않는다.
+- `/product-references`, 추천 결과 materialization, 사용자 저장 요청만 명시적으로 저장한다.
 - 공급자 정책이 snapshot 저장을 금지하면 provider identity만 저장하고 응답 시 live lookup한다.
 - 안정 identity가 없지만 snapshot 저장이 명시적으로 허용되면 내부 UUID 전략을 사용할 수 있다.
-- identity와 snapshot 모두 허용되지 않으면 상세·찜을 비활성화한다.
-- MVP 추천 현재 세트에는 materialize 가능한 Product만 포함한다. 요청 단위 ephemeral 추천
-  DTO는 만들지 않는다.
-- 검색 결과·가격·이미지 URL의 허용 필드와 TTL은 Phase 2 ADR 확정 전 추측하지 않는다.
+- identity와 snapshot 모두 허용되지 않으면 상세·저장을 비활성화한다.
+- 현재 추천 세트에는 materialize 가능한 Product만 포함하고 ephemeral 추천 행은 두지 않는다.
+- 외부 가격은 상품 표시 데이터로만 취급하며 기준 가격이나 가성비 근거로 재해석하지 않는다.
 
-### 14.3 장애와 fallback
+### 11.3 장애와 fallback
 
-- 실제 API를 CI에서 호출하지 않고 fixture Adapter를 사용한다.
+- 실제 외부 API를 CI에서 호출하지 않고 fixture Adapter를 사용한다.
 - 401/403 인증 오류, quota 403/429, 5xx, timeout, invalid body를 구분한다.
 - retry는 멱등 read와 공급자가 허용한 오류만 대상으로 한다.
 - provider 장애가 DB transaction을 길게 유지하지 않는다.
 - feature flag off 상태에서도 fixture 또는 명시적 unavailable 응답으로 기동한다.
 
+### 11.4 운영 채택 근거
+
+- 비용·quota·저장 권한의 공식 근거가 확인되기 전에는 운영 Adapter 채택이나 장기 저장을
+  허용하지 않는다.
+- 지원 채널 답변 대기 시간과 escalation 절차는 로컬 로드맵과 공급자 PoC 이슈에서 관리하며
+  API wire 계약에는 포함하지 않는다.
+
 ---
 
-## 15. DTO 이름
+## 12. DTO 이름
 
 | 역할 | 이름 |
 | --- | --- |
-| 원상품 후보 요청/응답 | `ReferenceProductCandidateSearchRequest`, `ReferenceProductCandidateListResponse` |
-| 원상품 확정 요청/응답 | `ReferenceProductConfirmRequest`, `ReferenceProductResponse` |
 | 상품 검색 응답 | `ProductSearchResponse` |
 | 외부 후보 materialize | `ProductReferenceCreateRequest`, `ProductReferenceResponse` |
 | 상품 상세 응답 | `ProductDetailResponse` |
-| 추천 생성 요청/응답 | `RecommendationCreateRequest`, `RecommendationResultResponse` |
+| 추천 생성 요청 | `RecommendationGenerateRequest` |
+| 추천 생성 응답 | `RecommendationResultResponse` |
 | 추천 그룹 | `RecommendationGroupResponse` |
-| 찜 응답/목록 | `SavedProductResponse`, `SavedProductListResponse` |
+| 저장 상품 응답/목록 | `SavedProductResponse`, `SavedProductListResponse` |
 | 이미지 업로드 URL 요청/응답 | `ImageUploadRequest`, `ImageUploadResponse` |
 
-Controller는 Entity나 외부 provider response를 직접 반환하지 않는다.
+추천 생성 body는 선택 사항이며 body를 보내는 경우 `RecommendationGenerateRequest`의 세 필드를
+모두 제공한다. Controller는 Entity나 외부 provider response를 직접 반환하지 않는다.
 
 ---
 
-## 16. Auth #20 / Analysis #35 연동 체크
+## 13. Auth / Analysis 연동 체크
 
-### Auth `#20`
+### Auth
 
-- PR `#34` 병합본의 principal 타입은 `AuthMember`이며 Controller에서
-  `@AuthenticationPrincipal AuthMember`로 주입받는다.
+- principal 타입은 `AuthMember`이며 `@AuthenticationPrincipal AuthMember`로 주입받는다.
 - member ID는 `authMember.getMember().getId()`로 얻고 Request에 임시 member ID를 추가하지 않는다.
 - 모든 Product/Recommendation endpoint에 인증 정책을 적용한다.
 - 인증 실패 401과 리포트 존재 숨김 404를 contract test로 고정한다.
 
-### Analysis `#35`
+### Analysis
 
-- 실제 병합된 Controller prefix가 `/api/v1/analyses`인지 확인한다.
-- report 소유자 조회, 분석 완료 상태, 확정 ReportTag 교체 방식을 확인한다.
-- `PATCH /{reportId}/recommendations`의 tag·match transaction과 외부 호출을 분리한다.
-- 이미지 URL만으로 외부 공급자가 이미지를 읽을 수 있는지 확인하고, 필요하면 Analysis 또는
-  storage 계층에 read stream/signed URL 계약을 별도 이슈로 추가한다.
-- `GET /analyses/{reportId}`의 기존 필드를 유지하며 이 문서의 recommendation fragment를 합친다.
-
-Auth `#20`의 병합 계약은 위와 같이 사용한다. Analysis `#35`가 병합되기 전에는 해당 브랜치
-코드를 복제하거나 임시 호환 계층을 만들지 않는다.
+- 실제 Controller prefix와 소유자 조회 계약은 현재 Analysis 구현을 따른다.
+- body 없는 Recommendation 요청은 기존 분석 결과와 ReportTag를 읽기 전용 입력으로 사용한다.
+- body가 있는 추천 생성 API는 확정 기본 태그·직접 입력 태그·매칭값을 리포트 입력으로 멱등 교체한다.
+- 분석 결과 version을 외부 호출 전후에 비교해 늦게 끝난 요청이 새 입력을 덮어쓰지 못하게 한다.
+- 이미지 URL을 외부 공급자가 읽어야 한다면 storage 계층의 read stream 또는 짧은 signed URL
+  계약을 쇼핑 API Adapter 구현 이슈에서 명시한다.
+- `GET /analyses/{reportId}`의 기존 필드를 유지하며 recommendation fragment만 합친다.
 
 ---
 
-## 17. 구현 Phase 검증 기준
+## 14. 구현 Phase 검증 기준
 
 - [ ] 모든 endpoint 인증과 소유권 404가 MockMvc로 검증됨
 - [ ] 요청 DTO validation과 공통 응답 envelope가 검증됨
 - [ ] 상품 검색 GET이 DB write를 하지 않음
 - [ ] candidate token 변조·만료·재사용 정책이 검증됨
-- [ ] Score V1 70:30과 matchPercentage 필터가 순수 단위 테스트로 검증됨
-- [ ] 가격 없음·통화 불일치가 similarity-only이며 valueMatch가 false임
-- [ ] 8개 그룹 순서, Top 5, 빈 그룹 포함이 검증됨
+- [ ] body 없는 추천 생성이 AnalysisReport와 ReportTag를 변경하지 않음
+- [ ] body 추천 생성이 기본·직접 입력 태그와 매칭값을 멱등 확정함
+- [ ] 0~100 임계값 경계와 임계값 미만 후보의 materialization 제외가 검증됨
+- [ ] 유사도 정규화와 `finalScore=similarityScore`가 순수 단위 테스트로 검증됨
+- [ ] 8개 그룹 순서, 그룹별 Top 10, 빈 그룹 포함이 검증됨
 - [ ] 외부 호출이 DB transaction 밖에서 실행됨
-- [ ] 저장 실패·동시 입력 변경 시 기존 현재 세트가 유지됨
-- [ ] 찜 PUT/DELETE 멱등성과 추천 세트 독립성이 검증됨
-- [ ] provider 장애 중 찜 해제와 partial 목록이 동작함
+- [ ] 저장 실패·분석 입력 변경 시 기존 현재 세트가 유지됨
+- [ ] 저장 상품 PUT/DELETE 멱등성과 추천 세트 독립성이 검증됨
+- [ ] provider 장애 중 저장 해제와 partial 목록이 동작함
 - [ ] API key, candidate token, 사용자 이미지 URL 원문이 로그에 노출되지 않음
 - [ ] API 변경 PR에서 이 문서가 함께 갱신됨
 
 ---
 
-## 18. 이미지 Presigned Upload
+## 15. 이미지 Presigned Upload
 
-### `POST /api/v1/images/presigned-uploads`
+### `POST /api/v1/images/upload-requests`
 
 인증 회원이 브라우저에서 private S3 버킷으로 이미지를 직접 업로드할 수 있도록 5분 유효한
-Presigned PUT URL을 발급한다. Request의 회원 식별자는 받지 않으며 JWT principal의 회원을
+Presigned POST 정보를 발급한다. Request의 회원 식별자는 받지 않으며 JWT principal의 회원을
 소유자로 사용한다.
 
 ### Request
 
 ```json
 {
-  "purpose": "ANALYSIS_ORIGINAL",
+  "purpose": "ANALYSIS",
   "contentType": "image/jpeg",
   "fileSize": 3145728
 }
@@ -1063,7 +789,7 @@ Presigned PUT URL을 발급한다. Request의 회원 식별자는 받지 않으�
 
 | 필드 | 필수 | 계약 |
 | --- | --- | --- |
-| `purpose` | 예 | `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `LOOKBOOK_MATCHED`, `PROFILE` |
+| `purpose` | 예 | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
 | `contentType` | 예 | `image/jpeg`, `image/png`, `image/webp`만 허용 |
 | `fileSize` | 예 | 1 byte 이상 5 MiB(`5,242,880` byte) 이하 |
 
@@ -1076,34 +802,46 @@ Presigned PUT URL을 발급한다. Request의 회원 식별자는 받지 않으�
   "message": "리소스가 생성되었습니다.",
   "data": {
     "imageId": "5f8ca021-02fe-4fba-982f-8de356789abc",
-    "uploadUrl": "https://fitback-prod-images.example/presigned-put",
-    "uploadMethod": "PUT",
-    "requiredHeaders": {
-      "Content-Type": "image/jpeg"
+    "uploadUrl": "https://fitback-prod-images.example/",
+    "uploadMethod": "POST",
+    "uploadFields": {
+      "key": "images/analysis/42/2026/07/5f8ca021-02fe-4fba-982f-8de356789abc.jpg",
+      "Content-Type": "image/jpeg",
+      "success_action_status": "204",
+      "policy": "encoded-policy",
+      "x-amz-algorithm": "AWS4-HMAC-SHA256",
+      "x-amz-credential": "...",
+      "x-amz-date": "20260724T000000Z",
+      "x-amz-signature": "..."
     },
-    "expiresAt": "2026-07-22T05:05:00Z",
-    "imageUrl": "https://d1p2ierkew26r1.cloudfront.net/prod/images/analysis_original/2026/07/5f8ca021-02fe-4fba-982f-8de356789abc.jpg"
+    "expiresAt": "2026-07-24T00:05:00Z"
   }
 }
 ```
 
-클라이언트는 `uploadMethod`와 `requiredHeaders`를 그대로 사용해 `uploadUrl`로 파일 body를
-전송한다. `uploadUrl`은 자격 증명 URL이므로 저장하거나 로그에 남기지 않는다. `imageUrl`은
-영구 리소스 위치이며 private CloudFront 배포의 서명 없는 조회 URL이므로 그 자체로는 `403`을
-반환한다. 업로드 직후 화면 미리보기는 브라우저의 local object URL을 사용한다.
+클라이언트는 응답의 `uploadUrl`과 `uploadFields`를 사용해 S3로 `multipart/form-data` POST를
+전송한다. `uploadFields`의 모든 필드를 `FormData`에 넣고 파일은 마지막 `file` 필드로 추가한다.
+브라우저가 boundary를 포함한 `Content-Type`을 자동 설정해야 하므로 S3 요청의
+`Content-Type: multipart/form-data` 헤더를 직접 지정하지 않는다.
 
-Presigned PUT 서명에는 요청의 `fileSize`와 동일한 `Content-Length`가 포함된다. 브라우저가
-파일 body 크기를 기준으로 이 헤더를 자동 생성하므로 클라이언트 JavaScript에서 직접 설정하지
-않으며, 요청 크기와 실제 body 크기가 다르면 S3가 업로드를 거부한다.
+POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를 제한한다.
+`content-length-range`의 최소·최대값은 모두 요청 `fileSize`로 설정하므로 다른 크기의 파일로
+교체하면 S3가 업로드를 거부한다. EC2 역할 같은 임시 자격 증명으로 발급할 때는
+`uploadFields`에 `x-amz-security-token`이 추가되며 프론트는 이 필드도 그대로 전송한다.
+
+`uploadUrl`, `uploadFields`, Presigned 서명 값은 일시적인 업로드 권한 정보이므로 저장하거나
+로그에 남기지 않는다. 응답에는 `requiredHeaders`와 `imageUrl`을 포함하지 않는다. 업로드 직후
+화면 미리보기는 브라우저의 local object URL을 사용한다.
 
 ### 상태와 검증
 
-- 발급과 함께 `image.status=PENDING`, `visibility=PRIVATE` 행을 저장한다.
-- 객체 key는 서버가 UUID로 생성하며 클라이언트 파일명은 사용하지 않는다.
+- API의 논리 초기 상태는 `PENDING_UPLOAD`이며 `visibility=PRIVATE`로 시작한다.
+- Issue #95 호환 릴리스 A에서는 자동 rollback을 위해 DB에는 legacy `PENDING`을 기록하고, reader/domain check는 `PENDING`과 `PENDING_UPLOAD`를 모두 논리 `PENDING_UPLOAD`로 처리한다.
+- 객체 key는 `images/{purpose}/{memberId}/{yyyy}/{MM}/{imageId}.{ext}` 형식으로 서버가 생성하며 클라이언트 파일명은 사용하지 않는다.
 - 이 API가 받은 `fileSize`는 발급 전 요청 검증용이다. 업로드 완료 API가 S3 metadata,
   실제 파일 시그니처와 크기를 다시 검증한다.
-- 분석 리포트가 생성되면 `ANALYSIS_ORIGINAL` 이미지를 `ACTIVE`로 전환한다.
-- 24시간 이상 도메인에 연결되지 않은 이미지는 정리 작업자가 S3 객체와 DB 상태를 정리한다.
+- 분석 리포트가 생성되면 API 목적 `ANALYSIS` 또는 호환 저장값 `ANALYSIS_ORIGINAL` 이미지를 `ACTIVE`로 전환한다.
+- 24시간 이상 도메인에 연결되지 않은 `PENDING`/`PENDING_UPLOAD`/`READY`/`REJECTED` 이미지는 정리 작업자가 S3 객체와 DB 상태를 정리한다.
 
 ### 오류
 
@@ -1112,10 +850,11 @@ Presigned PUT 서명에는 요청의 `fileSize`와 동일한 `Content-Length`가
 | 인증 없음 또는 유효하지 않은 토큰 | 401 | `COMMON401_1` |
 | 필수값, enum, 파일 크기 위반 | 400 | `COMMON400_1` 또는 `COMMON400_2` |
 | 지원하지 않는 MIME type | 400 | `IMAGE400_1` |
+| Presigned POST 정보 생성 실패 | 500 | `IMAGE500_1` |
 
 ### `POST /api/v1/images/{imageId}/complete`
 
-인증 회원이 Presigned PUT 업로드를 마친 뒤 호출한다. 서버는 S3 객체의 크기, MIME type과
+인증 회원이 Presigned POST 업로드를 마친 뒤 호출한다. 서버는 S3 객체의 크기, MIME type과
 파일 시그니처를 검증하고 성공하면 이미지 상태를 `READY`로 전환한다.
 
 ```json
@@ -1132,17 +871,17 @@ Presigned PUT 서명에는 요청의 `fileSize`와 동일한 `Content-Length`가
 
 ### `POST /api/v1/images/{imageId}/upload-request`
 
-아직 `PENDING`인 본인 이미지의 5분 유효 Presigned PUT URL을 재발급한다. 응답 계약은 최초
-발급 응답과 동일하며 DB의 이미지 ID와 object key는 바꾸지 않는다.
+아직 논리 `PENDING_UPLOAD`인 본인 이미지의 5분 유효 Presigned POST 정보를 재발급한다. 호환 릴리스 A에서는 DB의 `PENDING`도 같은 상태로 처리한다. 응답 계약은
+최초 발급 응답과 동일하며 DB의 이미지 ID와 object key는 바꾸지 않는다.
 
 ---
 
-## 19. 분석 리포트 생명주기
+## 16. 분석 리포트 생명주기
 
 ### `POST /api/v1/analyses`
 
 `Content-Type: application/json` 요청은 인증 회원 본인이 소유하고 `status=READY`인
-`ANALYSIS_ORIGINAL` 이미지 ID를 받는다.
+`ANALYSIS` 목적의 이미지 ID를 받는다. 호환 저장값 `ANALYSIS_ORIGINAL`도 같은 분석 목적 이미지로 처리한다.
 
 ```json
 {
@@ -1156,24 +895,97 @@ Presigned PUT 서명에는 요청의 `fileSize`와 동일한 `Content-Length`가
 | 조건 | HTTP | code |
 | --- | ---: | --- |
 | 이미지가 없거나 요청 회원 소유가 아님 | 404 | `IMAGE404_1` |
-| 이미지 목적이 `ANALYSIS_ORIGINAL`이 아니거나 상태가 `READY`가 아님 | 409 | `IMAGE409_1` |
+| 이미지 목적이 `ANALYSIS`가 아니거나 상태가 `READY`가 아님 | 409 | `IMAGE409_1` |
 
 ### `GET /api/v1/analyses?cursor=&pageSize=20`
 
-인증 회원의 삭제되지 않은 리포트를 `reportId` cursor 기준으로 조회한다. `pageSize`는 1~50이며
-응답은 `items`, `nextCursor`, `hasNext`, `pageSize`를 포함한다.
+인증 회원이 명시적으로 마이 클로젯에 저장한 리포트를 `ClosetSave.saveId` cursor 기준으로
+최신 저장순 조회한다. 생성만 하고 저장하지 않은 분석 결과는 목록에 포함하지 않는다.
+`pageSize`는 1~50이며 응답은 `items`, `nextCursor`, `hasNext`, `pageSize`를 포함한다.
+각 item은 `reportId`, signed `imageUrl`, `tags`, `savedAt`을 반환한다.
 
 ### `GET /api/v1/analyses/{reportId}`
 
-본인의 삭제되지 않은 리포트 상세와 확정 태그, 추천 그룹을 반환한다. private 이미지 URL은
-10분 유효한 CloudFront signed URL이다.
+본인의 삭제되지 않은 리포트 상세와 확정 기본·직접 입력 태그, 추천 그룹을 반환한다. private
+이미지 URL은 10분 유효한 CloudFront signed URL이다. 명시적 저장 여부인 `saved`, `savedAt`과
+저장 시점의 카테고리별 `selectedItems`도 함께 반환한다. SCR-09 연동을 위해 S3 기반 분석은
+`originalImageId`도 반환하며, `selectedItems`에는 카테고리별로 선택한 모든 상품 이미지가
+포함된다.
 
-### `PATCH /api/v1/analyses/{reportId}/recommendations`
+### `PUT /api/v1/analyses/{reportId}/save`
 
-`confirmedTagIds` 한 개 이상과 0~100의 `matchPercentage`를 받아 태그를 확정하고 추천 응답을
-갱신한다.
+SCR-08에서 현재 결과 리포트 전체를 마이 클로젯에 저장한다. 현재 추천 결과에 상품이 존재하는
+각 카테고리마다 정확히 하나를 선택해야 하며, 타 리포트 상품·카테고리 누락·중복은
+`ANALYSIS400_2`로 거부한다.
+
+```json
+{
+  "selectedItems": [
+    {"category": "TOP", "productId": 100},
+    {"category": "BOTTOM", "productId": 205}
+  ]
+}
+```
+
+최초 저장은 `201 Created`, 같은 리포트 재저장은 기존 스냅샷을 유지하며 `200 OK`를 반환한다.
+응답은 `reportId`, `saved`, `savedAt`, `selectedItems`를 포함한다. 선택 상품은 상품명, 판매처,
+가격, 이미지, 구매 URL, 순위, 유사도와 최종 점수를 저장 시점 스냅샷으로 반환한다.
+
+### `DELETE /api/v1/analyses/{reportId}/save`
+
+분석 리포트의 클로젯 저장 관계와 선택 상품 스냅샷만 멱등 삭제한다. 원본 분석 리포트와 현재
+추천 결과는 유지한다. 응답은 `saved=false`, `savedAt=null`, 빈 `selectedItems`를 반환한다.
+
+### `POST /api/v1/analyses/{reportId}/recommendations`
+
+Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body가 있으면 확정 기본·직접 입력
+태그와 `matchPercentage`를 멱등 반영한 뒤 추천 현재 세트를 생성한다. legacy PATCH는 제거되었고
+세부 생성·교체 계약은 7절을 따른다.
 
 ### `DELETE /api/v1/analyses/{reportId}`
 
 리포트를 soft delete 처리한다. 삭제된 리포트는 목록과 상세 조회에서 제외되며 연결된 이미지는
-보존 기간 이후 정리 작업의 대상이 된다.
+보존 기간 이후 정리 작업의 대상이 된다. 저장된 리포트라면 클로젯 저장 관계와 선택 상품
+스냅샷을 먼저 제거한다.
+
+---
+
+## 17. 분석 결과 기반 룩북 업로드
+
+### `POST /api/v1/lookbooks`
+
+직접 진입한 SCR-09는 기존처럼 `originalImageId`, `matchedImageId`를 전송한다. SCR-08에서
+진입한 경우에는 분석 원본 `originalImageId`를 재사용하고, 화면에서 대표로 정한 상품을
+`matchedProductId`와 `sourceReportId`로 전송한다.
+
+```json
+{
+  "originalImageId": "5f8ca021-02fe-4fba-982f-8de356789abc",
+  "matchedImageId": null,
+  "matchedProductId": 100,
+  "sourceReportId": 501,
+  "tagIds": [12, 21],
+  "purchaseUrl": null,
+  "comment": "분석 결과로 완성한 룩"
+}
+```
+
+`matchedImageId`와 `matchedProductId`는 정확히 하나만 전달해야 한다. 상품 경로에서는
+`sourceReportId`가 본인 소유의 삭제되지 않은 리포트인지, 해당 상품이 현재 추천 결과 또는
+저장된 선택 상품인지 검증한다. 구매 링크를 생략하면 선택 상품의 구매 URL을 사용한다.
+목록·상세 응답의 `matchedImageUrl`은 어느 경로로 생성했든 동일하게 표시 가능하며,
+상품 경로인 경우 `matchedProductId`도 반환한다.
+
+### 오류
+
+| 조건 | HTTP | code |
+| --- | ---: | --- |
+| 매칭 이미지·상품을 모두 선택하거나 모두 생략한 경우 | 400 | `COMMON400_1` |
+| 상품 경로에서 `sourceReportId`를 생략하거나 이미지 경로에 전달한 경우 | 400 | `COMMON400_1` |
+| 원본 이미지가 해당 분석 리포트의 원본 이미지와 다른 경우 | 400 | `COMMON400_1` |
+| 선택 상품이 현재 추천 결과 또는 저장된 선택 상품에 없는 경우 | 400 | `COMMON400_1` |
+| 선택 상품에 표시할 이미지가 없는 경우 | 400 | `COMMON400_1` |
+| 분석 리포트가 없거나 본인 소유가 아니거나 삭제된 경우 | 404 | `ANALYSIS404_1` |
+| 이미지가 없거나 본인 소유가 아닌 경우 | 404 | `IMAGE404_1` |
+| 상품이 존재하지 않는 경우 | 404 | `COMMON404_1` |
+| 이미지 목적 또는 상태가 룩북에서 사용할 수 없는 경우 | 409 | `IMAGE409_1` |

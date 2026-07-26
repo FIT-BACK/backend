@@ -11,12 +11,8 @@ import com.fitback.backend.domain.analysis.dto.AnalysisByImageRequest;
 import com.fitback.backend.domain.analysis.dto.AnalysisCreateResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisDetailResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisListResponse;
-import com.fitback.backend.domain.analysis.dto.ConfirmTagsRequest;
-import com.fitback.backend.domain.analysis.dto.RecommendationGroupResponse;
-import com.fitback.backend.domain.analysis.dto.RecommendationItemResponse;
+import com.fitback.backend.domain.analysis.dto.AnalysisSummaryResponse;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
-import com.fitback.backend.domain.analysis.entity.ReportTag;
-import com.fitback.backend.domain.analysis.entity.ReportTagSource;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImagePurpose;
@@ -25,13 +21,17 @@ import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.product.service.model.ProductCategory;
+import com.fitback.backend.domain.recommendation.dto.RecommendationGroupResponse;
+import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
+import com.fitback.backend.domain.recommendation.entity.RecommendationStatus;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
-import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -40,8 +40,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.SliceImpl;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -55,9 +53,6 @@ class AnalysisServiceTest {
     private MemberRepository memberRepository;
 
     @Mock
-    private TagRepository tagRepository;
-
-    @Mock
     private ImageStorage imageStorage;
 
     @Mock
@@ -68,6 +63,9 @@ class AnalysisServiceTest {
 
     @Mock
     private ImageUploadService imageUploadService;
+
+    @Mock
+    private AnalysisReportSaveService analysisReportSaveService;
 
     private final Clock clock = Clock.fixed(
             Instant.parse("2026-07-22T00:00:00Z"),
@@ -81,11 +79,11 @@ class AnalysisServiceTest {
         analysisService = new AnalysisService(
                 analysisReportRepository,
                 memberRepository,
-                tagRepository,
                 imageStorage,
                 aiTagAnalyzer,
                 recommendationResultProvider,
                 imageUploadService,
+                analysisReportSaveService,
                 clock
         );
     }
@@ -179,48 +177,31 @@ class AnalysisServiceTest {
     }
 
     @Test
-    void confirmsOnlyExistingTagsAndPreservesAiSource() {
-        Member member = member(1L);
-        Tag minimal = tag(10L, "미니멀");
-        Tag wideFit = tag(20L, "와이드핏");
-        Tag beige = tag(30L, "베이지톤");
-        AnalysisReport report = report(501L, member, minimal, wideFit);
-        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
-                .thenReturn(Optional.of(report));
-        when(tagRepository.findAllById(any())).thenReturn(List.of(minimal, beige));
-        when(recommendationResultProvider.generateFor(report)).thenReturn(List.of());
-
-        AnalysisDetailResponse response = analysisService.confirmTags(
-                1L,
-                501L,
-                new ConfirmTagsRequest(List.of(10L, 30L), 85)
-        );
-
-        assertThat(response.matchPercentage()).isEqualTo(85);
-        assertThat(response.tags()).containsExactly("미니멀", "베이지톤");
-        assertThat(report.getReportTags())
-                .extracting(ReportTag::getTag, ReportTag::getSource, ReportTag::isConfirmed)
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(minimal, ReportTagSource.AI, true),
-                        org.assertj.core.groups.Tuple.tuple(beige, ReportTagSource.USER, true)
-                );
-    }
-
-    @Test
     void listsReportsWithCursorMetadata() {
-        Member member = member(1L);
-        Tag minimal = tag(10L, "미니멀");
-        AnalysisReport newestReport = report(501L, member, minimal);
-        AnalysisReport nextReport = report(500L, member, minimal);
-        when(analysisReportRepository.findByMemberIdAndDeletedAtIsNullOrderByIdDesc(
+        AnalysisListResponse savedReports = new AnalysisListResponse(
+                List.of(
+                        new AnalysisSummaryResponse(
+                                501L,
+                                "/uploads/look.jpg",
+                                List.of("미니멀"),
+                                LocalDateTime.parse("2026-07-22T09:00:00")
+                        ),
+                        new AnalysisSummaryResponse(
+                                500L,
+                                "/uploads/look.jpg",
+                                List.of("미니멀"),
+                                LocalDateTime.parse("2026-07-21T09:00:00")
+                        )
+                ),
+                10L,
+                true,
+                2
+        );
+        when(analysisReportSaveService.getSavedReports(
                 1L,
-                PageRequest.of(0, 2)
-        ))
-                .thenReturn(new SliceImpl<>(
-                        List.of(newestReport, nextReport),
-                        PageRequest.of(0, 2),
-                        true
-                ));
+                null,
+                2
+        )).thenReturn(savedReports);
 
         AnalysisListResponse response = analysisService.getReports(1L, null, 2);
 
@@ -231,7 +212,7 @@ class AnalysisServiceTest {
                         org.assertj.core.groups.Tuple.tuple(500L, "/uploads/look.jpg")
                 );
         assertThat(response.items().getFirst().tags()).containsExactly("미니멀");
-        assertThat(response.nextCursor()).isEqualTo(500L);
+        assertThat(response.nextCursor()).isEqualTo(10L);
         assertThat(response.hasNext()).isTrue();
         assertThat(response.pageSize()).isEqualTo(2);
     }
@@ -241,47 +222,38 @@ class AnalysisServiceTest {
         Member member = member(1L);
         Tag minimal = tag(10L, "미니멀");
         AnalysisReport report = report(501L, member, minimal);
+        report.confirmRecommendationInput(List.of(minimal), List.of("출근룩"), 70);
         RecommendationGroupResponse recommendationGroup = new RecommendationGroupResponse(
-                "상의",
-                List.of(new RecommendationItemResponse(
-                        1,
-                        "https://example.com/item.jpg",
-                        "오버핏 셔츠",
-                        "무신사",
-                        28900,
-                        "https://example.com/purchase"
-                ))
+                ProductCategory.TOP,
+                List.of()
+        );
+        RecommendationResultResponse recommendationResult =
+                new RecommendationResultResponse(
+                        RecommendationStatus.CURRENT,
+                        "SIMILARITY_V1",
+                        List.of(recommendationGroup),
+                        false,
+                        List.of()
         );
         when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
                 .thenReturn(Optional.of(report));
-        when(recommendationResultProvider.findByReportId(501L))
-                .thenReturn(List.of(recommendationGroup));
+        when(recommendationResultProvider.findFor(report)).thenReturn(recommendationResult);
+        when(analysisReportSaveService.getState(1L, 501L))
+                .thenReturn(new AnalysisReportSaveService.SavedState(
+                        false,
+                        null,
+                        List.of()
+                ));
 
         AnalysisDetailResponse response = analysisService.getReport(1L, 501L);
 
         assertThat(response.reportId()).isEqualTo(501L);
-        assertThat(response.tags()).containsExactly("미니멀");
+        assertThat(response.tags()).containsExactly("미니멀", "출근룩");
+        assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
+        assertThat(response.scoreVersion()).isEqualTo("SIMILARITY_V1");
         assertThat(response.recommendationGroups()).containsExactly(recommendationGroup);
-    }
-
-    @Test
-    void rejectsConfirmationWhenAnyTagDoesNotExist() {
-        Member member = member(1L);
-        Tag minimal = tag(10L, "미니멀");
-        AnalysisReport report = report(501L, member, minimal);
-        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
-                .thenReturn(Optional.of(report));
-        when(tagRepository.findAllById(any())).thenReturn(List.of(minimal));
-
-        assertThatThrownBy(() -> analysisService.confirmTags(
-                1L,
-                501L,
-                new ConfirmTagsRequest(List.of(10L, 999L), 70)
-        ))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.TAG_NOT_FOUND);
-        verify(recommendationResultProvider, never()).generateFor(any());
+        assertThat(response.saved()).isFalse();
+        assertThat(response.selectedItems()).isEmpty();
     }
 
     @Test

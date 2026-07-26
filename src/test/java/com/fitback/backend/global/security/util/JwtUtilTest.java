@@ -4,6 +4,12 @@ package com.fitback.backend.global.security.util;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.global.security.entity.AuthMember;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import javax.crypto.SecretKey;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -12,11 +18,24 @@ class JwtUtilTest {
 
     //HS256 서명용 최소 32바이트 키 필요, 넉넉히 긴 시크릿 사용
     private static final String SECRET = "test-secret-key-for-jwt-unit-test-1234567890";
-    private static final long ACCESS_MS = 1800000L;       //access 토큰 만료 30분
-    private static final long REFRESH_MS = 1209600000L;  //refresh 토큰 만료 14일
-
+    private static final long ACCESS_MS = 3600000L;       //access 토큰 만료 1시간
+    private static final long REFRESH_MS = 604800000L;  //refresh 토큰 만료 7일
     //테스트 대상 JwtUtil (시크릿, 만료시간 직접 주입)
     private final JwtUtil jwtUtil = new JwtUtil(SECRET, ACCESS_MS, REFRESH_MS);
+
+    //테스트에서 토큰 claim 확인을 위한 파서용 key 생성
+    private SecretKey secretKey() {
+        return Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
+    }
+
+    //테스트에서만 서명 검증 후 claim 조회
+    private Claims parseClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(secretKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
 
     //토큰 발급용 AuthMember 생성
     private AuthMember createTestAuthMember(){
@@ -37,6 +56,23 @@ class JwtUtilTest {
         assertThat(jwtUtil.getEmailFromToken(token)).isEqualTo("test@fitback.com");
     }
 
+    //access 토큰 만료 시간이 설정값 기준으로 들어가는지 검증
+    @Test
+    void accessTokenExpirationUsesConfiguredDurationTest() {
+        Instant beforeIssue = Instant.now();
+        String token = jwtUtil.createAccessToken(createTestAuthMember());
+        Instant afterIssue = Instant.now();
+
+        Claims claims = parseClaims(token);
+        Instant issuedAt = claims.getIssuedAt().toInstant();
+        Instant expiration = claims.getExpiration().toInstant();
+
+        assertThat(issuedAt)
+                .isBetween(beforeIssue.minusSeconds(1), afterIssue.plusSeconds(1));
+        assertThat(expiration.getEpochSecond() - issuedAt.getEpochSecond())
+                .isEqualTo(ACCESS_MS / 1000);
+    }
+
     //refresh 토큰 발급 테스트 - 유효, refresh 타입
     @Test
     void refreshTokenValidTest(){
@@ -48,6 +84,23 @@ class JwtUtilTest {
         assertThat(jwtUtil.isAccessToken(token)).isFalse();
         //refresh 토큰 subject에도 이메일 포함 (재발급 시 회원 조회에 사용)
         assertThat(jwtUtil.getEmailFromToken(token)).isEqualTo("test@fitback.com");
+    }
+
+    //refresh 토큰 만료 시간이 설정값 기준으로 들어가는지 검증
+    @Test
+    void refreshTokenExpirationUsesConfiguredDurationTest() {
+        Instant beforeIssue = Instant.now();
+        String token = jwtUtil.createRefreshToken(createTestAuthMember());
+        Instant afterIssue = Instant.now();
+
+        Claims claims = parseClaims(token);
+        Instant issuedAt = claims.getIssuedAt().toInstant();
+        Instant expiration = claims.getExpiration().toInstant();
+
+        assertThat(issuedAt)
+                .isBetween(beforeIssue.minusSeconds(1), afterIssue.plusSeconds(1));
+        assertThat(expiration.getEpochSecond() - issuedAt.getEpochSecond())
+                .isEqualTo(REFRESH_MS / 1000);
     }
 
     //만료 토큰 테스트 - 만료 토큰은 유효하지 않음

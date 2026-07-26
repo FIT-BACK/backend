@@ -4,31 +4,24 @@ import com.fitback.backend.domain.analysis.dto.AnalysisByImageRequest;
 import com.fitback.backend.domain.analysis.dto.AnalysisCreateResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisDetailResponse;
 import com.fitback.backend.domain.analysis.dto.AnalysisListResponse;
-import com.fitback.backend.domain.analysis.dto.AnalysisSummaryResponse;
-import com.fitback.backend.domain.analysis.dto.ConfirmTagsRequest;
-import com.fitback.backend.domain.analysis.dto.RecommendationGroupResponse;
 import com.fitback.backend.domain.analysis.dto.SuggestedTagResponse;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
+import com.fitback.backend.domain.analysis.entity.ReportCustomTag;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
 import com.fitback.backend.domain.tag.entity.Tag;
-import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -41,16 +34,14 @@ public class AnalysisService {
 
     private static final Logger log = LoggerFactory.getLogger(AnalysisService.class);
     private static final int DEFAULT_MATCH_PERCENTAGE = 70;
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 50;
 
     private final AnalysisReportRepository analysisReportRepository;
     private final MemberRepository memberRepository;
-    private final TagRepository tagRepository;
     private final ImageStorage imageStorage;
     private final AiTagAnalyzer aiTagAnalyzer;
     private final RecommendationResultProvider recommendationResultProvider;
     private final ImageUploadService imageUploadService;
+    private final AnalysisReportSaveService analysisReportSaveService;
     private final Clock clock;
 
     @Transactional
@@ -113,50 +104,17 @@ public class AnalysisService {
 
     @Transactional(readOnly = true)
     public AnalysisListResponse getReports(Long memberId, Long cursor, Integer requestedPageSize) {
-        int pageSize = validatePageSize(requestedPageSize);
-        if (cursor != null && cursor <= 0) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST);
-        }
-
-        PageRequest pageRequest = PageRequest.of(0, pageSize);
-        Slice<AnalysisReport> reports = cursor == null
-                ? analysisReportRepository.findByMemberIdAndDeletedAtIsNullOrderByIdDesc(
-                        memberId,
-                        pageRequest
-                )
-                : analysisReportRepository
-                        .findByMemberIdAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
-                        memberId,
-                        cursor,
-                        pageRequest
-                );
-        List<AnalysisSummaryResponse> items = reports.getContent().stream()
-                .map(this::toSummaryResponse)
-                .toList();
-        Long nextCursor = reports.hasNext() && !items.isEmpty()
-                ? items.get(items.size() - 1).reportId()
-                : null;
-        return new AnalysisListResponse(items, nextCursor, reports.hasNext(), pageSize);
+        return analysisReportSaveService.getSavedReports(
+                memberId,
+                cursor,
+                requestedPageSize
+        );
     }
 
     @Transactional(readOnly = true)
     public AnalysisDetailResponse getReport(Long memberId, Long reportId) {
         AnalysisReport report = findOwnedReport(memberId, reportId);
-        return toDetailResponse(report, recommendationResultProvider.findByReportId(reportId));
-    }
-
-    @Transactional
-    public AnalysisDetailResponse confirmTags(
-            Long memberId,
-            Long reportId,
-            ConfirmTagsRequest request
-    ) {
-        AnalysisReport report = findOwnedReport(memberId, reportId);
-        List<Tag> confirmedTags = findTagsInRequestOrder(request.confirmedTagIds());
-        report.confirmTags(confirmedTags, request.matchPercentage());
-        List<RecommendationGroupResponse> recommendationGroups =
-                recommendationResultProvider.generateFor(report);
-        return toDetailResponse(report, recommendationGroups);
+        return toDetailResponse(report, recommendationResultProvider.findFor(report));
     }
 
     @Transactional
@@ -170,41 +128,37 @@ public class AnalysisService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_REPORT_NOT_FOUND));
     }
 
-    private List<Tag> findTagsInRequestOrder(List<Long> requestedTagIds) {
-        if (requestedTagIds == null || requestedTagIds.isEmpty()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST);
-        }
-
-        Set<Long> uniqueTagIds = new LinkedHashSet<>(requestedTagIds);
-        Map<Long, Tag> tagsById = new LinkedHashMap<>();
-        tagRepository.findAllById(uniqueTagIds).forEach(tag -> tagsById.put(tag.getId(), tag));
-        if (tagsById.size() != uniqueTagIds.size()) {
-            throw new BusinessException(ErrorCode.TAG_NOT_FOUND);
-        }
-        return uniqueTagIds.stream().map(tagsById::get).toList();
-    }
-
-    private AnalysisSummaryResponse toSummaryResponse(AnalysisReport report) {
-        List<String> tagNames = report.getDisplayTags().stream()
-                .map(Tag::getTagName)
-                .toList();
-        return new AnalysisSummaryResponse(report.getId(), resolveImageUrl(report), tagNames);
-    }
-
     private AnalysisDetailResponse toDetailResponse(
             AnalysisReport report,
-            List<RecommendationGroupResponse> recommendationGroups
+            RecommendationResultResponse recommendationResult
     ) {
-        List<String> tagNames = report.getDisplayTags().stream()
-                .map(Tag::getTagName)
-                .toList();
+        List<String> tagNames = recommendationTagNames(report);
+        AnalysisReportSaveService.SavedState savedState =
+                analysisReportSaveService.getState(report.getMember().getId(), report.getId());
         return new AnalysisDetailResponse(
                 report.getId(),
+                report.getOriginalImage() == null ? null : report.getOriginalImage().getId(),
                 resolveImageUrl(report),
                 report.getMatchPercentage(),
                 tagNames,
-                recommendationGroups
+                recommendationResult.recommendationStatus(),
+                recommendationResult.scoreVersion(),
+                recommendationResult.recommendationGroups(),
+                savedState.saved(),
+                savedState.savedAt(),
+                savedState.selectedItems()
         );
+    }
+
+    private List<String> recommendationTagNames(AnalysisReport report) {
+        List<String> tagNames = new ArrayList<>();
+        report.getDisplayTags().stream()
+                .map(Tag::getTagName)
+                .forEach(tagNames::add);
+        report.getCustomTags().stream()
+                .map(ReportCustomTag::getDisplayName)
+                .forEach(tagNames::add);
+        return List.copyOf(tagNames);
     }
 
     private AnalysisCreateResponse toCreateResponse(AnalysisReport report) {
@@ -226,14 +180,6 @@ public class AnalysisService {
         return report.getOriginalImage() == null
                 ? report.getImageUrl()
                 : imageUploadService.createReadUrl(report.getOriginalImage());
-    }
-
-    private int validatePageSize(Integer requestedPageSize) {
-        int pageSize = requestedPageSize == null ? DEFAULT_PAGE_SIZE : requestedPageSize;
-        if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST);
-        }
-        return pageSize;
     }
 
     private boolean registerRollbackCleanup(String imageUrl) {

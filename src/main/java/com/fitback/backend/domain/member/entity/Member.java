@@ -21,7 +21,8 @@ import lombok.NoArgsConstructor;
         name = "member",
         uniqueConstraints = {
             @UniqueConstraint(name = "UK_MEMBER_EMAIL", columnNames = "email"),
-            @UniqueConstraint(name = "UK_MEMBER_NICKNAME", columnNames = "nickname")
+            @UniqueConstraint(name = "UK_MEMBER_NICKNAME", columnNames = "nickname"),
+            @UniqueConstraint(name = "UK_MEMBER_PROVIDER_UID", columnNames = {"login_provider", "social_uid"})
         }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -55,16 +56,29 @@ public class Member extends BaseTimeEntity {
     @Column(name = "refresh_token", length = 512)
     private String refreshToken;
 
+    @Column(name = "social_uid", length = 100)
+    private String socialUid;
+
 
     private Member(String email, String nickname, String password, LoginProvider loginProvider) {
+        this(email, nickname, password, loginProvider, null);
+    }
+
+    private Member(String email, String nickname, String password, LoginProvider loginProvider, String socialUid) {
         this.email = Objects.requireNonNull(email, "email must not be null");
         this.nickname = Objects.requireNonNull(nickname, "nickname must not be null");
         this.password = password;
         this.loginProvider = Objects.requireNonNull(loginProvider, "loginProvider must not be null");
+        this.socialUid = socialUid;
     }
 
     public static Member create(String email, String nickname, String password, LoginProvider loginProvider) {
         return new Member(email, nickname, password, loginProvider);
+    }
+
+    public static Member createSocial(String email, String nickname, LoginProvider loginProvider, String socialUid) {
+        return new Member(email, nickname, null, loginProvider,
+                Objects.requireNonNull(socialUid, "socialUid must not be null"));
     }
 
     public void changeNickname(String nickname) {
@@ -85,5 +99,9 @@ public class Member extends BaseTimeEntity {
 
     public void clearRefreshToken() {
         this.refreshToken = null;
+    }
+
+    public void changePassword(String encodedPassword){
+        this.password = encodedPassword;
     }
 }

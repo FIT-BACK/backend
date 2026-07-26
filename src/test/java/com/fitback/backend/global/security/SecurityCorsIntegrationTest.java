@@ -36,7 +36,7 @@ class SecurityCorsIntegrationTest {
             "http://127.0.0.1:5173"
     })
     void allowsConfiguredLocalQaOriginPreflightBeforeAuthentication(String origin) throws Exception {
-        mockMvc.perform(options("/api/v1/images/presigned-uploads")
+        mockMvc.perform(options("/api/v1/images/upload-requests")
                         .header(HttpHeaders.ORIGIN, origin)
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
                         .header(
@@ -79,7 +79,7 @@ class SecurityCorsIntegrationTest {
             "OPTIONS"
     })
     void allowsConfiguredHttpMethodPreflight(String method) throws Exception {
-        mockMvc.perform(options("/api/v1/images/presigned-uploads")
+        mockMvc.perform(options("/api/v1/images/upload-requests")
                         .header(HttpHeaders.ORIGIN, "http://localhost:5173")
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, method)
                         .header(

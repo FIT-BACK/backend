@@ -7,9 +7,12 @@ import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.notification.service.NotificationSettingService;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
+import com.fitback.backend.global.security.token.TempTokenPayload;
+import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +40,12 @@ class AuthServiceTest {
     private MemberRepository memberRepository;
     @Mock
     private JwtUtil jwtUtil;
+    @Mock
+    private RejoinBlockChecker rejoinBlockChecker;
+    @Mock
+    private NotificationSettingService notificationSettingService;
+    @Mock
+    private TempTokenStore tempTokenStore;
 
     //authService 실제 객체 생성 후 mock 객체 주입
     @InjectMocks
@@ -53,11 +62,13 @@ class AuthServiceTest {
     //회원가입 성공 테스트
     @Test
     void signUpSuccessTest(){
-        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("test@fitback.com", "password123");
+        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("Test@FITBACK.COM", "password123");
 
         //given
         //회원가입을 위해 중복 여부는 false가 반환되도록
-        when(memberRepository.existsByEmail(request.email())).thenReturn(false);
+        when(memberRepository.existsByEmail("test@fitback.com")).thenReturn(false);
+        //재가입 차단 대상 아님
+        when(rejoinBlockChecker.isRejoinBlocked("test@fitback.com")).thenReturn(false);
         when(memberRepository.existsByNickname(anyString())).thenReturn(false);
         //테스트용 비밀번호
         when(passwordEncoder.encode(request.password())).thenReturn("encodedPw");
@@ -85,14 +96,15 @@ class AuthServiceTest {
         assertThat(savedMember.getPassword()).isEqualTo("encodedPw");
         assertThat(savedMember.getLoginProvider()).isEqualTo(LoginProvider.EMAIL);
         assertThat(savedMember.getRole()).isEqualTo(MemberRole.USER);
+        verify(notificationSettingService).createDefaultSetting(savedMember);
     }
 
     //회원가입 실패 - 이미 존재하는 이메일이면 EMAIL_ALREADY_EXISTS
     @Test
     void signUpduplicateEmailTest() {
-        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("dup@fitback.com", "password123");
+        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("Dup@FITBACK.COM", "password123");
         //이메일 중복 검사 시 true 반환 설정
-        when(memberRepository.existsByEmail(request.email())).thenReturn(true);
+        when(memberRepository.existsByEmail("dup@fitback.com")).thenReturn(true);
 
         // 발생한 예외 타입이 BusinessException인지 해당 BusinessException의 ErrorCode가 EMAIL_ALREADY_EXISTS인지 검증
         assertThatThrownBy(() -> authService.signUp(request))
@@ -102,18 +114,39 @@ class AuthServiceTest {
 
         //save가 한번도 호출되지 않았는지 검증
         verify(memberRepository, never()).save(any(Member.class));
+        verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
+    }
+
+    //회원가입 실패 - 30일 재가입 차단 기간이면 REJOIN_BLOCKED
+    @Test
+    void signUpRejoinBlockedTest(){
+        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest("Blocked@FITBACK.COM", "password123");
+        //이메일 중복은 아님
+        when(memberRepository.existsByEmail("blocked@fitback.com")).thenReturn(false);
+        //재가입 차단 대상 (만료 전 차단 기록 존재)
+        when(rejoinBlockChecker.isRejoinBlocked("blocked@fitback.com")).thenReturn(true);
+
+        //예외 타입과 ErrorCode가 REJOIN_BLOCKED인지 검증
+        assertThatThrownBy(() -> authService.signUp(request))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode())
+                                .isEqualTo(ErrorCode.REJOIN_BLOCKED));
+
+        //차단 시 save 미호출 검증
+        verify(memberRepository, never()).save(any(Member.class));
+        verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
     }
 
     //로그인 성공 테스트 - 자격 증명이 맞으면 토큰을 반환하고 refresh를 저장
     @Test
     void loginSuccessTest(){
-        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("test@fitback.com", "password123");
+        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("Test@FITBACK.COM", "password123");
         //id, 이메일, 암호화된 비밀번호를 가진 테스트 회원 생성
         Member member = createTestMember(1L, "test@fitback.com", "encodedPw");
 
         //given
         //이메일로 회원 조회 시 위 회원 반환
-        when(memberRepository.findByEmail(request.email())).thenReturn(Optional.of(member));
+        when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
         //비밀번호 일치하도록 설정
         when(passwordEncoder.matches(request.password(), "encodedPw")).thenReturn(true);
         //테스트용 토큰
@@ -133,10 +166,10 @@ class AuthServiceTest {
     //로그인 실패 테스트 - 이메일이 없으면 INVALID_CREDENTIALS
     @Test
     void loginEmailNotFoundTest(){
-        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("none@fitback.com", "password123");
+        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("None@FITBACK.COM", "password123");
 
         //이메일로 회원 조회 시 빈 Optional 반환
-        when(memberRepository.findByEmail(request.email())).thenReturn(Optional.empty());
+        when(memberRepository.findByEmail("none@fitback.com")).thenReturn(Optional.empty());
 
         //예외 타입과 ErrorCode가 INVALID_CREDENTIALS인지 검증
         assertThatThrownBy(() -> authService.login(request))
@@ -152,10 +185,10 @@ class AuthServiceTest {
     //로그인 실패 - 비밀번호가 틀리면 INVALID_CREDENTIALS
     @Test
     void loginWrongPasswordTest(){
-        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("test@fitback.com", "wrongPw");
+        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("Test@FITBACK.COM", "wrongPw");
         Member member = createTestMember(1L, "test@fitback.com", "encodedPw");
 
-        when(memberRepository.findByEmail(request.email())).thenReturn(Optional.of(member));
+        when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
         //비밀번호 불일치하도록 설정
         when(passwordEncoder.matches(request.password(), "encodedPw")).thenReturn(false);
 
@@ -183,14 +216,14 @@ class AuthServiceTest {
         when(jwtUtil.isValid(oldRefresh)).thenReturn(true);
         when(jwtUtil.isRefreshToken(oldRefresh)).thenReturn(true);
         //토큰에서 이메일 추출
-        when(jwtUtil.getEmailFromToken(oldRefresh)).thenReturn("test@fitback.com");
+        when(jwtUtil.getEmailFromToken(oldRefresh)).thenReturn("Test@FITBACK.COM");
         when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
         //새로 발급될 토큰
         when(jwtUtil.createAccessToken(any(AuthMember.class))).thenReturn("new-access");
         when(jwtUtil.createRefreshToken(any(AuthMember.class))).thenReturn("new-refresh");
 
         //when
-        MemberResponse.RefreshResponse response = authService.refresh(request);
+        MemberResponse.TokenResponse response = authService.refresh(request);
 
         //then
         assertThat(response.accessToken()).isEqualTo("new-access");
@@ -231,7 +264,7 @@ class AuthServiceTest {
         //given
         when(jwtUtil.isValid(requestToken)).thenReturn(true);
         when(jwtUtil.isRefreshToken(requestToken)).thenReturn(true);
-        when(jwtUtil.getEmailFromToken(requestToken)).thenReturn("test@fitback.com");
+        when(jwtUtil.getEmailFromToken(requestToken)).thenReturn("Test@FITBACK.COM");
         when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
 
         //요청 토큰과 저장된 토큰이 달라 예외 발생, ErrorCode가 INVALID_REFRESH_TOKEN인지 검증
@@ -279,6 +312,62 @@ class AuthServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode())
                                 .isEqualTo(ErrorCode.NOT_FOUND));
+    }
+
+    //임시 토큰 교환 성공 테스트 - 유효한 임시 토큰이면 access/refresh 발급, refresh 저장, isNewMember 반환
+    @Test
+    void exchangeTokenSuccessTest(){
+        Member member = createTestMember(1L, "kakao@fitback.com", null);
+        //신규 카카오 가입자 임시 토큰
+        TempTokenPayload payload = new TempTokenPayload(1L, true);
+
+        //given
+        when(tempTokenStore.consume("temp-abc")).thenReturn(Optional.of(payload));
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(jwtUtil.createAccessToken(any(AuthMember.class))).thenReturn("access-token");
+        when(jwtUtil.createRefreshToken(any(AuthMember.class))).thenReturn("refresh-token");
+
+        //when
+        MemberResponse.TokenExchangeResponse response = authService.exchangeToken("temp-abc");
+
+        //then
+        assertThat(response.accessToken()).isEqualTo("access-token");
+        assertThat(response.refreshToken()).isEqualTo("refresh-token");
+        //payload의 신규 가입 여부가 그대로 전달
+        assertThat(response.isNewMember()).isTrue();
+        //발급한 refresh 토큰이 회원에 저장되었는지 검증
+        assertThat(member.getRefreshToken()).isEqualTo("refresh-token");
+    }
+
+    //임시 토큰 교환 실패 테스트 - 없거나 만료된 임시 토큰이면 INVALID_TEMP_TOKEN
+    @Test
+    void exchangeTokenInvalidTest(){
+        //consume 결과가 비어있음 (없거나 만료·재사용)
+        when(tempTokenStore.consume("bad-token")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.exchangeToken("bad-token"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode())
+                                .isEqualTo(ErrorCode.INVALID_TEMP_TOKEN));
+
+        //토큰 발급 미호출 검증
+        verify(jwtUtil, never()).createAccessToken(any());
+        verify(jwtUtil, never()).createRefreshToken(any());
+    }
+
+    //임시 토큰 교환 실패 테스트 - 임시 토큰은 유효하나 회원이 없으면 NOT_FOUND
+    @Test
+    void exchangeTokenMemberNotFoundTest(){
+        //임시 토큰은 유효하지만 payload가 가리키는 회원이 삭제됨
+        when(tempTokenStore.consume("temp-abc")).thenReturn(Optional.of(new TempTokenPayload(99L, false)));
+        when(memberRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.exchangeToken("temp-abc"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode())
+                                .isEqualTo(ErrorCode.NOT_FOUND));
+
+        verify(jwtUtil, never()).createAccessToken(any());
     }
 
 }

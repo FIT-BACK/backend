@@ -11,6 +11,10 @@ mock_log="$test_root/mock.log"
 curl_count_file="$test_root/curl-count"
 special_password="pa\$\$\\'word\\value#=end"
 special_jwt_secret="jwt\$\$\\'secret\\value#=end-for-fitback-test"
+special_hmac_secret="hmac\$\$\\'secret\\value#=end-for-fitback-test"
+special_kakao_rest_api_key="kakao-rest-api-key-for-fitback-test"
+special_kakao_rest_api_secret="kakao\$\$\\'secret\\value#=end-for-fitback-test"
+special_front_redirect_uri="https://frontend.example.com/oauth/success"
 special_cloudfront_private_key="Y2xvdWRmcm9udC1wcml2YXRlLWtleS1mb3ItdGVzdA=="
 
 mkdir -p "$mock_bin"
@@ -50,6 +54,18 @@ if [ "${1:-}" = 'ssm' ] && [ "${2:-}" = 'get-parameter' ]; then
       ;;
     */jwt-secret-key)
       printf '%s\n' "$MOCK_JWT_SECRET_KEY"
+      ;;
+    */hmac-secret-key)
+      printf '%s\n' "$MOCK_HMAC_SECRET_KEY"
+      ;;
+    */kakao-rest-api-key)
+      printf '%s\n' "$MOCK_KAKAO_REST_API_KEY"
+      ;;
+    */kakao-rest-api-secret)
+      printf '%s\n' "$MOCK_KAKAO_REST_API_SECRET"
+      ;;
+    */front-redirect-uri)
+      printf '%s\n' "$MOCK_FRONT_REDIRECT_URI"
       ;;
     */cloudfront-private-key)
       printf '%s\n' "$MOCK_CLOUDFRONT_PRIVATE_KEY"
@@ -194,6 +210,10 @@ run_deploy() {
   MOCK_LOG="$mock_log" \
   MOCK_DB_PASSWORD="$special_password" \
   MOCK_JWT_SECRET_KEY="$special_jwt_secret" \
+  MOCK_HMAC_SECRET_KEY="$special_hmac_secret" \
+  MOCK_KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
+  MOCK_KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
+  MOCK_FRONT_REDIRECT_URI="$special_front_redirect_uri" \
   MOCK_CLOUDFRONT_PRIVATE_KEY="$special_cloudfront_private_key" \
   MOCK_CURL_FAIL_COUNT="${MOCK_CURL_FAIL_COUNT:-0}" \
   MOCK_DOCKER_FAIL_MATCH="${MOCK_DOCKER_FAIL_MATCH:-}" \
@@ -232,6 +252,10 @@ parsed_password="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
   DB_USER='fitback_app' \
   DB_PASSWORD="$special_password" \
   JWT_SECRET_KEY="$special_jwt_secret" \
+  HMAC_SECRET_KEY="$special_hmac_secret" \
+  KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
+  KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
+  FRONT_REDIRECT_URI="$special_front_redirect_uri" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
@@ -242,24 +266,88 @@ parsed_jwt_secret="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
   DB_USER='fitback_app' \
   DB_PASSWORD="$special_password" \
   JWT_SECRET_KEY="$special_jwt_secret" \
+  HMAC_SECRET_KEY="$special_hmac_secret" \
+  KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
+  KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
+  FRONT_REDIRECT_URI="$special_front_redirect_uri" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
   --env-file "$env_file" \
   config --environment | sed -n 's/^JWT_SECRET_KEY=//p')"
 test "$parsed_jwt_secret" = "$special_jwt_secret"
+parsed_hmac_secret="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
+  DB_USER='fitback_app' \
+  DB_PASSWORD="$special_password" \
+  JWT_SECRET_KEY="$special_jwt_secret" \
+  HMAC_SECRET_KEY="$special_hmac_secret" \
+  KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
+  KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
+  FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
+  docker compose \
+  --project-directory "$release_one" \
+  --env-file "$env_file" \
+  config --environment | sed -n 's/^HMAC_SECRET_KEY=//p')"
+test "$parsed_hmac_secret" = "$special_hmac_secret"
 parsed_cloudfront_private_key="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
   DB_USER='fitback_app' \
   DB_PASSWORD="$special_password" \
   JWT_SECRET_KEY="$special_jwt_secret" \
+  HMAC_SECRET_KEY="$special_hmac_secret" \
+  KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
+  KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
+  FRONT_REDIRECT_URI="$special_front_redirect_uri" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
   docker compose \
   --project-directory "$release_one" \
   --env-file "$env_file" \
   config --environment | sed -n 's/^CLOUDFRONT_PRIVATE_KEY_BASE64=//p')"
 test "$parsed_cloudfront_private_key" = "$special_cloudfront_private_key"
+parsed_kakao_rest_api_key="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
+  DB_USER='fitback_app' \
+  DB_PASSWORD="$special_password" \
+  JWT_SECRET_KEY="$special_jwt_secret" \
+  HMAC_SECRET_KEY="$special_hmac_secret" \
+  KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
+  KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
+  FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
+  docker compose \
+  --project-directory "$release_one" \
+  --env-file "$env_file" \
+  config --environment | sed -n 's/^KAKAO_REST_API_KEY=//p')"
+test "$parsed_kakao_rest_api_key" = "$special_kakao_rest_api_key"
+parsed_kakao_rest_api_secret="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
+  DB_USER='fitback_app' \
+  DB_PASSWORD="$special_password" \
+  JWT_SECRET_KEY="$special_jwt_secret" \
+  HMAC_SECRET_KEY="$special_hmac_secret" \
+  KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
+  KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
+  FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
+  docker compose \
+  --project-directory "$release_one" \
+  --env-file "$env_file" \
+  config --environment | sed -n 's/^KAKAO_REST_API_SECRET=//p')"
+test "$parsed_kakao_rest_api_secret" = "$special_kakao_rest_api_secret"
+parsed_front_redirect_uri="$(DB_URL='jdbc:mysql://database.internal:3306/fitback' \
+  DB_USER='fitback_app' \
+  DB_PASSWORD="$special_password" \
+  JWT_SECRET_KEY="$special_jwt_secret" \
+  HMAC_SECRET_KEY="$special_hmac_secret" \
+  KAKAO_REST_API_KEY="$special_kakao_rest_api_key" \
+  KAKAO_REST_API_SECRET="$special_kakao_rest_api_secret" \
+  FRONT_REDIRECT_URI="$special_front_redirect_uri" \
+  CLOUDFRONT_PRIVATE_KEY_BASE64="$special_cloudfront_private_key" \
+  docker compose \
+  --project-directory "$release_one" \
+  --env-file "$env_file" \
+  config --environment | sed -n 's/^FRONT_REDIRECT_URI=//p')"
+test "$parsed_front_redirect_uri" = "$special_front_redirect_uri"
 grep_status=0
-grep -Eq '^(DB_(URL|USER|PASSWORD)|JWT_SECRET_KEY|CLOUDFRONT_PRIVATE_KEY_BASE64)=' "$env_file" || grep_status=$?
+grep -Eq '^(DB_(URL|USER|PASSWORD)|JWT_SECRET_KEY|HMAC_SECRET_KEY|KAKAO_REST_API_KEY|KAKAO_REST_API_SECRET|FRONT_REDIRECT_URI|CLOUDFRONT_PRIVATE_KEY_BASE64)=' "$env_file" || grep_status=$?
 if [ "$grep_status" -eq 0 ]; then
   echo 'Secret was written to .env.' >&2
   exit 1
@@ -274,6 +362,14 @@ if grep -Fq "$special_password" "$mock_log"; then
 fi
 if grep -Fq "$special_jwt_secret" "$mock_log"; then
   echo 'JWT secret leaked into a command log.' >&2
+  exit 1
+fi
+if grep -Fq "$special_hmac_secret" "$mock_log"; then
+  echo 'HMAC secret leaked into a command log.' >&2
+  exit 1
+fi
+if grep -Fq "$special_kakao_rest_api_secret" "$mock_log"; then
+  echo 'Kakao REST API secret leaked into a command log.' >&2
   exit 1
 fi
 if grep -Fq "$special_cloudfront_private_key" "$mock_log"; then

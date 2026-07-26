@@ -43,6 +43,7 @@ class AnalysisReportTest {
         report.confirmTags(List.of(minimal, beige), 85);
 
         assertThat(report.getMatchPercentage()).isEqualTo(85);
+        assertThat(report.getRecommendationInputRevision()).isEqualTo(2);
         assertThat(report.getReportTags())
                 .extracting(ReportTag::getTag, ReportTag::getSource, ReportTag::isConfirmed)
                 .containsExactly(
@@ -62,6 +63,30 @@ class AnalysisReportTest {
         assertThat(report.getReportTags())
                 .extracting(ReportTag::getTag)
                 .containsExactly(beige);
+    }
+
+    @Test
+    void confirmsKnownAndCustomTagsIdempotently() {
+        AnalysisReport report = AnalysisReport.create(member(), "/uploads/look.jpg", 70);
+        Tag beige = tag(30L, "베이지톤");
+
+        report.confirmRecommendationInput(
+                List.of(beige),
+                List.of(" 고프코어 ", "고프코어"),
+                85
+        );
+        int confirmedRevision = report.getRecommendationInputRevision();
+        report.confirmRecommendationInput(
+                List.of(beige),
+                List.of("고프코어"),
+                85
+        );
+
+        assertThat(confirmedRevision).isEqualTo(2);
+        assertThat(report.getRecommendationInputRevision()).isEqualTo(confirmedRevision);
+        assertThat(report.getCustomTags())
+                .extracting(ReportCustomTag::getDisplayName)
+                .containsExactly("고프코어");
     }
 
     @Test

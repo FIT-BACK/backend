@@ -3,6 +3,9 @@ package com.fitback.backend.global.security;
 import com.fitback.backend.global.security.exception.CustomAccessDenied;
 import com.fitback.backend.global.security.exception.CustomEntryPoint;
 import com.fitback.backend.global.security.filter.JwtAuthFilter;
+import com.fitback.backend.global.security.handler.OAuthFailureHandler;
+import com.fitback.backend.global.security.handler.OAuthSuccessHandler;
+import com.fitback.backend.global.security.service.CustomOAuthService;
 import com.fitback.backend.global.security.service.CustomUserDetailsService;
 import com.fitback.backend.global.security.util.JwtUtil;
 import jakarta.servlet.DispatcherType;
@@ -40,7 +43,10 @@ public class SecurityConfig {
     private static final String[] NO_AUTH_URLS = {
             "/api/v1/auth/sign",
             "/api/v1/auth/login",
-            "/api/v1/auth/token/refresh"
+            "/api/v1/auth/token/refresh",
+            "/api/v1/auth/token/exchange",
+            "/api/v1/auth/oauth2/**",
+            "/api/v1/auth/callback/**"
     };
 
     private static final String[] HEALTH_URLS = {
@@ -59,7 +65,10 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            CorsConfigurationSource corsConfigurationSource
+            CorsConfigurationSource corsConfigurationSource,
+            CustomOAuthService customOAuthService,
+            OAuthSuccessHandler oAuthSuccessHandler,
+            OAuthFailureHandler oAuthFailureHandler
     ) throws Exception {
         return http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -73,6 +82,13 @@ public class SecurityConfig {
                         .requestMatchers(HEALTH_URLS).permitAll()
                         .requestMatchers(NO_AUTH_URLS).permitAll()
                         .anyRequest().authenticated())
+                .oauth2Login(oauth -> oauth
+                        .authorizationEndpoint(auth -> auth.baseUri("/api/v1/auth/oauth2"))
+                        .redirectionEndpoint(redirect -> redirect.baseUri("/api/v1/auth/callback/*"))
+                        .userInfoEndpoint(userInfo -> userInfo.userService(customOAuthService))
+                        .successHandler(oAuthSuccessHandler)
+                        .failureHandler(oAuthFailureHandler)
+                )
                 .addFilterBefore(
                         new JwtAuthFilter(jwtUtil, customUserDetailsService),
                         UsernamePasswordAuthenticationFilter.class)

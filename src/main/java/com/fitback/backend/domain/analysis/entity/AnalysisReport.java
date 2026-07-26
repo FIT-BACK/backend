@@ -27,6 +27,9 @@ import java.util.Set;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 @Getter
 @Entity
@@ -43,6 +46,7 @@ public class AnalysisReport extends BaseTimeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "member_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private Member member;
 
     @Column(name = "image_url", length = 2048)
@@ -61,10 +65,28 @@ public class AnalysisReport extends BaseTimeEntity {
     @Column(name = "purge_after")
     private Instant purgeAfter;
 
+    @Column(name = "recommendation_input_revision", nullable = false)
+    private Integer recommendationInputRevision = 1;
+
+    @Column(name = "result_input_revision")
+    private Integer resultInputRevision;
+
+    @Column(name = "result_score_version", length = 30)
+    private String resultScoreVersion;
+
+    @Column(name = "recommendation_generated_at")
+    private Instant recommendationGeneratedAt;
+
     @Getter(AccessLevel.NONE)
     @OneToMany(mappedBy = "report", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
     private final List<ReportTag> reportTags = new ArrayList<>();
+
+    @Getter(AccessLevel.NONE)
+    @OneToMany(mappedBy = "report", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id ASC")
+    @BatchSize(size = 50)
+    private final List<ReportCustomTag> customTags = new ArrayList<>();
 
     private AnalysisReport(Member member, String imageUrl, Integer matchPercentage) {
         this.member = Objects.requireNonNull(member, "member must not be null");
@@ -106,7 +128,11 @@ public class AnalysisReport extends BaseTimeEntity {
                 ? DEFAULT_MATCH_PERCENTAGE
                 : matchPercentage;
         validateMatchPercentage(nextMatchPercentage);
+        if (Objects.equals(this.matchPercentage, nextMatchPercentage)) {
+            return;
+        }
         this.matchPercentage = nextMatchPercentage;
+        this.recommendationInputRevision++;
     }
 
     public void addAiSuggestedTag(Tag tag) {
@@ -119,8 +145,17 @@ public class AnalysisReport extends BaseTimeEntity {
     }
 
     public void confirmTags(List<Tag> confirmedTags, Integer matchPercentage) {
+        confirmRecommendationInput(confirmedTags, List.of(), matchPercentage);
+    }
+
+    public void confirmRecommendationInput(
+            List<Tag> confirmedTags,
+            List<String> customTagNames,
+            Integer matchPercentage
+    ) {
         validateMatchPercentage(matchPercentage);
         Objects.requireNonNull(confirmedTags, "confirmedTags must not be null");
+        Objects.requireNonNull(customTagNames, "customTagNames must not be null");
 
         Map<Long, ReportTag> currentTags = reportTags.stream()
                 .collect(LinkedHashMap::new,
@@ -131,6 +166,28 @@ public class AnalysisReport extends BaseTimeEntity {
                         (tags, tag) -> tags.putIfAbsent(tag.getId(), tag),
                         LinkedHashMap::putAll);
         Set<Long> confirmedTagIds = new LinkedHashSet<>(uniqueConfirmedTags.keySet());
+        Map<String, ReportCustomTag> uniqueCustomTags = customTagNames.stream()
+                .map(name -> ReportCustomTag.create(this, name))
+                .collect(LinkedHashMap::new,
+                        (tags, tag) -> tags.putIfAbsent(tag.getNormalizedName(), tag),
+                        LinkedHashMap::putAll);
+        Set<Long> currentConfirmedTagIds = reportTags.stream()
+                .filter(ReportTag::isConfirmed)
+                .map(reportTag -> reportTag.getTag().getId())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<String> currentCustomTagNames = customTags.stream()
+                .map(ReportCustomTag::getNormalizedName)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        boolean sameKnownTags = reportTags.size() == confirmedTagIds.size()
+                && currentConfirmedTagIds.equals(confirmedTagIds);
+        boolean sameCustomTags = currentCustomTagNames.equals(
+                new LinkedHashSet<>(uniqueCustomTags.keySet())
+        );
+        if (sameKnownTags
+                && sameCustomTags
+                && Objects.equals(this.matchPercentage, matchPercentage)) {
+            return;
+        }
 
         reportTags.removeIf(reportTag -> !confirmedTagIds.contains(reportTag.getTag().getId()));
         for (Tag tag : uniqueConfirmedTags.values()) {
@@ -141,11 +198,41 @@ public class AnalysisReport extends BaseTimeEntity {
                 reportTag.confirm();
             }
         }
+        customTags.clear();
+        customTags.addAll(uniqueCustomTags.values());
         this.matchPercentage = matchPercentage;
+        this.recommendationInputRevision++;
+    }
+
+    public boolean hasRecommendationInputRevision(Integer inputRevision) {
+        return Objects.equals(recommendationInputRevision, inputRevision);
+    }
+
+    public void markRecommendationGenerated(
+            Integer inputRevision,
+            String scoreVersion,
+            Instant generatedAt
+    ) {
+        if (!hasRecommendationInputRevision(inputRevision)) {
+            throw new IllegalStateException("recommendation input revision changed");
+        }
+        if (scoreVersion == null || scoreVersion.isBlank()) {
+            throw new IllegalArgumentException("scoreVersion must not be blank");
+        }
+        this.resultInputRevision = inputRevision;
+        this.resultScoreVersion = scoreVersion;
+        this.recommendationGeneratedAt = Objects.requireNonNull(
+                generatedAt,
+                "generatedAt must not be null"
+        );
     }
 
     public List<ReportTag> getReportTags() {
         return List.copyOf(reportTags);
+    }
+
+    public List<ReportCustomTag> getCustomTags() {
+        return List.copyOf(customTags);
     }
 
     public List<Tag> getDisplayTags() {

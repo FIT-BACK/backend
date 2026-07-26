@@ -9,10 +9,16 @@ import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
 import com.fitback.backend.domain.product.entity.Product;
+import com.fitback.backend.domain.product.service.model.ProductAvailability;
+import com.fitback.backend.domain.product.service.model.ProductCategory;
+import com.fitback.backend.domain.product.service.model.ProductStorageMode;
+import com.fitback.backend.domain.product.service.model.ProviderIdentityType;
 import com.fitback.backend.domain.recommendation.entity.RecommendedItem;
 import com.fitback.backend.domain.trend.entity.TrendContent;
 import com.fitback.backend.domain.trend.entity.TrendTag;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -61,29 +67,95 @@ class EntityInvariantTest {
 
     @Test
     void productRejectsNegativePriceOnCreateAndChange() {
-        assertThatThrownBy(() -> product(-1)).isInstanceOf(IllegalArgumentException.class);
-
-        Product product = product(10_000);
-        assertThatThrownBy(() -> product.changePrice(-1, 10_000))
+        assertThatThrownBy(() -> product(new BigDecimal("-1.00")))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThat(product.getPrice()).isEqualTo(10_000);
+
+        Product product = product(new BigDecimal("10000.00"));
+        assertThatThrownBy(() -> product.refreshSnapshot(
+                "product",
+                "brand",
+                "seller",
+                ProductCategory.TOP,
+                "https://example.com/product.jpg",
+                null,
+                new BigDecimal("-1.00"),
+                null,
+                "KRW",
+                Instant.parse("2026-07-24T00:00:00Z"),
+                "https://example.com/product",
+                null,
+                ProductAvailability.AVAILABLE,
+                Instant.parse("2026-07-24T01:00:00Z")
+        ))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(product.getCurrentPrice()).isEqualByComparingTo("10000.00");
     }
 
     @Test
-    void recommendedItemRejectsNullRequiredValuesImmediately() {
+    void recommendedItemValidatesRequiredValuesAndRankRange() {
         AnalysisReport report = AnalysisReport.create(member(), "https://example.com/report.jpg", 85);
-        Product product = product(10_000);
+        Product product = product(new BigDecimal("10000.00"));
 
-        assertThatThrownBy(() -> RecommendedItem.create(null, product, 1, "TOP", 90, true))
+        assertThatThrownBy(() -> RecommendedItem.create(
+                null,
+                product,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        ))
                 .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> RecommendedItem.create(report, null, 1, "TOP", 90, true))
+        assertThatThrownBy(() -> RecommendedItem.create(
+                report,
+                null,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        ))
                 .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> RecommendedItem.create(report, product, null, "TOP", 90, true))
-                .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> RecommendedItem.create(report, product, 1, null, 90, true))
-                .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> RecommendedItem.create(report, product, 1, "TOP", null, true))
-                .isInstanceOf(NullPointerException.class);
+        RecommendedItem rankTen = RecommendedItem.create(
+                report,
+                product,
+                1,
+                10,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        );
+        assertThat(rankTen.getRankNo()).isEqualTo(10);
+        assertThatThrownBy(() -> RecommendedItem.create(
+                report,
+                product,
+                1,
+                11,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        ))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> RecommendedItem.create(
+                report,
+                product,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("101.00"),
+                new BigDecimal("101.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        ))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -100,20 +172,30 @@ class EntityInvariantTest {
         return member;
     }
 
-    private static Product product(int price) {
-        return Product.create(
+    private static Product product(BigDecimal price) {
+        return Product.createProviderProduct(
+                "test",
+                ProviderIdentityType.PROVIDER_KEY,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                null,
                 "external-1",
+                null,
+                "merchant-1",
+                ProductStorageMode.SNAPSHOT,
                 "product",
                 "brand",
                 "seller",
-                price,
-                10_000,
-                "TOP",
-                "SUMMER",
-                "UNISEX",
-                "https://example.com/product",
+                ProductCategory.TOP,
                 "https://example.com/product.jpg",
-                "test"
+                null,
+                price,
+                null,
+                "KRW",
+                Instant.parse("2026-07-24T00:00:00Z"),
+                "https://example.com/product",
+                null,
+                ProductAvailability.AVAILABLE,
+                Instant.parse("2026-07-24T01:00:00Z")
         );
     }
 

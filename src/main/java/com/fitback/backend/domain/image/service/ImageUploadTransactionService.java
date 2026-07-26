@@ -34,7 +34,7 @@ public class ImageUploadTransactionService {
             ImageObjectStorage.StoredImageObject storedObject
     ) {
         Image image = findOwnedImage(ownerId, imageId);
-        if (image.getStatus() != ImageStatus.PENDING) {
+        if (!image.getStatus().isPendingUpload()) {
             throw new BusinessException(ErrorCode.IMAGE_INVALID_STATE);
         }
 
@@ -64,7 +64,7 @@ public class ImageUploadTransactionService {
     }
 
     private void validatePendingUpload(Image image) {
-        if (image.getStatus() != ImageStatus.PENDING) {
+        if (!image.getStatus().isPendingUpload()) {
             throw new BusinessException(ErrorCode.IMAGE_INVALID_STATE);
         }
         if (image.uploadExpired(clock.instant())) {
