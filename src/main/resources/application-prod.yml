@@ -63,6 +63,9 @@ management:
     mail:
       enabled: false
 
+server:
+  forward-headers-strategy: framework
+
 jwt:
   token:
     secretKey: ${JWT_SECRET_KEY}

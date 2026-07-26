@@ -108,6 +108,13 @@ class ProductionProfileConfigurationTest {
     }
 
     @Test
+    void productionProfileUsesSpringForwardedHeaderSupport() {
+        contextRunner.run(context ->
+                assertThat(context.getEnvironment().getProperty("server.forward-headers-strategy"))
+                        .isEqualTo("framework"));
+    }
+
+    @Test
     void productionProfileMapsKakaoAndOAuthEnvironmentVariables() {
         contextRunner.run(context -> {
             Environment environment = context.getEnvironment();
