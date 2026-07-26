@@ -5,6 +5,7 @@ import com.fitback.backend.domain.closet.dto.ClosetSaveResponse;
 import com.fitback.backend.domain.closet.entity.ClosetSave;
 import com.fitback.backend.domain.closet.entity.ClosetTargetType;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.trend.entity.TrendContent;
@@ -31,6 +32,7 @@ public class ClosetSaveService {
 
     private final ClosetSaveRepository closetSaveRepository;
     private final MemberRepository memberRepository;
+    private final LookbookRepository lookbookRepository;
     private final TrendContentRepository trendContentRepository;
     private final TrendTagRepository trendTagRepository;
 
@@ -38,7 +40,7 @@ public class ClosetSaveService {
     @Transactional
     public ClosetSave save(Long memberId, ClosetSaveRequest.Create request) {
 
-        // 저장 대상이 실제로 존재하는지 확인 (TREND만 이번 범위에서 검증)
+        // 저장 대상이 실제로 존재하는지 확인
         validateTargetExists(request.targetType(), request.targetId());
 
         // 이미 저장된 항목인지 확인
@@ -61,8 +63,16 @@ public class ClosetSaveService {
 
     // 저장 대상 유효성 검사
     private void validateTargetExists(ClosetTargetType targetType, Long targetId) {
-        if (targetType == ClosetTargetType.TREND && !trendContentRepository.existsById(targetId)) {
-            throw new BusinessException(ErrorCode.TREND_NOT_FOUND);
+        switch (targetType) {
+            case TREND -> {
+                if (!trendContentRepository.existsById(targetId)) {
+                    throw new BusinessException(ErrorCode.TREND_NOT_FOUND);
+                }
+            }
+            case LOOKBOOK -> lookbookRepository.findByIdAndDeletedAtIsNull(targetId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.LOOKBOOK_NOT_FOUND));
+            case ANALYSIS_REPORT -> throw new BusinessException(ErrorCode.CLOSET_TARGET_UNSUPPORTED);
+            default -> throw new BusinessException(ErrorCode.CLOSET_TARGET_UNSUPPORTED);
         }
     }
 

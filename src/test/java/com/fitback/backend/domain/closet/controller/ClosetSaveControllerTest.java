@@ -38,22 +38,26 @@ class ClosetSaveControllerTest {
 
     @Test
     void saveClosetReturnsCreatedResponse() {
-        ClosetSaveRequest.Create request = new ClosetSaveRequest.Create(ClosetTargetType.LOOKBOOK, 12L);
+        ClosetSaveRequest.Create request = new ClosetSaveRequest.Create(ClosetTargetType.TREND, 12L);
         AuthMember authMember = authMemberWithId(1L);
-        ClosetSave closetSave = ClosetSave.create(authMember.getMember(), ClosetTargetType.LOOKBOOK, 12L);
+        ClosetSave closetSave = ClosetSave.create(authMember.getMember(), ClosetTargetType.TREND, 12L);
+        ReflectionTestUtils.setField(closetSave, "id", 100L);
         when(closetSaveService.save(1L, request)).thenReturn(closetSave);
 
-        ApiResponse<Void> response = closetSaveController.saveCloset(authMember, request);
+        ApiResponse<ClosetSaveResponse.Created> response = closetSaveController.saveCloset(authMember, request);
 
         assertThat(response.success()).isTrue();
         assertThat(response.code()).isEqualTo("COMMON201_1");
-        assertThat(response.data()).isNull();
+        assertThat(response.data().saveId()).isEqualTo(100L);
+        assertThat(response.data().targetType()).isEqualTo(ClosetTargetType.TREND);
+        assertThat(response.data().targetId()).isEqualTo(12L);
         verify(closetSaveService).save(1L, request);
     }
 
     @Test
     void getClosetSavesReturnsSuccessResponse() {
         ClosetSaveResponse.ClosetSaveItem item = ClosetSaveResponse.ClosetSaveItem.builder()
+                .saveId(100L)
                 .targetType(ClosetTargetType.TREND)
                 .targetId(1L)
                 .thumbnailUrl(null)

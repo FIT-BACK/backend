@@ -2,6 +2,7 @@ package com.fitback.backend.domain.closet.controller;
 
 import com.fitback.backend.domain.closet.dto.ClosetSaveRequest;
 import com.fitback.backend.domain.closet.dto.ClosetSaveResponse;
+import com.fitback.backend.domain.closet.entity.ClosetSave;
 import com.fitback.backend.domain.closet.entity.ClosetTargetType;
 import com.fitback.backend.domain.closet.service.ClosetSaveService;
 import com.fitback.backend.global.exception.BusinessException;
@@ -33,15 +34,16 @@ public class ClosetSaveController {
 
     @Operation(
             summary = "마이 클로젯 저장",
-            description = "로그인한 회원이 트렌드/룩북/분석리포트를 마이 클로젯에 저장."
+            description = "로그인한 회원이 트렌드/룩북을 마이 클로젯에 저장. "
+                    + "분석리포트는 /api/v1/analyses/{reportId}/save를 사용."
     )
     @PostMapping
-    public ApiResponse<Void> saveCloset(
+    public ApiResponse<ClosetSaveResponse.Created> saveCloset(
             @AuthenticationPrincipal AuthMember authMember,
             @Valid @RequestBody ClosetSaveRequest.Create request
     ) {
-        closetSaveService.save(requireMemberId(authMember), request);
-        return ApiResponse.onCreated();
+        ClosetSave closetSave = closetSaveService.save(requireMemberId(authMember), request);
+        return ApiResponse.onCreated(ClosetSaveResponse.Created.from(closetSave));
     }
 
     @Operation(

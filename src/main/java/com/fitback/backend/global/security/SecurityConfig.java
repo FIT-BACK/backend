@@ -11,6 +11,7 @@ import com.fitback.backend.global.security.util.JwtUtil;
 import jakarta.servlet.DispatcherType;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -28,11 +29,13 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
+@EnableConfigurationProperties(CorsProperties.class)
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtUtil jwtUtil;
     private final CustomUserDetailsService customUserDetailsService;
+    private final CorsProperties corsProperties;
 
     private static final String[] SWAGGER_URLS = {
             "/swagger-ui.html",
@@ -61,13 +64,6 @@ public class SecurityConfig {
             "/actuator/health/liveness",
             "/actuator/health/readiness"
     };
-
-    private static final List<String> LOCAL_QA_ORIGINS = List.of(
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173"
-    );
 
     @Bean
     public SecurityFilterChain securityFilterChain(
@@ -109,7 +105,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(LOCAL_QA_ORIGINS);
+        configuration.setAllowedOrigins(corsProperties.allowedOrigins());
         configuration.setAllowedMethods(List.of(
                 "GET",
                 "POST",
