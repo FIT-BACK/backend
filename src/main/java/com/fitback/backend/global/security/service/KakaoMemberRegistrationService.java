@@ -20,6 +20,8 @@ import java.util.UUID;
 @Service
 public class KakaoMemberRegistrationService {
 
+    private static final int SIGNUP_TRANSACTION_TIMEOUT_SECONDS = 5;
+
     private final MemberRepository memberRepository;
     private final RejoinBlockChecker rejoinBlockChecker;
     private final NotificationSettingService notificationSettingService;
@@ -38,17 +40,21 @@ public class KakaoMemberRegistrationService {
         this.transactionTemplate.setPropagationBehavior(
                 TransactionDefinition.PROPAGATION_REQUIRES_NEW
         );
+        this.transactionTemplate.setTimeout(SIGNUP_TRANSACTION_TIMEOUT_SECONDS);
     }
 
     public record KakaoMemberResult(Member member, boolean isNewMember) {}
 
+    //회원을 찾거나 회원이 없으면 신규 회원 등록
     public KakaoMemberResult findOrRegister(String email, String socialUid) {
         String normalizedEmail = LowercaseNormalizer.normalize(email);
 
         try {
             return Objects.requireNonNull(transactionTemplate.execute(status ->
                     memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, socialUid)
+                            //기존 회원이면 kakaoMemberResult의 isNewMember = false
                             .map(member -> new KakaoMemberResult(member, false))
+                            //신규 회원이면 새로은 회원 생성, isNewMember = true
                             .orElseGet(() -> new KakaoMemberResult(
                                     registerNewKakaoMember(normalizedEmail, socialUid),
                                     true

@@ -16,6 +16,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 
 import java.util.Optional;
@@ -44,6 +45,31 @@ class KakaoMemberRegistrationServiceTest {
 
     @InjectMocks
     private KakaoMemberRegistrationService kakaoMemberRegistrationService;
+
+    //카카오 회원 조회 및 가입 트랜잭션 설정 확인
+    @Test
+    void findOrRegisterTransactionConfigurationTest() {
+        Member existingMember = Member.createSocial(
+                "kakao@fitback.com",
+                "nick",
+                LoginProvider.KAKAO,
+                "12345"
+        );
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
+        when(memberRepository.findByLoginProviderAndSocialUid(LoginProvider.KAKAO, "12345"))
+                .thenReturn(Optional.of(existingMember));
+
+        kakaoMemberRegistrationService.findOrRegister("kakao@fitback.com", "12345");
+
+        ArgumentCaptor<TransactionDefinition> transactionDefinitionCaptor =
+                ArgumentCaptor.forClass(TransactionDefinition.class);
+        verify(transactionManager).getTransaction(transactionDefinitionCaptor.capture());
+
+        TransactionDefinition transactionDefinition = transactionDefinitionCaptor.getValue();
+        assertThat(transactionDefinition.getPropagationBehavior())
+                .isEqualTo(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        assertThat(transactionDefinition.getTimeout()).isEqualTo(5);
+    }
 
     //카카오 신규 회원 생성 - 회원 저장 후 기본 알림 설정 생성
     @Test
