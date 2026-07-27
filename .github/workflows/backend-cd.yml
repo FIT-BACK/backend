@@ -236,6 +236,8 @@ jobs:
       IMAGE_BUCKET: ${{ vars.IMAGE_BUCKET }}
       IMAGE_CDN_BASE_URL: ${{ vars.IMAGE_CDN_BASE_URL }}
       CLOUDFRONT_KEY_PAIR_ID: ${{ vars.CLOUDFRONT_KEY_PAIR_ID }}
+      SHOPPING_PROVIDER: ${{ vars.SHOPPING_PROVIDER || 'fixture' }}
+      SHOPIFY_ENABLED: ${{ vars.SHOPIFY_ENABLED || 'false' }}
       IMAGE_REFERENCE: ${{ needs.publish-image.outputs.image-reference }}
 
     steps:
@@ -290,6 +292,22 @@ jobs:
             exit 1
           fi
 
+          if [ "$SHOPPING_PROVIDER" != 'fixture' ] && [ "$SHOPPING_PROVIDER" != 'shopify' ]; then
+            echo "SHOPPING_PROVIDER must be fixture or shopify: $SHOPPING_PROVIDER" >&2
+            exit 1
+          fi
+
+          if [ "$SHOPIFY_ENABLED" != 'true' ] && [ "$SHOPIFY_ENABLED" != 'false' ]; then
+            echo "SHOPIFY_ENABLED must be true or false: $SHOPIFY_ENABLED" >&2
+            exit 1
+          fi
+
+          if { [ "$SHOPPING_PROVIDER" = 'shopify' ] && [ "$SHOPIFY_ENABLED" != 'true' ]; } \
+            || { [ "$SHOPPING_PROVIDER" != 'shopify' ] && [ "$SHOPIFY_ENABLED" != 'false' ]; }; then
+            echo 'SHOPPING_PROVIDER and SHOPIFY_ENABLED must select the same provider.' >&2
+            exit 1
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -334,6 +352,8 @@ jobs:
             --arg image_bucket "$IMAGE_BUCKET" \
             --arg image_cdn_base_url "$IMAGE_CDN_BASE_URL" \
             --arg cloudfront_key_pair_id "$CLOUDFRONT_KEY_PAIR_ID" \
+            --arg shopping_provider "$SHOPPING_PROVIDER" \
+            --arg shopify_enabled "$SHOPIFY_ENABLED" \
             --arg release_dir "$release_dir" \
             '{
               executionTimeout: ["900"],
@@ -348,6 +368,8 @@ jobs:
                   + " IMAGE_BUCKET=" + ($image_bucket | @sh)
                   + " IMAGE_CDN_BASE_URL=" + ($image_cdn_base_url | @sh)
                   + " CLOUDFRONT_KEY_PAIR_ID=" + ($cloudfront_key_pair_id | @sh)
+                  + " SHOPPING_PROVIDER=" + ($shopping_provider | @sh)
+                  + " SHOPIFY_ENABLED=" + ($shopify_enabled | @sh)
                   + " DEPLOY_ROOT=/opt/fitback"
                   + " RELEASE_DIR=" + ($release_dir | @sh)
                   + " " + (($release_dir + "/scripts/deploy/remote_deploy.sh") | @sh))

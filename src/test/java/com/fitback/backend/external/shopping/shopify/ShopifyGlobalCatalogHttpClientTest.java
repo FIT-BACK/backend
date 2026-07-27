@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fitback.backend.domain.product.service.exception.ProductProviderException;
 import com.fitback.backend.domain.product.service.exception.ProductProviderFailure;
 import com.fitback.backend.external.shopping.config.ShoppingProviderProperties;
+import java.net.http.HttpTimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -152,5 +153,50 @@ class ShopifyGlobalCatalogHttpClientTest {
                     assertThat(exception.getFailure())
                             .isEqualTo(ProductProviderFailure.RATE_LIMITED);
                 });
+    }
+
+    @Test
+    void translatesTransportTimeout() {
+        ShopifyGlobalCatalogHttpClient client = new ShopifyGlobalCatalogHttpClient(
+                ShoppingProviderProperties.Shopify.defaults(true),
+                objectMapper,
+                (endpoint, timeout, body) -> {
+                    throw new HttpTimeoutException("timed out");
+                }
+        );
+
+        assertThatThrownBy(() -> client.search("hoodie", null, 1))
+                .isInstanceOfSatisfying(ProductProviderException.class, exception ->
+                        assertThat(exception.getFailure())
+                                .isEqualTo(ProductProviderFailure.TIMEOUT)
+                );
+    }
+
+    @Test
+    void translatesJsonRpcQuotaFailure() {
+        ShopifyGlobalCatalogHttpClient client = new ShopifyGlobalCatalogHttpClient(
+                ShoppingProviderProperties.Shopify.defaults(true),
+                objectMapper,
+                (endpoint, timeout, body) ->
+                        new ShopifyGlobalCatalogHttpClient.TransportResponse(
+                                200,
+                                """
+                                {
+                                  "jsonrpc": "2.0",
+                                  "id": 1,
+                                  "error": {
+                                    "code": "quota_exceeded",
+                                    "message": "Catalog quota exceeded"
+                                  }
+                                }
+                                """
+                        )
+        );
+
+        assertThatThrownBy(() -> client.search("hoodie", null, 1))
+                .isInstanceOfSatisfying(ProductProviderException.class, exception ->
+                        assertThat(exception.getFailure())
+                                .isEqualTo(ProductProviderFailure.QUOTA_EXCEEDED)
+                );
     }
 }

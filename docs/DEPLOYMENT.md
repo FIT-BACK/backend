@@ -67,8 +67,13 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 | `IMAGE_BUCKET` | EC2 배포 | private 사용자 이미지 버킷 이름이다. 현재 값은 `fitback-prod-images-123209654535-ap-northeast-2`이다. |
 | `IMAGE_CDN_BASE_URL` | EC2 배포 | 서명된 이미지 조회 URL을 만들 CloudFront HTTPS origin이다. 현재 값은 `https://d1p2ierkew26r1.cloudfront.net`이다. |
 | `CLOUDFRONT_KEY_PAIR_ID` | EC2 배포 | CloudFront signed URL에 포함할 public key ID이다. 현재 값은 `K1XNJ3JDEDCVL3`이다. |
+| `SHOPPING_PROVIDER` | 선택 | 상품 공급자를 선택한다. 기본값은 `fixture`이며 Shopify를 활성화할 때 `shopify`로 설정한다. |
+| `SHOPIFY_ENABLED` | 선택 | Shopify 어댑터 활성화 스위치다. 기본값은 `false`이며 `SHOPPING_PROVIDER=shopify`일 때만 `true`로 설정한다. |
 
 민감정보는 Repository Variable 또는 GitHub command payload에 넣지 않는다.
+Shopify Global Catalog 익명 호출에는 별도 API key를 저장하지 않으며, 위 두 변수는 항상
+`fixture`/`false` 또는 `shopify`/`true` 조합으로 설정한다. workflow는 서로 다른 조합을
+배포 전에 거절한다.
 
 ## SSM Parameter Store
 
@@ -271,7 +276,7 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 1. digest가 포함된 ECR 이미지 참조를 검증한다.
 2. Parameter Store의 DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, Base64 CloudFront 개인 키 값을 단일 행 값으로 검증한다.
 3. host 단위 `flock`을 획득해 같은 EC2에서 두 배포가 동시에 실행되지 않게 한다.
-4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값은 현재 Compose 프로세스 환경으로 전달한다.
+4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image, port, 상품 공급자 선택 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값은 현재 Compose 프로세스 환경으로 전달한다.
 5. EC2 instance role로 ECR에 로그인하고 backend 이미지를 pull한다.
 6. 새 release의 `docker compose up -d --remove-orphans`를 실행한다.
 7. `/nginx-health`와 backend container health가 모두 정상인지 확인한다.
@@ -362,6 +367,7 @@ ECR 및 S3 저장량, CloudFront 요청·데이터 전송, 소량의 CloudWatch 
 - [x] private S3 이미지 버킷, CloudFront OAC, trusted key group을 구성했다.
 - [x] 운영 프론트 Origin의 S3 Presigned POST 전용 CORS와 실제 업로드를 검증했다.
 - [x] 이미지 저장소 Repository Variable 세 개와 `/fitback/prod/cloudfront-private-key` SecureString을 구성했다.
+- [ ] Shopify 운영 전환 시 Repository Variable `SHOPPING_PROVIDER=shopify`, `SHOPIFY_ENABLED=true`를 함께 구성한다.
 - [ ] `/fitback/prod/jwt-secret-key`, `/fitback/prod/hmac-secret-key`, Kakao OAuth, 메일, 비밀번호 재설정 URL 값을 포함한 운영 Parameter Store SecureString을 모두 생성했다.
 - [ ] 카카오 개발자 콘솔에 운영 백엔드 콜백 URI를 등록했다.
 - [x] GitHub OIDC 역할에 SSM 최소 권한을 추가했다.
