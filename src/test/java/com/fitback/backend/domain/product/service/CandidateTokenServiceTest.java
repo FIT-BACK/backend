@@ -91,7 +91,7 @@ class CandidateTokenServiceTest {
                 clock,
                 new ShoppingProviderProperties(
                         ShoppingProviderProperties.Provider.FIXTURE,
-                        new ShoppingProviderProperties.Shopify(false),
+                        ShoppingProviderProperties.Shopify.defaults(false),
                         new ShoppingProviderProperties.CandidateToken(Duration.ofMinutes(10))
                 ),
                 SECRET

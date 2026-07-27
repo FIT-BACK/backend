@@ -4,9 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
 import com.fitback.backend.external.shopping.fixture.FixtureShoppingProviderAdapter;
+import com.fitback.backend.external.shopping.shopify.ShopifyGlobalCatalogAdapter;
+import com.fitback.backend.external.shopping.shopify.ShopifyGlobalCatalogClient;
+import java.time.Clock;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import tools.jackson.databind.ObjectMapper;
 
 class ShoppingProviderConfigTest {
 
@@ -39,7 +43,7 @@ class ShoppingProviderConfigTest {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .hasStackTraceContaining(
-                                    "Shopify runtime provider is unavailable while selection remains pending"
+                                    "shopping.shopify.enabled must be true"
                             );
                 });
     }
@@ -52,8 +56,26 @@ class ShoppingProviderConfigTest {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .hasStackTraceContaining(
-                                    "shopping.shopify.enabled must remain false"
+                                    "shopping.shopify.enabled requires shopping.provider=shopify"
                             );
+                });
+    }
+
+    @Test
+    void usesShopifyProviderWhenExplicitlyEnabled() {
+        contextRunner
+                .withBean(ObjectMapper.class, ObjectMapper::new)
+                .withBean(Clock.class, Clock::systemUTC)
+                .withPropertyValues(
+                        "shopping.provider=shopify",
+                        "shopping.shopify.enabled=true"
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(ProductCatalogPort.class);
+                    assertThat(context).hasSingleBean(ShopifyGlobalCatalogClient.class);
+                    assertThat(context).hasSingleBean(ShopifyGlobalCatalogAdapter.class);
+                    assertThat(context).doesNotHaveBean(FixtureShoppingProviderAdapter.class);
                 });
     }
 

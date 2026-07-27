@@ -38,6 +38,14 @@ CLOUDFRONT_KEY_PAIR_ID=K1XNJ3JDEDCVL3
 CLOUDFRONT_PRIVATE_KEY_BASE64=bG9jYWwtcHJpdmF0ZS1rZXk=
 HMAC_SECRET_KEY=change-me-to-a-stable-32-byte-random-secret
 SHOPIFY_ENABLED=false
+SHOPIFY_GLOBAL_CATALOG_ENDPOINT=https://catalog.shopify.com/api/ucp/mcp
+SHOPIFY_AGENT_PROFILE_URL=https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json
+SHOPIFY_CONNECT_TIMEOUT=PT3S
+SHOPIFY_READ_TIMEOUT=PT10S
+SHOPIFY_SNAPSHOT_TTL=PT15M
+SHOPIFY_ADDRESS_COUNTRY=KR
+SHOPIFY_LANGUAGE=ko
+SHOPIFY_CURRENCY=KRW
 SHOPPING_CANDIDATE_TOKEN_TTL=PT10M
 SHOPPING_PROVIDER=fixture
 KAKAO_REST_API_KEY=team_kakao_rest_api_key
@@ -48,9 +56,10 @@ MAIL_APP_PASSWORD=your-google-app-password
 FRONT_PASSWORD_RESET_URL=http://localhost:3000/reset-password
 ```
 
-쇼핑 공급자는 최종 공급자가 확정되기 전까지 `fixture`를 기본값으로 사용합니다.
-Shopify 런타임은 비활성화되어 있으므로 로컬 및 CI에서 Shopify 인증정보나 외부 API 호출이
-필요하지 않습니다. 상품 검색에서 발급하는 candidate token은 기본 10분 동안 유효하며
+쇼핑 공급자는 기본값으로 `fixture`를 사용합니다. Shopify Global Catalog를 사용하려면
+`SHOPPING_PROVIDER=shopify`와 `SHOPIFY_ENABLED=true`를 함께 설정합니다. 익명 호출에는 API
+키가 필요하지 않지만 agent profile URL이 필요하며, 기본 profile은 개발 검증용입니다.
+상품 검색에서 발급하는 candidate token은 기본 10분 동안 유효하며
 `SHOPPING_CANDIDATE_TOKEN_TTL`에 ISO-8601 Duration 형식으로 설정합니다.
 
 ### 2. MySQL 데이터베이스 생성
