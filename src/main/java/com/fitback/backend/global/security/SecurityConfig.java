@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -56,7 +57,9 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_READ_URLS = {
             "/api/v1/trends/**",
-            "/api/v1/tags/**"
+            "/api/v1/tags/**",
+            "/api/v1/lookbooks",
+            "/api/v1/lookbooks/*"
     };
 
     private static final String[] HEALTH_URLS = {
@@ -84,7 +87,7 @@ public class SecurityConfig {
                         .requestMatchers(SWAGGER_URLS).permitAll()
                         .requestMatchers(HEALTH_URLS).permitAll()
                         .requestMatchers(NO_AUTH_URLS).permitAll()
-                        .requestMatchers(PUBLIC_READ_URLS).permitAll()
+                        .requestMatchers(HttpMethod.GET, PUBLIC_READ_URLS).permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(oauth -> oauth
                         .authorizationEndpoint(auth -> auth.baseUri("/api/v1/auth/oauth2"))
