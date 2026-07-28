@@ -19,8 +19,6 @@ HTTP_BIND_ADDRESS="${HTTP_BIND_ADDRESS:-0.0.0.0}"
 HTTP_PORT="${HTTP_PORT:-80}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-30}"
 HEALTH_INTERVAL_SECONDS="${HEALTH_INTERVAL_SECONDS:-2}"
-SHOPPING_PROVIDER="${SHOPPING_PROVIDER:-fixture}"
-SHOPIFY_ENABLED="${SHOPIFY_ENABLED:-false}"
 
 if [[ ! "$IMAGE_REFERENCE" =~ ^[0-9]+\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/.+@sha256:[0-9a-f]{64}$ ]]; then
   echo "IMAGE_REFERENCE must be a digest-pinned Amazon ECR image: $IMAGE_REFERENCE" >&2
@@ -59,22 +57,6 @@ fi
 
 if [[ ! "$HEALTH_INTERVAL_SECONDS" =~ ^[0-9]+$ ]]; then
   echo "HEALTH_INTERVAL_SECONDS must be a non-negative integer." >&2
-  exit 1
-fi
-
-if [ "$SHOPPING_PROVIDER" != 'fixture' ] && [ "$SHOPPING_PROVIDER" != 'shopify' ]; then
-  echo "SHOPPING_PROVIDER must be fixture or shopify: $SHOPPING_PROVIDER" >&2
-  exit 1
-fi
-
-if [ "$SHOPIFY_ENABLED" != 'true' ] && [ "$SHOPIFY_ENABLED" != 'false' ]; then
-  echo "SHOPIFY_ENABLED must be true or false: $SHOPIFY_ENABLED" >&2
-  exit 1
-fi
-
-if { [ "$SHOPPING_PROVIDER" = 'shopify' ] && [ "$SHOPIFY_ENABLED" != 'true' ]; } \
-  || { [ "$SHOPPING_PROVIDER" != 'shopify' ] && [ "$SHOPIFY_ENABLED" != 'false' ]; }; then
-  echo 'SHOPPING_PROVIDER and SHOPIFY_ENABLED must select the same provider.' >&2
   exit 1
 fi
 
@@ -178,8 +160,6 @@ write_environment() {
     printf 'IMAGE_BUCKET=%s\n' "$IMAGE_BUCKET"
     printf 'IMAGE_CDN_BASE_URL=%s\n' "$IMAGE_CDN_BASE_URL"
     printf 'CLOUDFRONT_KEY_PAIR_ID=%s\n' "$CLOUDFRONT_KEY_PAIR_ID"
-    printf 'SHOPPING_PROVIDER=%s\n' "$SHOPPING_PROVIDER"
-    printf 'SHOPIFY_ENABLED=%s\n' "$SHOPIFY_ENABLED"
     printf 'SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.cj.jdbc.Driver\n'
     printf 'SPRING_JPA_HIBERNATE_DDL_AUTO=validate\n'
   } > "$temporary_env"
