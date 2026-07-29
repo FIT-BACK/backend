@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fitback.backend.domain.product.service.exception.ProductProviderException;
 import com.fitback.backend.domain.product.service.exception.ProductProviderFailure;
 import com.fitback.backend.external.shopping.config.ShoppingProviderProperties;
+import java.math.BigDecimal;
 import java.net.http.HttpTimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -136,6 +137,26 @@ class ShopifyGlobalCatalogHttpClientTest {
         assertThat(request.at("/params/name").asText()).isEqualTo("lookup_catalog");
         assertThat(request.at("/params/arguments/catalog/ids/0").asText())
                 .isEqualTo("gid://shopify/ProductVariant/variant-1");
+    }
+
+    @Test
+    void convertsThreeFractionDigitCurrencyMinorUnits() {
+        ShopifyGlobalCatalogHttpClient client = new ShopifyGlobalCatalogHttpClient(
+                ShoppingProviderProperties.Shopify.defaults(true),
+                objectMapper,
+                (endpoint, timeout, body) ->
+                        new ShopifyGlobalCatalogHttpClient.TransportResponse(
+                                200,
+                                SEARCH_RESPONSE
+                                        .replace("\"amount\": 7300", "\"amount\": 1234")
+                                        .replace("\"currency\": \"USD\"", "\"currency\": \"KWD\"")
+                        )
+        );
+
+        assertThat(client.search("black hoodie", null, 1).items())
+                .singleElement()
+                .extracting(ShopifyCatalogItem::price)
+                .isEqualTo(new BigDecimal("1.234"));
     }
 
     @Test

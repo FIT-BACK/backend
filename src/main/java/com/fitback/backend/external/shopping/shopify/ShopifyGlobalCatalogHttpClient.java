@@ -247,7 +247,7 @@ public final class ShopifyGlobalCatalogHttpClient implements ShopifyGlobalCatalo
         }
         try {
             int fractionDigits = Currency.getInstance(currencyCode).getDefaultFractionDigits();
-            if (fractionDigits < 0 || fractionDigits > 2) {
+            if (fractionDigits < 0) {
                 return null;
             }
             return amountNode.decimalValue().movePointLeft(fractionDigits);
