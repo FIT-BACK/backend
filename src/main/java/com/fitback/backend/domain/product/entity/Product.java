@@ -225,6 +225,25 @@ public class Product extends BaseTimeEntity {
                 .build();
     }
 
+    public static Product createIdentityOnly(
+            String sourceApi,
+            String providerIdentityKey,
+            String externalProductId,
+            String externalVariantId,
+            String merchantId
+    ) {
+        return Product.builder()
+                .sourceApi(sourceApi)
+                .identityStrategy(ProviderIdentityType.PROVIDER_KEY)
+                .providerIdentityKey(providerIdentityKey)
+                .externalProductId(externalProductId)
+                .externalVariantId(externalVariantId)
+                .merchantId(merchantId)
+                .storageMode(ProductStorageMode.IDENTITY_ONLY)
+                .availability(ProductAvailability.UNKNOWN)
+                .build();
+    }
+
     public void refreshSnapshot(
             String name,
             String brandName,

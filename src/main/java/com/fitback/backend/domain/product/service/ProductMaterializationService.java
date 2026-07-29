@@ -75,14 +75,12 @@ public class ProductMaterializationService {
             throw ProductProviderErrorMapper.toBusinessException(exception);
         }
 
-        Instant expiresAt = snapshotExpiresAt(capabilities.maxTtl());
-        ProductSnapshot snapshot = candidateMapper.snapshot(providerRef, candidate, expiresAt);
-        ProductPersistenceService.MaterializationResult result =
-                persistenceService.materializeStable(
-                        providerRef,
-                        providerIdentityKey,
-                        snapshot
-                );
+        ProductPersistenceService.MaterializationResult result = materialize(
+                providerRef,
+                providerIdentityKey,
+                candidate,
+                capabilities
+        );
         return new ProductReferenceResponse(
                 result.product().getId(),
                 result.created(),
@@ -102,19 +100,26 @@ public class ProductMaterializationService {
         }
 
         String providerIdentityKey = identityHasher.hash(providerRef);
-        ProductSnapshot snapshot = candidateMapper.snapshot(
-                providerRef,
-                candidate,
-                snapshotExpiresAt(capabilities.maxTtl())
-        );
-        ProductPersistenceService.MaterializationResult result =
-                persistenceService.materializeStable(
-                        providerRef,
-                        providerIdentityKey,
-                        snapshot
-                );
-        if (!result.created()) {
-            persistenceService.refresh(result.product().getId(), snapshot);
+        ProductPersistenceService.MaterializationResult result;
+        if (capabilities.requiresLiveLookup()) {
+            result = persistenceService.materializeIdentityOnly(
+                    providerRef,
+                    providerIdentityKey
+            );
+        } else {
+            ProductSnapshot snapshot = candidateMapper.snapshot(
+                    providerRef,
+                    candidate,
+                    snapshotExpiresAt(capabilities.maxTtl())
+            );
+            result = persistenceService.materializeStable(
+                    providerRef,
+                    providerIdentityKey,
+                    snapshot
+            );
+            if (!result.created()) {
+                persistenceService.refresh(result.product().getId(), snapshot);
+            }
         }
         return new RecommendationMaterializationResult(
                 result.product().getId(),
@@ -124,6 +129,30 @@ public class ProductMaterializationService {
 
     private Instant snapshotExpiresAt(Duration maxTtl) {
         return maxTtl == null ? null : clock.instant().plus(maxTtl);
+    }
+
+    private ProductPersistenceService.MaterializationResult materialize(
+            ProviderProductRef providerRef,
+            String providerIdentityKey,
+            ExternalProductCandidate candidate,
+            ProviderCapabilities capabilities
+    ) {
+        if (capabilities.requiresLiveLookup()) {
+            return persistenceService.materializeIdentityOnly(
+                    providerRef,
+                    providerIdentityKey
+            );
+        }
+        ProductSnapshot snapshot = candidateMapper.snapshot(
+                providerRef,
+                candidate,
+                snapshotExpiresAt(capabilities.maxTtl())
+        );
+        return persistenceService.materializeStable(
+                providerRef,
+                providerIdentityKey,
+                snapshot
+        );
     }
 
     public record RecommendationMaterializationResult(Long productId, boolean created) {
