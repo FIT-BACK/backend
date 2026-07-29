@@ -39,12 +39,12 @@ class LookbookLikeRepositoryTest {
         Image originalImage = readyImage(
                 "like-original",
                 member,
-                ImagePurpose.LOOKBOOK_ORIGINAL
+                ImagePurpose.LOOKBOOK
         );
         Image matchedImage = readyImage(
                 "like-matched",
                 member,
-                ImagePurpose.LOOKBOOK_MATCHED
+                ImagePurpose.LOOKBOOK
         );
         entityManager.persist(originalImage);
         entityManager.persist(matchedImage);

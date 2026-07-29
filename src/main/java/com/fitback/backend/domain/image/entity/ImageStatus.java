@@ -1,7 +1,6 @@
 package com.fitback.backend.domain.image.entity;
 
 public enum ImageStatus {
-    PENDING,
     PENDING_UPLOAD,
     READY,
     ACTIVE,
@@ -11,6 +10,6 @@ public enum ImageStatus {
     REJECTED;
 
     public boolean isPendingUpload() {
-        return this == PENDING || this == PENDING_UPLOAD;
+        return this == PENDING_UPLOAD;
     }
 }

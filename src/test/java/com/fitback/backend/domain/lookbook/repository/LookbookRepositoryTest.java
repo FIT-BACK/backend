@@ -52,12 +52,12 @@ class LookbookRepositoryTest {
         Image originalImage = readyImage(
                 "repository-original",
                 member,
-                ImagePurpose.LOOKBOOK_ORIGINAL
+                ImagePurpose.LOOKBOOK
         );
         Image matchedImage = readyImage(
                 "repository-matched",
                 member,
-                ImagePurpose.LOOKBOOK_MATCHED
+                ImagePurpose.LOOKBOOK
         );
         entityManager.persist(originalImage);
         entityManager.persist(matchedImage);
@@ -283,12 +283,12 @@ class LookbookRepositoryTest {
         Image originalImage = readyImage(
                 imageName + "-original",
                 member,
-                ImagePurpose.LOOKBOOK_ORIGINAL
+                ImagePurpose.LOOKBOOK
         );
         Image matchedImage = readyImage(
                 imageName + "-matched",
                 member,
-                ImagePurpose.LOOKBOOK_MATCHED
+                ImagePurpose.LOOKBOOK
         );
         entityManager.persist(originalImage);
         entityManager.persist(matchedImage);

@@ -92,7 +92,7 @@ class ImageCleanupServiceTest {
                 id,
                 member,
                 "prod/images/analysis_original/2026/07/" + id + ".jpg",
-                ImagePurpose.ANALYSIS_ORIGINAL,
+                ImagePurpose.ANALYSIS,
                 "image/jpeg",
                 1024,
                 ImageVisibility.PRIVATE,

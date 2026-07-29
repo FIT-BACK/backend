@@ -88,6 +88,12 @@ for database in fitback fitback_existing_refresh_token; do
           | docker exec -i "$container_name" mysql -uroot "$database"
       fi
     fi
+    if [ "$(basename "$migration")" = 'V19__contract_image_lifecycle_values.sql' ]; then
+      printf '%s\n' \
+        "INSERT INTO image (image_id, owner_id, object_key, purpose, content_type, file_size, status, visibility, retry_count, created_at) VALUES" \
+        "('rollback-window-legacy-write', 9001, 'prod/images/lookbook_matched/rollback-window-legacy.jpg', 'LOOKBOOK_MATCHED', 'image/jpeg', 1024, 'PENDING', 'PRIVATE', 0, NOW());" \
+        | docker exec -i "$container_name" mysql -uroot "$database"
+    fi
     docker exec -i "$container_name" mysql -uroot "$database" < "$migration"
   done < <(printf '%s\n' src/main/resources/db/migration/V*.sql | sort -V)
 done
@@ -871,51 +877,61 @@ if [ "$image_constraints" != "$expected_image_constraints" ]; then
 fi
 
 docker exec "$container_name" mysql -uroot fitback -e \
-  "UPDATE image SET purpose = 'ANALYSIS' WHERE image_id = 'legacy-profile';
-   UPDATE image SET purpose = 'PROFILE' WHERE image_id = 'legacy-profile';
-   UPDATE image SET purpose = 'LOOKBOOK_ORIGINAL' WHERE image_id = 'legacy-profile';"
-
-docker exec "$container_name" mysql -uroot fitback -e \
-  "UPDATE image SET status = 'PENDING_UPLOAD' WHERE image_id = 'legacy-profile';
-   UPDATE image SET status = 'REJECTED' WHERE image_id = 'legacy-profile';
-   UPDATE image SET status = 'PENDING' WHERE image_id = 'legacy-profile';"
-
-docker exec "$container_name" mysql -uroot fitback -e \
   "INSERT INTO image (
        image_id, owner_id, object_key, purpose, content_type,
        file_size, status, visibility, retry_count, created_at
    ) VALUES
    (
-       'rollback-legacy-write', 9001, 'images/analysis/9001/2026/07/rollback-legacy.jpg',
-       'ANALYSIS_ORIGINAL', 'image/jpeg', 1024, 'PENDING', 'PRIVATE', 0, NOW()
-   ),
-   (
        'future-contract-write', 9001, 'images/analysis/9001/2026/07/future-contract.jpg',
        'ANALYSIS', 'image/jpeg', 1024, 'PENDING_UPLOAD', 'PRIVATE', 0, NOW()
    );"
 
-docker exec -i "$container_name" mysql -uroot fitback \
-  < src/main/resources/db/migration/V18__backfill_image_lifecycle_values.sql
-
-rollback_catchup_contract="$(docker exec "$container_name" mysql -uroot \
+release_c_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CONCAT(image_id, ':', purpose, ':', status)
       FROM fitback.image
       WHERE image_id IN (
-        'legacy-profile',
-        'rollback-legacy-write',
+        'rollback-window-legacy-write',
         'future-contract-write'
       )
       ORDER BY image_id;")"
 
-expected_rollback_catchup_contract="$(printf '%s\n' \
+expected_release_c_contract="$(printf '%s\n' \
   'future-contract-write:ANALYSIS:PENDING_UPLOAD' \
-  'legacy-profile:LOOKBOOK:PENDING_UPLOAD' \
-  'rollback-legacy-write:ANALYSIS:PENDING_UPLOAD')"
+  'rollback-window-legacy-write:LOOKBOOK:PENDING_UPLOAD')"
 
-if [ "$rollback_catchup_contract" != "$expected_rollback_catchup_contract" ]; then
-  echo 'Unexpected Release B rollback catch-up result:' >&2
-  printf '%s\n' "$rollback_catchup_contract" >&2
+if [ "$release_c_contract" != "$expected_release_c_contract" ]; then
+  echo 'Unexpected Release C contract result:' >&2
+  printf '%s\n' "$release_c_contract" >&2
+  exit 1
+fi
+
+if docker exec "$container_name" mysql -uroot fitback -e \
+  "INSERT INTO image (
+       image_id, owner_id, object_key, purpose, content_type,
+       file_size, status, visibility, retry_count, created_at
+   ) VALUES (
+       'legacy-contract-write', 9001, 'images/analysis/9001/2026/07/legacy-contract.jpg',
+       'ANALYSIS_ORIGINAL', 'image/jpeg', 1024, 'PENDING', 'PRIVATE', 0, NOW()
+   );" \
+  >/dev/null 2>&1; then
+  echo 'Release C constraints accepted legacy purpose/status.' >&2
+  exit 1
+fi
+
+if docker exec "$container_name" mysql -uroot fitback -e \
+  "UPDATE image SET purpose = 'LOOKBOOK_MATCHED'
+   WHERE image_id = 'future-contract-write';" \
+  >/dev/null 2>&1; then
+  echo 'CK_IMAGE_PURPOSE accepted a legacy purpose after V19.' >&2
+  exit 1
+fi
+
+if docker exec "$container_name" mysql -uroot fitback -e \
+  "UPDATE image SET status = 'PENDING'
+   WHERE image_id = 'future-contract-write';" \
+  >/dev/null 2>&1; then
+  echo 'CK_IMAGE_STATUS accepted a legacy status after V19.' >&2
   exit 1
 fi
 

@@ -250,17 +250,18 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
   `develop`에 병합됐고, 이를 포함한 main SHA `ba7ab8d`의
   [Production CD](https://github.com/FIT-BACK/backend/actions/runs/30208328285)에서 image
   publish와 SSM 운영 배포가 모두 성공했다. 이 SHA를 릴리스 B 배포 전 rollback target으로 본다.
-- 릴리스 B(`#96`)는 writer를 `ANALYSIS|LOOKBOOK|PROFILE`과 `PENDING_UPLOAD`으로 전환하고
-  V18에서 기존 값을 backfill한다. V4의 old/new dual constraint와 legacy Java enum은 유지해
-  실패 시 A로 rollback할 수 있다.
-- A rollback 중 새 legacy row가 생긴 뒤 같은 B를 재배포하는 경우에도 catch-up되도록 B는
-  매 기동 시 idempotent reconciliation을 실행한다. reconciliation 후 legacy 잔여가 0건이
-  아니면 readiness 전에 기동을 실패시키며 `reconciledRows`와 `remainingLegacyRows`를
-  애플리케이션 로그에 기록한다.
-- B가 운영 배포되고 직전 rollback target이 된 뒤에만 C(`#97`)에서 constraint 축소와 legacy
-  enum 제거를 진행한다.
-- A의 활성화 실패로 직전 release를 다시 시작하는 자동 rollback은 기존 DB 값과 legacy write를 유지하므로 schema 호환된다. 다만 공용 endpoint/응답과 룩북 purpose는 breaking change다. A가 실제 요청을 받은 뒤 생성한 `LOOKBOOK` 업로드는 DB에 `LOOKBOOK_ORIGINAL`로 저장되므로, 이를 matched 이미지로 연결하려는 요청을 A 이전 서버가 처리하면 기존 `LOOKBOOK_MATCHED` 검증에서 거절할 수 있다. 따라서 A가 운영 current가 된 뒤에는 A보다 이전 release로 수동 rollback하지 않고, 불가피하면 룩북 데이터/API 호환성을 별도로 확인한다.
-- S3 객체 수명 주기 자동 만료는 `ACTIVE`와 미사용 상태를 구분할 수 없어 적용하지 않는다. 24시간 미사용 `PENDING`/`PENDING_UPLOAD`/`READY`/`REJECTED` 정리와 `DELETE_FAILED` 재시도는 DB 상태와 도메인 참조를 기준으로 애플리케이션 작업자가 수행한다.
+- 릴리스 B(`#96`)는 [main PR #169](https://github.com/FIT-BACK/backend/pull/169)의 SHA
+  `82543ae`로 배포됐다. [Production CD #30499561977](https://github.com/FIT-BACK/backend/actions/runs/30499561977)에서
+  image publish, SSM deploy, public HTTPS readiness가 모두 성공했으며 릴리스 C의 직전
+  rollback target이다.
+- 릴리스 C(`#97`)의 V19는 B rollback window의 legacy row를 최종 catch-up하고 temporary
+  CHECK gate로 잔여 0건을 확인한 뒤 purpose/status constraint를 신규값 전용으로 원자 교체한다.
+  Java legacy enum과 startup reconciliation도 제거한다.
+- C 실패 시 B로 rollback한다. B writer는 이미 신규값만 쓰므로 V19의 신규값 전용 constraint와
+  호환되며, A로는 더 이상 rollback하지 않는다.
+- S3 객체 수명 주기 자동 만료는 `ACTIVE`와 미사용 상태를 구분할 수 없어 적용하지 않는다.
+  24시간 미사용 `PENDING_UPLOAD`/`READY`/`REJECTED` 정리와 `DELETE_FAILED` 재시도는 DB
+  상태와 도메인 참조를 기준으로 애플리케이션 작업자가 수행한다.
 - 외부 상품 공급자의 이미지는 이 버킷으로 복사하지 않는다.
 - 운영 분석은 Presigned POST 완료 후 S3 `imageId` JSON 경로만 사용한다. multipart 분석은
   컨테이너 로컬 저장소를 사용하지 않고 `ANALYSIS400_3`으로 거절한다.
@@ -285,7 +286,8 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V15__add_password_reset_token.sql`,
 `V16__seed_prototype_analysis_tags.sql`,
 `V17__reconcile_composite_unique_constraints.sql`,
-`V18__backfill_image_lifecycle_values.sql`을 순서대로 적용하고 Hibernate
+`V18__backfill_image_lifecycle_values.sql`,
+`V19__contract_image_lifecycle_values.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
 
