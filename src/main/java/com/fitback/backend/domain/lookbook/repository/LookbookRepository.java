@@ -44,6 +44,34 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             FROM Lookbook lookbook
             WHERE lookbook.deletedAt IS NULL
               AND lookbook.moderationStatus = :moderationStatus
+              AND (
+                  LOCATE(:keyword, LOWER(COALESCE(lookbook.comment, ''))) > 0
+                  OR LOCATE(:keyword, LOWER(lookbook.member.nickname)) > 0
+                  OR EXISTS (
+                      SELECT lookbookTag.id
+                      FROM LookbookTag lookbookTag
+                      WHERE lookbookTag.lookbook = lookbook
+                        AND LOCATE(:keyword, LOWER(lookbookTag.tag.tagName)) > 0
+                  )
+              )
+            ORDER BY lookbook.createdAt DESC, lookbook.id DESC
+            """)
+    List<Lookbook> searchByKeyword(
+            @Param("keyword") String keyword,
+            @Param("moderationStatus") LookbookModerationStatus moderationStatus,
+            Pageable pageable
+    );
+
+    @EntityGraph(
+            attributePaths = {
+                "member", "matchedProduct", "matchedImage", "originalImage"
+            }
+    )
+    @Query("""
+            SELECT lookbook
+            FROM Lookbook lookbook
+            WHERE lookbook.deletedAt IS NULL
+              AND lookbook.moderationStatus = :moderationStatus
               AND EXISTS (
                   SELECT lookbookTag.id
                   FROM LookbookTag lookbookTag

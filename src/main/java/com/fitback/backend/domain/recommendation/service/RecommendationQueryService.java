@@ -3,10 +3,14 @@ package com.fitback.backend.domain.recommendation.service;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.analysis.service.RecommendationResultProvider;
+import com.fitback.backend.domain.product.dto.ProductDetailResponse;
 import com.fitback.backend.domain.product.entity.Product;
 import com.fitback.backend.domain.product.repository.SavedProductRepository;
+import com.fitback.backend.domain.product.service.ProductDetailService;
 import com.fitback.backend.domain.product.service.ProductResponseMapper;
+import com.fitback.backend.domain.product.service.model.ProductAvailability;
 import com.fitback.backend.domain.product.service.model.ProductCategory;
+import com.fitback.backend.domain.product.service.model.ProductStorageMode;
 import com.fitback.backend.domain.recommendation.dto.RecommendationGroupResponse;
 import com.fitback.backend.domain.recommendation.dto.RecommendationItemResponse;
 import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
@@ -19,27 +23,32 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional(readOnly = true)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class RecommendationQueryService implements RecommendationResultProvider {
 
     private final AnalysisReportRepository analysisReportRepository;
     private final RecommendedItemRepository recommendedItemRepository;
     private final ProductResponseMapper productResponseMapper;
+    private final ProductDetailService productDetailService;
     private final SavedProductRepository savedProductRepository;
 
     public RecommendationQueryService(
             AnalysisReportRepository analysisReportRepository,
             RecommendedItemRepository recommendedItemRepository,
             ProductResponseMapper productResponseMapper,
+            ProductDetailService productDetailService,
             SavedProductRepository savedProductRepository
     ) {
         this.analysisReportRepository = analysisReportRepository;
         this.recommendedItemRepository = recommendedItemRepository;
         this.productResponseMapper = productResponseMapper;
+        this.productDetailService = productDetailService;
         this.savedProductRepository = savedProductRepository;
     }
 
@@ -49,22 +58,29 @@ public class RecommendationQueryService implements RecommendationResultProvider 
                 ? List.of()
                 : recommendedItemRepository
                         .findByReportIdOrderByCategoryAscRankNoAsc(report.getId());
-        return result(report, items);
+        Long memberId = items.isEmpty() ? null : report.getMember().getId();
+        return result(report, items, memberId);
     }
 
     public RecommendationResultResponse findByReportId(Long memberId, Long reportId) {
         AnalysisReport report = analysisReportRepository
                 .findByIdAndMemberIdAndDeletedAtIsNull(reportId, memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_REPORT_NOT_FOUND));
-        return findFor(report);
+        List<RecommendedItem> items = report.getRecommendationGeneratedAt() == null
+                ? List.of()
+                : recommendedItemRepository
+                        .findByReportIdOrderByCategoryAscRankNoAsc(report.getId());
+        return result(report, items, memberId);
     }
 
     private RecommendationResultResponse result(
             AnalysisReport report,
-            List<RecommendedItem> items
+            List<RecommendedItem> items,
+            Long memberId
     ) {
         RecommendationStatus status = status(report);
-        Set<Long> savedProductIds = findSavedProductIds(report, items);
+        Set<Long> savedProductIds = findSavedProductIds(memberId, items);
+        Set<String> warnings = new TreeSet<>();
         List<RecommendationGroupResponse> groups = java.util.Arrays.stream(ProductCategory.values())
                 .map(category -> new RecommendationGroupResponse(
                         category,
@@ -73,7 +89,8 @@ public class RecommendationQueryService implements RecommendationResultProvider 
                                 .sorted(Comparator.comparing(RecommendedItem::getRankNo))
                                 .map(item -> toResponse(
                                         item,
-                                        savedProductIds.contains(item.getProduct().getId())
+                                        savedProductIds.contains(item.getProduct().getId()),
+                                        warnings
                                 ))
                                 .toList()
                 ))
@@ -82,13 +99,13 @@ public class RecommendationQueryService implements RecommendationResultProvider 
                 status,
                 report.getResultScoreVersion(),
                 groups,
-                false,
-                List.of()
+                !warnings.isEmpty(),
+                List.copyOf(warnings)
         );
     }
 
     private Set<Long> findSavedProductIds(
-            AnalysisReport report,
+            Long memberId,
             List<RecommendedItem> items
     ) {
         List<Long> productIds = items.stream()
@@ -99,13 +116,52 @@ public class RecommendationQueryService implements RecommendationResultProvider 
             return Set.of();
         }
         return new HashSet<>(savedProductRepository.findSavedProductIds(
-                report.getMember().getId(),
+                memberId,
                 productIds
         ));
     }
 
-    private RecommendationItemResponse toResponse(RecommendedItem item, boolean saved) {
+    private RecommendationItemResponse toResponse(
+            RecommendedItem item,
+            boolean saved,
+            Set<String> warnings
+    ) {
         Product product = item.getProduct();
+        if (product.getStorageMode() == ProductStorageMode.IDENTITY_ONLY) {
+            try {
+                ProductDetailResponse detail = productDetailService.getDetail(product.getId());
+                return new RecommendationItemResponse(
+                        product.getId(),
+                        item.getRankNo(),
+                        detail.imageUrl(),
+                        detail.name(),
+                        detail.sellerName(),
+                        detail.price(),
+                        detail.purchaseUrl(),
+                        item.getSimilarityScore(),
+                        item.getFinalScore(),
+                        item.getReasonCodeList(),
+                        detail.availability(),
+                        saved
+                );
+            } catch (BusinessException exception) {
+                warnings.add(exception.getErrorCode().getCode());
+                return new RecommendationItemResponse(
+                        product.getId(),
+                        item.getRankNo(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        item.getSimilarityScore(),
+                        item.getFinalScore(),
+                        item.getReasonCodeList(),
+                        ProductAvailability.TEMPORARILY_UNRESOLVED,
+                        saved
+                );
+            }
+        }
         return new RecommendationItemResponse(
                 product.getId(),
                 item.getRankNo(),

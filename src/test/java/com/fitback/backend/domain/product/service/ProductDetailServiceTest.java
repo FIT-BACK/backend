@@ -18,6 +18,7 @@ import com.fitback.backend.domain.product.service.model.ExternalProductCandidate
 import com.fitback.backend.domain.product.service.model.ProductAvailability;
 import com.fitback.backend.domain.product.service.model.ProductDataStatus;
 import com.fitback.backend.domain.product.service.model.ProductSnapshot;
+import com.fitback.backend.domain.product.service.model.ProductStorageMode;
 import com.fitback.backend.domain.product.service.model.ProviderCapabilities;
 import com.fitback.backend.domain.product.service.model.ProviderIdentityType;
 import com.fitback.backend.domain.product.service.model.ProviderProductRef;
@@ -98,6 +99,54 @@ class ProductDetailServiceTest {
                 ProductDataStatus.LIVE
         );
         verifyNoInteractions(dependencies.candidateMapper());
+    }
+
+    @Test
+    void returnsLiveIdentityOnlyDetailWithoutPersistingSnapshot() {
+        Dependencies dependencies = dependencies();
+        Product product = identityOnlyProduct();
+        ExternalProductCandidate candidate = mock(ExternalProductCandidate.class);
+        ProductDetailResponse expected = detailResponse(
+                "Live Product",
+                ProductAvailability.AVAILABLE,
+                ProductDataStatus.LIVE
+        );
+        when(dependencies.productRepository().findById(1L)).thenReturn(Optional.of(product));
+        when(dependencies.productCatalogPort().lookup(providerRef()))
+                .thenReturn(Optional.of(candidate));
+        when(dependencies.responseMapper().detail(
+                1L,
+                candidate,
+                ProductDataStatus.LIVE
+        )).thenReturn(expected);
+
+        assertThat(dependencies.service().getDetail(1L)).isEqualTo(expected);
+        verify(dependencies.responseMapper()).detail(
+                1L,
+                candidate,
+                ProductDataStatus.LIVE
+        );
+        verifyNoInteractions(dependencies.candidateMapper());
+        verify(dependencies.persistenceService(), never()).refresh(any(), any());
+        verify(dependencies.persistenceService(), never()).markUnavailable(any());
+    }
+
+    @Test
+    void identityOnlyLookupMissDoesNotPersistUnavailableSnapshotState() {
+        Dependencies dependencies = dependencies();
+        Product product = identityOnlyProduct();
+        when(dependencies.productRepository().findById(1L)).thenReturn(Optional.of(product));
+        when(dependencies.productCatalogPort().lookup(providerRef()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> dependencies.service().getDetail(1L))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.PRODUCT_PROVIDER_UNAVAILABLE)
+                );
+        verify(dependencies.persistenceService(), never()).markUnavailable(any());
+        verifyNoInteractions(dependencies.candidateMapper());
+        verifyNoInteractions(dependencies.responseMapper());
     }
 
     @Test
@@ -227,7 +276,15 @@ class ProductDetailServiceTest {
         when(product.getExternalProductId()).thenReturn("external-product");
         when(product.getExternalVariantId()).thenReturn("variant-1");
         when(product.getMerchantId()).thenReturn("merchant-1");
+        when(product.getStorageMode()).thenReturn(ProductStorageMode.SNAPSHOT);
         when(product.hasDisplayData()).thenReturn(true);
+        return product;
+    }
+
+    private static Product identityOnlyProduct() {
+        Product product = providerProduct();
+        when(product.getStorageMode()).thenReturn(ProductStorageMode.IDENTITY_ONLY);
+        when(product.hasDisplayData()).thenReturn(false);
         return product;
     }
 

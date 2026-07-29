@@ -7,6 +7,12 @@ public record ApiResponse<T>(
         T data
 ) {
 
+    public ApiResponse {
+        if (!success && data != null) {
+            throw new IllegalArgumentException("실패 응답의 data는 null이어야 합니다.");
+        }
+    }
+
     private static final String SUCCESS_CODE = "COMMON200_1";
     private static final String SUCCESS_MESSAGE = "성공적으로 요청을 처리했습니다.";
     private static final String CREATED_CODE = "COMMON201_1";
@@ -30,9 +36,5 @@ public record ApiResponse<T>(
 
     public static ApiResponse<Void> onFailure(String code, String message) {
         return new ApiResponse<>(false, code, message, null);
-    }
-
-    public static <T> ApiResponse<T> onFailure(String code, String message, T data) {
-        return new ApiResponse<>(false, code, message, data);
     }
 }

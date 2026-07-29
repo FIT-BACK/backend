@@ -880,6 +880,43 @@ class LookbookServiceTest {
         assertThat(response.items().get(0).tags()).containsExactly("미니멀");
     }
 
+    @Test
+    void searchLookbooksMapsTagsAndLikedState() {
+        Lookbook lookbook = createListLookbook(
+                100L,
+                LocalDateTime.of(2026, 7, 16, 12, 0)
+        );
+        when(lookbookRepository.searchByKeyword(
+                eq("minimal"),
+                eq(LookbookModerationStatus.VISIBLE),
+                any(Pageable.class)
+        )).thenReturn(List.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(100L)))
+                .thenReturn(List.of(LookbookTag.create(lookbook, minimalTag)));
+        when(lookbookLikeRepository.findLikedLookbookIds(1L, List.of(100L)))
+                .thenReturn(Set.of(100L));
+
+        List<LookbookResponse.LookbookItem> response = lookbookService.searchLookbooks(
+                "minimal",
+                member
+        );
+
+        assertThat(response).singleElement().satisfies(item -> {
+            assertThat(item.lookbookId()).isEqualTo(100L);
+            assertThat(item.tags()).containsExactly("미니멀");
+            assertThat(item.isLiked()).isTrue();
+            assertThat(item.originalImageUrl())
+                    .isEqualTo("https://s3.example.com/original-100.jpg");
+        });
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(lookbookRepository).searchByKeyword(
+                eq("minimal"),
+                eq(LookbookModerationStatus.VISIBLE),
+                pageable.capture()
+        );
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(10);
+    }
+
     private LookbookRequest.LookbookCreate createRequest(List<Long> tagIds) {
         return new LookbookRequest.LookbookCreate(
                 "original",

@@ -46,7 +46,7 @@ class ImageCleanupServiceTest {
         List<String> claimedIds = service.claimExpiredImages();
 
         assertThat(claimedIds).containsExactly("unused");
-        assertThat(referenced.getStatus()).isEqualTo(ImageStatus.PENDING);
+        assertThat(referenced.getStatus()).isEqualTo(ImageStatus.PENDING_UPLOAD);
         assertThat(unused.getStatus()).isEqualTo(ImageStatus.DELETING);
     }
 

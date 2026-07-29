@@ -78,6 +78,7 @@ GET과 body 없는 DELETE에는 `Content-Type`을 생략할 수 있다.
 
 ErrorCode enum 식별자와 wire code는 구분한다. 예를 들어 Java 식별자
 `PRODUCT_PROVIDER_UNAVAILABLE`의 wire code는 `PRODUCT503_1`이다.
+실패 응답의 `data`는 오류 종류와 관계없이 항상 `null`이다.
 
 ### 1.5 금액과 시간
 
@@ -688,6 +689,8 @@ Controller와 Service는 Shopify 등 공급자 이름을 DTO 계약에 노출하
 - 상품 검색은 DB write를 하지 않는다.
 - `/product-references`, 추천 결과 materialization, 사용자 저장 요청만 명시적으로 저장한다.
 - 공급자 정책이 snapshot 저장을 금지하면 provider identity만 저장하고 응답 시 live lookup한다.
+- Shopify Global Catalog 상품은 `IDENTITY_ONLY`로 저장하며 상품명·가격·이미지·구매 URL은
+  상세·저장 상품 목록·추천 결과 응답 시 live lookup한다.
 - 안정 identity가 없지만 snapshot 저장이 명시적으로 허용되면 내부 UUID 전략을 사용할 수 있다.
 - identity와 snapshot 모두 허용되지 않으면 상세·저장을 비활성화한다.
 - 현재 추천 세트에는 materialize 가능한 Product만 포함하고 ephemeral 추천 행은 두지 않는다.
@@ -890,12 +893,20 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 ```
 
 성공 시 `201 Created`로 `reportId`, signed `imageUrl`, `matchPercentage`, `suggestedTags`를
-반환한다. 기존 `multipart/form-data`의 `image` part 계약은 클라이언트 전환 기간에만 유지한다.
+반환한다. 기존 `multipart/form-data`의 `image` part 계약은 로컬 개발 프로필에서만 유지한다.
+운영 프로필에서 multipart 분석을 요청하면 로컬 파일을 생성하지 않고 `ANALYSIS400_3`으로
+거절하므로, 클라이언트는 Presigned POST 완료 후 `imageId` JSON 계약을 사용해야 한다.
+
+`FITBACK_AI_TAG_ANALYZER=prototype`은 이미지 의미를 판별하는 실제 AI가 아니라 end-to-end
+프로토타입용 결정적 fallback이다. `미니멀`, `와이드핏`, `베이지톤` 기준 태그를 반환하며,
+기본값 `unavailable`은 실제 AI 공급자 연결 전까지 분석 생성을 fail-closed로 유지한다.
 
 | 조건 | HTTP | code |
 | --- | ---: | --- |
+| 운영 프로필에서 multipart 이미지 part 사용 | 400 | `ANALYSIS400_3` |
 | 이미지가 없거나 요청 회원 소유가 아님 | 404 | `IMAGE404_1` |
 | 이미지 목적이 `ANALYSIS`가 아니거나 상태가 `READY`가 아님 | 409 | `IMAGE409_1` |
+| prototype 기준 태그 migration이 적용되지 않음 | 409 | `ANALYSIS409_1` |
 
 ### `GET /api/v1/analyses?cursor=&pageSize=20`
 
@@ -957,6 +968,7 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 직접 진입한 SCR-09는 기존처럼 `originalImageId`, `matchedImageId`를 전송한다. SCR-08에서
 진입한 경우에는 분석 원본 `originalImageId`를 재사용하고, 화면에서 대표로 정한 상품을
 `matchedProductId`와 `sourceReportId`로 전송한다.
+생성 성공 시 HTTP `201 Created`와 공통 응답 코드 `COMMON201_1`을 반환한다.
 
 ```json
 {
@@ -976,6 +988,14 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 목록·상세 응답의 `matchedImageUrl`은 어느 경로로 생성했든 동일하게 표시 가능하며,
 상품 경로인 경우 `matchedProductId`도 반환한다.
 
+### `POST /api/v1/lookbooks/{lookbookId}/likes`
+
+인증 회원이 룩북에 좋아요를 등록한다.
+
+### `DELETE /api/v1/lookbooks/{lookbookId}/likes`
+
+인증 회원이 등록한 룩북 좋아요를 취소한다.
+
 ### 오류
 
 | 조건 | HTTP | code |
@@ -993,6 +1013,15 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 ---
 
 ## 18. 트렌드·태그·통합 클로젯
+
+### `GET /api/v1/content-search?keyword=`
+
+비로그인 조회를 허용하는 SCR-16 통합 콘텐츠 검색이다. `keyword`는 공백 제거 후 1~100자이며,
+대소문자를 구분하지 않는 부분 일치로 검색한다. 트렌드는 제목·설명·태그, 룩북은 코멘트·작성자
+닉네임·태그가 검색 대상이다. 삭제되거나 숨김 처리된 룩북은 제외한다.
+
+응답은 `trends`, `lookbooks` 두 그룹으로 구성하며 각 그룹은 최신순 최대 10개의 기존 목록 카드
+DTO를 반환한다. 로그인 요청은 트렌드 `isSaved`와 룩북 `isLiked`를 함께 계산한다.
 
 ### `GET /api/v1/trends`
 

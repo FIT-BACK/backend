@@ -8,6 +8,7 @@ import com.fitback.backend.domain.product.service.model.ExternalProductCandidate
 import com.fitback.backend.domain.product.service.model.ProductAvailability;
 import com.fitback.backend.domain.product.service.model.ProductDataStatus;
 import com.fitback.backend.domain.product.service.model.ProductSnapshot;
+import com.fitback.backend.domain.product.service.model.ProductStorageMode;
 import com.fitback.backend.domain.product.service.model.ProviderCapabilities;
 import com.fitback.backend.domain.product.service.model.ProviderIdentityType;
 import com.fitback.backend.domain.product.service.model.ProviderProductRef;
@@ -68,6 +69,9 @@ public class ProductDetailService {
             ExternalProductCandidate candidate = productCatalogPort.lookup(providerRef)
                     .orElse(null);
             if (candidate == null) {
+                if (product.getStorageMode() == ProductStorageMode.IDENTITY_ONLY) {
+                    throw new BusinessException(ErrorCode.PRODUCT_PROVIDER_UNAVAILABLE);
+                }
                 persistenceService.markUnavailable(productId);
                 if (!product.hasDisplayData()) {
                     throw new BusinessException(ErrorCode.PRODUCT_PROVIDER_UNAVAILABLE);
@@ -79,6 +83,9 @@ public class ProductDetailService {
                 );
             }
 
+            if (product.getStorageMode() == ProductStorageMode.IDENTITY_ONLY) {
+                return responseMapper.detail(productId, candidate, ProductDataStatus.LIVE);
+            }
             ProductSnapshot snapshot = candidateMapper.snapshot(
                     providerRef,
                     candidate,
@@ -87,7 +94,9 @@ public class ProductDetailService {
             persistenceService.refresh(productId, snapshot);
             return responseMapper.detail(productId, candidate, ProductDataStatus.LIVE);
         } catch (ProductProviderException exception) {
-            if (allowsSnapshotFallback(exception) && product.hasDisplayData()) {
+            if (product.getStorageMode() != ProductStorageMode.IDENTITY_ONLY
+                    && allowsSnapshotFallback(exception)
+                    && product.hasDisplayData()) {
                 return responseMapper.detail(
                         product,
                         ProductAvailability.TEMPORARILY_UNRESOLVED,

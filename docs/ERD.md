@@ -96,8 +96,8 @@ providerIdentityKey = SHA-256(
 | `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(30)` | `SIMILARITY_V1`, `SIMILARITY_THRESHOLD_V2` |
 | `ProductTagSource` | `product_tag.source VARCHAR(20)` | `PROVIDER`, `AI`, `RULE`, `MANUAL` |
 | `ImageUploadPurpose` | API request enum | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
-| `ImagePurpose` | `image.purpose VARCHAR(30)` 호환 저장 enum | 릴리스 A writer: `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `PROFILE`; reader/domain check: `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `LOOKBOOK_MATCHED`, `PROFILE`, `ANALYSIS`, `LOOKBOOK` |
-| `ImageStatus` | `image.status VARCHAR(20)` 호환 저장 enum | 릴리스 A writer: `PENDING`; reader/domain check: `PENDING`, `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
+| `ImagePurpose` | `image.purpose VARCHAR(30)` 호환 저장 enum | 릴리스 B writer: `ANALYSIS`, `LOOKBOOK`, `PROFILE`; rollback reader: `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `LOOKBOOK_MATCHED`, `PROFILE`, `ANALYSIS`, `LOOKBOOK` |
+| `ImageStatus` | `image.status VARCHAR(20)` 호환 저장 enum | 릴리스 B writer: `PENDING_UPLOAD`; rollback reader: `PENDING`, `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
 | `ImageVisibility` | `image.visibility VARCHAR(20)` | `PRIVATE`, `PUBLIC` |
 
 카테고리는 위 순서로 노출하고 각 추천 그룹은 최대 10개이며 빈 그룹도 반환한다. 외부 공급자의
@@ -433,6 +433,11 @@ FK_SAVED_ANALYSIS_ITEM_PRODUCT(product_id)
   -> product(product_id) ON DELETE RESTRICT ON UPDATE RESTRICT
 ```
 
+V17 migration은 `closet_save`와 `trend_tag`의 같은 복합 키 중 가장 작은 surrogate ID를 보존하고
+중복 행을 삭제한 뒤 Entity와 동일한 이름의 UNIQUE 제약을 보장한다. V13에서 이미 생성된
+`closet_save` 제약은 재생성하지 않으며, 누락됐던
+`UK_TREND_TAG_TREND_ID_TAG_ID(trend_id, tag_id)`를 추가한다.
+
 ### 4.7 기존 `analysis_report` 확장
 
 | 컬럼 | 타입 | NULL | 설명 |
@@ -572,6 +577,14 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
   `SavedAnalysisItem`으로 카테고리별 선택 상품 스냅샷을 구현한다.
 - 추천 실행 이력은 요구사항이 생길 때 별도 migration으로 추가한다.
 
+### 7.6 프로토타입 분석 기준 태그
+
+- V16 migration은 기존 태그를 변경하지 않고 누락된 `미니멀(DETAIL)`,
+  `와이드핏(SILHOUETTE)`, `베이지톤(COLOR)`만 멱등하게 추가한다.
+- 이 세 태그는 명시적 prototype 분석 모드의 결정적 end-to-end 검증 데이터다.
+- 실제 AI 공급자를 연결할 때는 모델 결과를 승인된 태그 taxonomy에 매핑하고 prototype 분석기를
+  비활성화한다.
+
 ---
 
 ## 8. 경계와 검증 체크리스트
@@ -617,10 +630,10 @@ JPA `ddl-auto=validate`로 Entity mapping을 검증한다.
 | `image_id` | `VARCHAR(36)` | N | UUID PK, `owner_id`와 `UK_IMAGE_ID_OWNER` |
 | `owner_id` | `BIGINT` | N | `member.member_id` FK |
 | `object_key` | `VARCHAR(512)` | N | S3 object key, `UK_IMAGE_OBJECT_KEY`. 신규 업로드는 `images/{purpose}/{memberId}/{yyyy}/{MM}/{imageId}.{ext}` |
-| `purpose` | `VARCHAR(30)` | N | DB 호환 저장값. 릴리스 A 신규 writer는 API `ANALYSIS`→`ANALYSIS_ORIGINAL`, `LOOKBOOK`→`LOOKBOOK_ORIGINAL`, `PROFILE`→`PROFILE`로 저장하고 기존 `LOOKBOOK_MATCHED`는 보존 |
+| `purpose` | `VARCHAR(30)` | N | DB 호환 저장값. 릴리스 B 신규 writer와 V18 backfill은 `ANALYSIS`, `LOOKBOOK`, `PROFILE`을 사용하며 A rollback을 위해 legacy 값도 constraint가 허용 |
 | `content_type` | `VARCHAR(30)` | N | 허용된 MIME type |
 | `file_size` | `BIGINT` | N | 발급 요청 크기. 완료 검증 시 S3 실제값 재검증 |
-| `status` | `VARCHAR(20)` | N | DB 호환 저장값. API 논리 초기 상태는 `PENDING_UPLOAD`지만 릴리스 A 신규 writer는 rollback 호환을 위해 `PENDING` 저장 |
+| `status` | `VARCHAR(20)` | N | DB 호환 저장값. 릴리스 B 신규 writer와 V18 backfill은 `PENDING_UPLOAD`을 사용하며 A rollback을 위해 `PENDING`도 constraint가 허용 |
 | `visibility` | `VARCHAR(20)` | N | 신규 발급은 `PRIVATE` |
 | `presigned_expires_at` | `DATETIME(6)` | Y | 업로드 URL 만료 시각. 완료·거부·삭제 선점 시 NULL |
 | `uploaded_at` | `DATETIME(6)` | Y | S3 객체 검증 완료 또는 거부 처리 시각 |

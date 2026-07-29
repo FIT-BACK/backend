@@ -5,12 +5,18 @@ import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.util.List;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 @Component
 @Profile("prod")
+@ConditionalOnProperty(
+        name = "fitback.ai.tag-analyzer",
+        havingValue = "unavailable",
+        matchIfMissing = true
+)
 public class UnavailableAiTagAnalyzer implements AiTagAnalyzer {
 
     @Override

@@ -11,6 +11,8 @@ import com.fitback.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,7 +38,7 @@ public class LookbookController {
                     + "태그 ID, 선택 구매 링크 및 코멘트를 전달하여 룩북을 생성."
     )
     @PostMapping
-    public ApiResponse<LookbookResponse.LookbookCreate> createLookbook(
+    public ResponseEntity<ApiResponse<LookbookResponse.LookbookCreate>> createLookbook(
             @AuthenticationPrincipal AuthMember authMember,
             @Valid @RequestBody LookbookRequest.LookbookCreate request
     ) {
@@ -48,7 +50,8 @@ public class LookbookController {
                 authMember.getMember(),
                 request
         );
-        return ApiResponse.onCreated(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.onCreated(response));
     }
 
     @Operation(
@@ -118,7 +121,7 @@ public class LookbookController {
             description = "로그인한 회원이 룩북에 좋아요를 등록, 변경된 좋아요 수를 반환. "
                     + "이미 좋아요한 룩북에 다시 요청해도 현재 좋아요 수, 좋아요를 눌렀는지 여부와 함께 성공 응답을 반환."
     )
-    @PostMapping("/{lookbookId}/like")
+    @PostMapping("/{lookbookId}/likes")
     public ApiResponse<LookbookResponse.LookbookLike> likeLookbook(
             @PathVariable("lookbookId") Long lookbookId,
             @AuthenticationPrincipal AuthMember authMember
@@ -139,7 +142,7 @@ public class LookbookController {
             description = "로그인한 회원의 룩북 좋아요를 hard delete 방식으로 삭제하고 변경된 좋아요 수를 반환. "
                     + "좋아요하지 않은 룩북에 다시 요청해도 현재 좋아요 수, 좋아요를 눌렀는지 여부와 함께 성공 응답을 반환."
     )
-    @DeleteMapping("/{lookbookId}/like")
+    @DeleteMapping("/{lookbookId}/likes")
     public ApiResponse<LookbookResponse.LookbookUnlike> deleteLookbookLike(
             @PathVariable("lookbookId") Long lookbookId,
             @AuthenticationPrincipal AuthMember authMember

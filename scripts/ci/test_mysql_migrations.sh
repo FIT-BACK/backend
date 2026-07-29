@@ -47,6 +47,8 @@ seed_baseline_schema() {
     "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
     'CREATE TABLE recommended_item (recommend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, report_id BIGINT NOT NULL, product_id BIGINT NOT NULL, `rank` INT NOT NULL, category VARCHAR(50) NOT NULL, similarity_score INT NOT NULL, is_value_match BOOLEAN NOT NULL, created_at DATETIME(6) NOT NULL);' \
     "INSERT INTO recommended_item (report_id, product_id, \`rank\`, category, similarity_score, is_value_match, created_at) VALUES (7001, 1, 1, 'TOP', 90, TRUE, NOW());" \
+    'CREATE TABLE tag (tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, tag_name VARCHAR(50) NOT NULL, tag_type VARCHAR(30) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, CONSTRAINT UK_TAG_NAME UNIQUE (tag_name));' \
+    "INSERT INTO tag (tag_name, tag_type, created_at) VALUES ('기존태그', 'DETAIL', NOW());" \
     'CREATE TABLE member_tag (member_tag_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_MEMBER_TAG_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     'CREATE TABLE report_tag (report_tag_id BIGINT NOT NULL PRIMARY KEY, report_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_REPORT_TAG_REPORT_OLD FOREIGN KEY (report_id) REFERENCES analysis_report (report_id));' \
     'CREATE TABLE closet_save (closet_save_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, target_type VARCHAR(30) NOT NULL, target_id BIGINT NOT NULL, CONSTRAINT FK_CLOSET_SAVE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
@@ -54,6 +56,8 @@ seed_baseline_schema() {
     'CREATE TABLE lookbook_tag (lookbook_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, lookbook_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL);' \
     'CREATE TABLE trend_content (trend_id BIGINT NOT NULL PRIMARY KEY, created_by BIGINT NOT NULL, title VARCHAR(100) NOT NULL, CONSTRAINT FK_TREND_CONTENT_MEMBER_OLD FOREIGN KEY (created_by) REFERENCES member (member_id));' \
     'CREATE TABLE trend_tag (trend_tag_id BIGINT NOT NULL PRIMARY KEY, trend_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_TREND_TAG_TREND_OLD FOREIGN KEY (trend_id) REFERENCES trend_content (trend_id));' \
+    "INSERT INTO trend_content (trend_id, created_by, title) VALUES (7001, 8001, 'Legacy Trend');" \
+    'INSERT INTO trend_tag (trend_tag_id, trend_id, tag_id) VALUES (7001, 7001, 1), (7002, 7001, 1);' \
     | docker exec -i "$container_name" mysql -uroot "$database"
 }
 
@@ -836,13 +840,13 @@ image_policy_contract="$(docker exec "$container_name" mysql -uroot \
       ORDER BY image_id;")"
 
 expected_image_policy_contract="$(printf '%s\n' \
-  'legacy-analysis:ANALYSIS_ORIGINAL:PENDING:prod/images/analysis_original/legacy-analysis.jpg' \
-  'legacy-lookbook-matched:LOOKBOOK_MATCHED:DELETE_FAILED:prod/images/lookbook_matched/legacy-matched.jpg' \
-  'legacy-lookbook-original:LOOKBOOK_ORIGINAL:READY:prod/images/lookbook_original/legacy-original.jpg' \
+  'legacy-analysis:ANALYSIS:PENDING_UPLOAD:prod/images/analysis_original/legacy-analysis.jpg' \
+  'legacy-lookbook-matched:LOOKBOOK:DELETE_FAILED:prod/images/lookbook_matched/legacy-matched.jpg' \
+  'legacy-lookbook-original:LOOKBOOK:READY:prod/images/lookbook_original/legacy-original.jpg' \
   'legacy-profile:PROFILE:REJECTED:prod/images/profile/legacy-profile.jpg')"
 
 if [ "$image_policy_contract" != "$expected_image_policy_contract" ]; then
-  echo 'Unexpected V4 image policy migration result:' >&2
+  echo 'Unexpected V18 image lifecycle backfill result:' >&2
   printf '%s\n' "$image_policy_contract" >&2
   exit 1
 fi
@@ -889,6 +893,31 @@ docker exec "$container_name" mysql -uroot fitback -e \
        'future-contract-write', 9001, 'images/analysis/9001/2026/07/future-contract.jpg',
        'ANALYSIS', 'image/jpeg', 1024, 'PENDING_UPLOAD', 'PRIVATE', 0, NOW()
    );"
+
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V18__backfill_image_lifecycle_values.sql
+
+rollback_catchup_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(image_id, ':', purpose, ':', status)
+      FROM fitback.image
+      WHERE image_id IN (
+        'legacy-profile',
+        'rollback-legacy-write',
+        'future-contract-write'
+      )
+      ORDER BY image_id;")"
+
+expected_rollback_catchup_contract="$(printf '%s\n' \
+  'future-contract-write:ANALYSIS:PENDING_UPLOAD' \
+  'legacy-profile:LOOKBOOK:PENDING_UPLOAD' \
+  'rollback-legacy-write:ANALYSIS:PENDING_UPLOAD')"
+
+if [ "$rollback_catchup_contract" != "$expected_rollback_catchup_contract" ]; then
+  echo 'Unexpected Release B rollback catch-up result:' >&2
+  printf '%s\n' "$rollback_catchup_contract" >&2
+  exit 1
+fi
 
 if docker exec "$container_name" mysql -uroot fitback -e \
   "UPDATE image SET purpose = 'UNKNOWN' WHERE image_id = 'legacy-profile';" \
@@ -1052,6 +1081,62 @@ expected_password_reset_constraints="$(printf '%s\n' \
 if [ "$password_reset_constraints" != "$expected_password_reset_constraints" ]; then
   echo 'Unexpected password reset token constraints:' >&2
   printf '%s\n' "$password_reset_constraints" >&2
+  exit 1
+fi
+
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V16__seed_prototype_analysis_tags.sql
+
+prototype_tag_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        SUM(tag_name = '미니멀' AND tag_type = 'DETAIL'), ':',
+        SUM(tag_name = '와이드핏' AND tag_type = 'SILHOUETTE'), ':',
+        SUM(tag_name = '베이지톤' AND tag_type = 'COLOR'), ':',
+        SUM(tag_name = '기존태그' AND tag_type = 'DETAIL'), ':',
+        COUNT(*)
+      )
+      FROM fitback.tag;")"
+
+if [ "$prototype_tag_contract" != '1:1:1:1:4' ]; then
+  echo "Unexpected prototype tag contract: $prototype_tag_contract" >&2
+  exit 1
+fi
+
+composite_unique_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(TABLE_NAME, ':', INDEX_NAME, ':', GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX))
+      FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = 'fitback'
+        AND INDEX_NAME IN (
+          'UK_CLOSET_SAVE_MEMBER_ID_TARGET_TYPE_TARGET_ID',
+          'UK_TREND_TAG_TREND_ID_TAG_ID'
+        )
+      GROUP BY TABLE_NAME, INDEX_NAME
+      ORDER BY TABLE_NAME;")"
+
+expected_composite_unique_contract="$(printf '%s\n' \
+  'closet_save:UK_CLOSET_SAVE_MEMBER_ID_TARGET_TYPE_TARGET_ID:member_id,target_type,target_id' \
+  'trend_tag:UK_TREND_TAG_TREND_ID_TAG_ID:trend_id,tag_id')"
+
+if [ "$composite_unique_contract" != "$expected_composite_unique_contract" ]; then
+  echo 'Unexpected composite unique contract:' >&2
+  printf '%s\n' "$composite_unique_contract" >&2
+  exit 1
+fi
+
+trend_tag_duplicate_count="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT COUNT(*)
+      FROM (
+        SELECT trend_id, tag_id
+        FROM fitback.trend_tag
+        GROUP BY trend_id, tag_id
+        HAVING COUNT(*) > 1
+      ) duplicate_groups;")"
+
+if [ "$trend_tag_duplicate_count" != '0' ]; then
+  echo "Unexpected trend_tag duplicate groups: $trend_tag_duplicate_count" >&2
   exit 1
 fi
 

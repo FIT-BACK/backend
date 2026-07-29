@@ -146,7 +146,7 @@ class AnalysisLookbookLinkIntegrationTest {
                         .header("Authorization", bearer(accessToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("COMMON201_1"))
                 .andReturn()
                 .getResponse()
