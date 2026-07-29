@@ -24,7 +24,7 @@ class ShopifyGlobalCatalogHttpClientTest {
                     {
                       "id": "gid://shopify/p/product-1",
                       "title": "Black Hoodie",
-                      "url": "https://merchant.example/products/hoodie",
+                      "url": null,
                       "categories": [
                         {
                           "value": "212",
@@ -99,7 +99,7 @@ class ShopifyGlobalCatalogHttpClientTest {
             assertThat(item.available()).isTrue();
             assertThat(item.categoryPath()).isEqualTo("Apparel > Hoodies");
             assertThat(item.productUrl())
-                    .isEqualTo("https://merchant.example/products/hoodie");
+                    .isEqualTo("https://merchant.example/cart/variant-1:1");
         });
 
         JsonNode request = objectMapper.readTree(requestBody.get());

@@ -221,6 +221,7 @@ public final class ShopifyGlobalCatalogHttpClient implements ShopifyGlobalCatalo
                 nullableText(seller.path("name")),
                 firstNonBlank(
                         nullableText(product.path("url")),
+                        nullableText(variant.path("checkout_url")),
                         nullableText(variant.path("url"))
                 )
         ));
