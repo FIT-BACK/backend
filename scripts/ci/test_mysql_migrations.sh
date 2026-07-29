@@ -56,6 +56,8 @@ seed_baseline_schema() {
     'CREATE TABLE lookbook_tag (lookbook_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, lookbook_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL);' \
     'CREATE TABLE trend_content (trend_id BIGINT NOT NULL PRIMARY KEY, created_by BIGINT NOT NULL, title VARCHAR(100) NOT NULL, CONSTRAINT FK_TREND_CONTENT_MEMBER_OLD FOREIGN KEY (created_by) REFERENCES member (member_id));' \
     'CREATE TABLE trend_tag (trend_tag_id BIGINT NOT NULL PRIMARY KEY, trend_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_TREND_TAG_TREND_OLD FOREIGN KEY (trend_id) REFERENCES trend_content (trend_id));' \
+    "INSERT INTO trend_content (trend_id, created_by, title) VALUES (7001, 8001, 'Legacy Trend');" \
+    'INSERT INTO trend_tag (trend_tag_id, trend_id, tag_id) VALUES (7001, 7001, 1), (7002, 7001, 1);' \
     | docker exec -i "$container_name" mysql -uroot "$database"
 }
 
@@ -1073,6 +1075,43 @@ prototype_tag_contract="$(docker exec "$container_name" mysql -uroot \
 
 if [ "$prototype_tag_contract" != '1:1:1:1:4' ]; then
   echo "Unexpected prototype tag contract: $prototype_tag_contract" >&2
+  exit 1
+fi
+
+composite_unique_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(TABLE_NAME, ':', INDEX_NAME, ':', GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX))
+      FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = 'fitback'
+        AND INDEX_NAME IN (
+          'UK_CLOSET_SAVE_MEMBER_ID_TARGET_TYPE_TARGET_ID',
+          'UK_TREND_TAG_TREND_ID_TAG_ID'
+        )
+      GROUP BY TABLE_NAME, INDEX_NAME
+      ORDER BY TABLE_NAME;")"
+
+expected_composite_unique_contract="$(printf '%s\n' \
+  'closet_save:UK_CLOSET_SAVE_MEMBER_ID_TARGET_TYPE_TARGET_ID:member_id,target_type,target_id' \
+  'trend_tag:UK_TREND_TAG_TREND_ID_TAG_ID:trend_id,tag_id')"
+
+if [ "$composite_unique_contract" != "$expected_composite_unique_contract" ]; then
+  echo 'Unexpected composite unique contract:' >&2
+  printf '%s\n' "$composite_unique_contract" >&2
+  exit 1
+fi
+
+trend_tag_duplicate_count="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT COUNT(*)
+      FROM (
+        SELECT trend_id, tag_id
+        FROM fitback.trend_tag
+        GROUP BY trend_id, tag_id
+        HAVING COUNT(*) > 1
+      ) duplicate_groups;")"
+
+if [ "$trend_tag_duplicate_count" != '0' ]; then
+  echo "Unexpected trend_tag duplicate groups: $trend_tag_duplicate_count" >&2
   exit 1
 fi
 

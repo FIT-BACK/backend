@@ -272,7 +272,8 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V13__add_saved_analysis_report.sql`,
 `V14__link_lookbook_to_recommended_product.sql`,
 `V15__add_password_reset_token.sql`,
-`V16__seed_prototype_analysis_tags.sql`을 순서대로 적용하고 Hibernate
+`V16__seed_prototype_analysis_tags.sql`,
+`V17__reconcile_composite_unique_constraints.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
 

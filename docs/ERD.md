@@ -433,6 +433,11 @@ FK_SAVED_ANALYSIS_ITEM_PRODUCT(product_id)
   -> product(product_id) ON DELETE RESTRICT ON UPDATE RESTRICT
 ```
 
+V17 migration은 `closet_save`와 `trend_tag`의 같은 복합 키 중 가장 작은 surrogate ID를 보존하고
+중복 행을 삭제한 뒤 Entity와 동일한 이름의 UNIQUE 제약을 보장한다. V13에서 이미 생성된
+`closet_save` 제약은 재생성하지 않으며, 누락됐던
+`UK_TREND_TAG_TREND_ID_TAG_ID(trend_id, tag_id)`를 추가한다.
+
 ### 4.7 기존 `analysis_report` 확장
 
 | 컬럼 | 타입 | NULL | 설명 |
