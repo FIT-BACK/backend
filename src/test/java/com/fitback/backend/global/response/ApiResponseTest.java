@@ -1,6 +1,7 @@
 package com.fitback.backend.global.response;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
@@ -34,5 +35,14 @@ class ApiResponseTest {
         assertThat(response.code()).isEqualTo("COMMON400_1");
         assertThat(response.message()).isEqualTo("잘못된 요청입니다.");
         assertThat(response.data()).isNull();
+    }
+
+    @Test
+    void failureResponseRejectsNonNullData() {
+        assertThatThrownBy(() ->
+                new ApiResponse<>(false, "COMMON400_1", "잘못된 요청입니다.", "payload")
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("실패 응답의 data는 null이어야 합니다.");
     }
 }

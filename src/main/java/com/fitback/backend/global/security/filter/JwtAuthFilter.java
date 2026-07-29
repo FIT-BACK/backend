@@ -68,7 +68,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             response.setContentType("application/json;charset=UTF-8");
             response.setStatus(code.getHttpStatus().value());
 
-            ApiResponse<Void> errorResponse = ApiResponse.onFailure(code.getCode(), code.getMessage(), null);
+            ApiResponse<Void> errorResponse = ApiResponse.onFailure(code.getCode(), code.getMessage());
 
             mapper.writeValue(response.getOutputStream(), errorResponse);
         }

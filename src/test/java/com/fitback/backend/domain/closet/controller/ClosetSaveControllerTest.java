@@ -19,6 +19,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,13 +46,16 @@ class ClosetSaveControllerTest {
         ReflectionTestUtils.setField(closetSave, "id", 100L);
         when(closetSaveService.save(1L, request)).thenReturn(closetSave);
 
-        ApiResponse<ClosetSaveResponse.Created> response = closetSaveController.saveCloset(authMember, request);
+        ResponseEntity<ApiResponse<ClosetSaveResponse.Created>> response =
+                closetSaveController.saveCloset(authMember, request);
 
-        assertThat(response.success()).isTrue();
-        assertThat(response.code()).isEqualTo("COMMON201_1");
-        assertThat(response.data().saveId()).isEqualTo(100L);
-        assertThat(response.data().targetType()).isEqualTo(ClosetTargetType.TREND);
-        assertThat(response.data().targetId()).isEqualTo(12L);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().success()).isTrue();
+        assertThat(response.getBody().code()).isEqualTo("COMMON201_1");
+        assertThat(response.getBody().data().saveId()).isEqualTo(100L);
+        assertThat(response.getBody().data().targetType()).isEqualTo(ClosetTargetType.TREND);
+        assertThat(response.getBody().data().targetId()).isEqualTo(12L);
         verify(closetSaveService).save(1L, request);
     }
 
