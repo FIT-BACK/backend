@@ -23,7 +23,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 
 @ExtendWith(MockitoExtension.class)
 class LookbookControllerTest {
@@ -61,14 +65,29 @@ class LookbookControllerTest {
                 .build();
         when(lookbookService.createLookbook(member, request)).thenReturn(serviceResponse);
 
-        ApiResponse<LookbookResponse.LookbookCreate> response =
+        ResponseEntity<ApiResponse<LookbookResponse.LookbookCreate>> response =
                 lookbookController.createLookbook(authMember, request);
 
-        assertThat(response.success()).isTrue();
-        assertThat(response.code()).isEqualTo("COMMON201_1");
-        assertThat(response.message()).isEqualTo("리소스가 생성되었습니다.");
-        assertThat(response.data()).isEqualTo(serviceResponse);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().success()).isTrue();
+        assertThat(response.getBody().code()).isEqualTo("COMMON201_1");
+        assertThat(response.getBody().message()).isEqualTo("리소스가 생성되었습니다.");
+        assertThat(response.getBody().data()).isEqualTo(serviceResponse);
         verify(lookbookService).createLookbook(member, request);
+    }
+
+    @Test
+    void likeEndpointsUsePluralLikesPath() throws NoSuchMethodException {
+        PostMapping likeMapping = LookbookController.class
+                .getDeclaredMethod("likeLookbook", Long.class, AuthMember.class)
+                .getAnnotation(PostMapping.class);
+        DeleteMapping unlikeMapping = LookbookController.class
+                .getDeclaredMethod("deleteLookbookLike", Long.class, AuthMember.class)
+                .getAnnotation(DeleteMapping.class);
+
+        assertThat(likeMapping.value()).containsExactly("/{lookbookId}/likes");
+        assertThat(unlikeMapping.value()).containsExactly("/{lookbookId}/likes");
     }
 
     @Test

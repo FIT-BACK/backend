@@ -957,6 +957,7 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 직접 진입한 SCR-09는 기존처럼 `originalImageId`, `matchedImageId`를 전송한다. SCR-08에서
 진입한 경우에는 분석 원본 `originalImageId`를 재사용하고, 화면에서 대표로 정한 상품을
 `matchedProductId`와 `sourceReportId`로 전송한다.
+생성 성공 시 HTTP `201 Created`와 공통 응답 코드 `COMMON201_1`을 반환한다.
 
 ```json
 {
@@ -975,6 +976,14 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 저장된 선택 상품인지 검증한다. 구매 링크를 생략하면 선택 상품의 구매 URL을 사용한다.
 목록·상세 응답의 `matchedImageUrl`은 어느 경로로 생성했든 동일하게 표시 가능하며,
 상품 경로인 경우 `matchedProductId`도 반환한다.
+
+### `POST /api/v1/lookbooks/{lookbookId}/likes`
+
+인증 회원이 룩북에 좋아요를 등록한다.
+
+### `DELETE /api/v1/lookbooks/{lookbookId}/likes`
+
+인증 회원이 등록한 룩북 좋아요를 취소한다.
 
 ### 오류
 
