@@ -124,17 +124,17 @@ class LookbookServiceTest {
         streetTag = Tag.create("스트릿", TagType.DETAIL);
         ReflectionTestUtils.setField(streetTag, "id", 20L);
 
-        originalImage = readyImage("original", member, ImagePurpose.LOOKBOOK_ORIGINAL);
-        matchedImage = readyImage("matched", member, ImagePurpose.LOOKBOOK_MATCHED);
+        originalImage = readyImage("original", member, ImagePurpose.LOOKBOOK);
+        matchedImage = readyImage("matched", member, ImagePurpose.LOOKBOOK);
         updatedOriginalImage = readyImage(
                 "updated-original",
                 member,
-                ImagePurpose.LOOKBOOK_ORIGINAL
+                ImagePurpose.LOOKBOOK
         );
         updatedMatchedImage = readyImage(
                 "updated-matched",
                 member,
-                ImagePurpose.LOOKBOOK_MATCHED
+                ImagePurpose.LOOKBOOK
         );
         lenient().when(lookbookImageRepository.findAllOwnedImages(
                 List.of("original", "matched"),
@@ -179,7 +179,7 @@ class LookbookServiceTest {
         Image analysisImage = readyImage(
                 "analysis-original",
                 member,
-                ImagePurpose.ANALYSIS_ORIGINAL
+                ImagePurpose.ANALYSIS
         );
         Product product = mock(Product.class);
         when(product.getImageUrl()).thenReturn("https://shop.example.com/product.jpg");
@@ -247,12 +247,12 @@ class LookbookServiceTest {
         Image requestedImage = readyImage(
                 "analysis-original",
                 member,
-                ImagePurpose.ANALYSIS_ORIGINAL
+                ImagePurpose.ANALYSIS
         );
         Image reportImage = readyImage(
                 "other-analysis-original",
                 member,
-                ImagePurpose.ANALYSIS_ORIGINAL
+                ImagePurpose.ANALYSIS
         );
         when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
         when(lookbookImageRepository.findAllOwnedImages(
@@ -374,8 +374,7 @@ class LookbookServiceTest {
     @EnumSource(
             value = ImageStatus.class,
             names = {
-                "PENDING", "PENDING_UPLOAD", "DELETING",
-                "DELETE_FAILED", "DELETED", "REJECTED"
+                "PENDING_UPLOAD", "DELETING", "DELETE_FAILED", "DELETED", "REJECTED"
             }
     )
     void createLookbookRejectsUnavailableImageStatus(ImageStatus unavailableStatus) {
@@ -963,12 +962,12 @@ class LookbookServiceTest {
                 readyImage(
                         "original-" + lookbookId,
                         member,
-                        ImagePurpose.LOOKBOOK_ORIGINAL
+                        ImagePurpose.LOOKBOOK
                 ),
                 readyImage(
                         "matched-" + lookbookId,
                         member,
-                        ImagePurpose.LOOKBOOK_MATCHED
+                        ImagePurpose.LOOKBOOK
                 ),
                 null,
                 null

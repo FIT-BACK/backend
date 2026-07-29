@@ -134,12 +134,12 @@ class LookbookReportRepositoryTest {
         Image originalImage = readyImage(
                 "report-original-" + owner.getNickname(),
                 owner,
-                ImagePurpose.LOOKBOOK_ORIGINAL
+                ImagePurpose.LOOKBOOK
         );
         Image matchedImage = readyImage(
                 "report-matched-" + owner.getNickname(),
                 owner,
-                ImagePurpose.LOOKBOOK_MATCHED
+                ImagePurpose.LOOKBOOK
         );
         entityManager.persist(originalImage);
         entityManager.persist(matchedImage);

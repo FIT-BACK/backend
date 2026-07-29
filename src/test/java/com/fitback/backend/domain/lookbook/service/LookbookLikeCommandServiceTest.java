@@ -48,8 +48,8 @@ class LookbookLikeCommandServiceTest {
         ReflectionTestUtils.setField(member, "id", 1L);
         lookbook = Lookbook.create(
                 member,
-                readyImage("like-command-original", member, ImagePurpose.LOOKBOOK_ORIGINAL),
-                readyImage("like-command-matched", member, ImagePurpose.LOOKBOOK_MATCHED),
+                readyImage("like-command-original", member, ImagePurpose.LOOKBOOK),
+                readyImage("like-command-matched", member, ImagePurpose.LOOKBOOK),
                 null,
                 null
         );

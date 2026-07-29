@@ -93,7 +93,7 @@ class ImageUploadTransactionServiceTest {
                 "image-id",
                 owner,
                 "prod/images/analysis_original/2026/07/image-id.jpg",
-                ImagePurpose.ANALYSIS_ORIGINAL,
+                ImagePurpose.ANALYSIS,
                 "image/jpeg",
                 3,
                 ImageVisibility.PRIVATE,
