@@ -893,12 +893,20 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 ```
 
 성공 시 `201 Created`로 `reportId`, signed `imageUrl`, `matchPercentage`, `suggestedTags`를
-반환한다. 기존 `multipart/form-data`의 `image` part 계약은 클라이언트 전환 기간에만 유지한다.
+반환한다. 기존 `multipart/form-data`의 `image` part 계약은 로컬 개발 프로필에서만 유지한다.
+운영 프로필에서 multipart 분석을 요청하면 로컬 파일을 생성하지 않고 `ANALYSIS400_3`으로
+거절하므로, 클라이언트는 Presigned POST 완료 후 `imageId` JSON 계약을 사용해야 한다.
+
+`FITBACK_AI_TAG_ANALYZER=prototype`은 이미지 의미를 판별하는 실제 AI가 아니라 end-to-end
+프로토타입용 결정적 fallback이다. `미니멀`, `와이드핏`, `베이지톤` 기준 태그를 반환하며,
+기본값 `unavailable`은 실제 AI 공급자 연결 전까지 분석 생성을 fail-closed로 유지한다.
 
 | 조건 | HTTP | code |
 | --- | ---: | --- |
+| 운영 프로필에서 multipart 이미지 part 사용 | 400 | `ANALYSIS400_3` |
 | 이미지가 없거나 요청 회원 소유가 아님 | 404 | `IMAGE404_1` |
 | 이미지 목적이 `ANALYSIS`가 아니거나 상태가 `READY`가 아님 | 409 | `IMAGE409_1` |
+| prototype 기준 태그 migration이 적용되지 않음 | 409 | `ANALYSIS409_1` |
 
 ### `GET /api/v1/analyses?cursor=&pageSize=20`
 

@@ -212,6 +212,10 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - Docker daemon이 실행 중이어야 한다.
 - ECR 이미지 platform과 EC2 architecture가 일치해야 한다. 현재 workflow는 multi-architecture 이미지를 만들지 않는다.
 - `/opt/fitback/releases`에 배포 파일과 mode `600`의 비민감 runtime `.env`를 저장하고 `/opt/fitback/current` symlink를 교체할 수 있어야 한다. DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값은 파일에 기록하지 않고 Compose 프로세스 환경으로만 전달한다.
+- 비민감 feature 설정 `FITBACK_AI_TAG_ANALYZER`, `SHOPPING_PROVIDER`,
+  `SHOPIFY_ENABLED`는 release `.env`에 기록한다. 기본값은
+  `unavailable/fixture/false`이며, 배포형 최소 프로토타입은
+  `prototype/shopify/true`를 명시한다.
 
 ## 네트워크 계약
 
@@ -247,6 +251,10 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - A의 활성화 실패로 직전 release를 다시 시작하는 자동 rollback은 기존 DB 값과 legacy write를 유지하므로 schema 호환된다. 다만 공용 endpoint/응답과 룩북 purpose는 breaking change다. A가 실제 요청을 받은 뒤 생성한 `LOOKBOOK` 업로드는 DB에 `LOOKBOOK_ORIGINAL`로 저장되므로, 이를 matched 이미지로 연결하려는 요청을 A 이전 서버가 처리하면 기존 `LOOKBOOK_MATCHED` 검증에서 거절할 수 있다. 따라서 A가 운영 current가 된 뒤에는 A보다 이전 release로 수동 rollback하지 않고, 불가피하면 룩북 데이터/API 호환성을 별도로 확인한다.
 - S3 객체 수명 주기 자동 만료는 `ACTIVE`와 미사용 상태를 구분할 수 없어 적용하지 않는다. 24시간 미사용 `PENDING`/`PENDING_UPLOAD`/`READY`/`REJECTED` 정리와 `DELETE_FAILED` 재시도는 DB 상태와 도메인 참조를 기준으로 애플리케이션 작업자가 수행한다.
 - 외부 상품 공급자의 이미지는 이 버킷으로 복사하지 않는다.
+- 운영 분석은 Presigned POST 완료 후 S3 `imageId` JSON 경로만 사용한다. multipart 분석은
+  컨테이너 로컬 저장소를 사용하지 않고 `ANALYSIS400_3`으로 거절한다.
+- `FITBACK_AI_TAG_ANALYZER=prototype`은 실제 AI 공급자 대신 기준 태그 3개를 반환하는 임시
+  end-to-end 검증 모드다. 실제 AI 연동 전 운영 기본값은 `unavailable`로 유지한다.
 
 운영 애플리케이션은 시작 시 Flyway를 단일 schema 변경 경로로 사용한다. 기존 운영 schema는
 version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
@@ -260,7 +268,11 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V9__add_saved_product.sql`,
 `V10__expand_recommendation_rank_to_ten.sql`,
 `V11__add_report_custom_tag.sql`,
-`V12__add_member_social_uid.sql`을 순서대로 적용하고 Hibernate
+`V12__add_member_social_uid.sql`,
+`V13__add_saved_analysis_report.sql`,
+`V14__link_lookbook_to_recommended_product.sql`,
+`V15__add_password_reset_token.sql`,
+`V16__seed_prototype_analysis_tags.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
 

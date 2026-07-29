@@ -20,6 +20,11 @@ public enum ErrorCode {
             "ANALYSIS400_2",
             "카테고리별 선택 상품이 현재 추천 결과와 일치하지 않습니다."
     ),
+    ANALYSIS_IMAGE_UPLOAD_FLOW_REQUIRED(
+            HttpStatus.BAD_REQUEST,
+            "ANALYSIS400_3",
+            "운영 분석은 이미지 업로드 완료 후 imageId로 요청해야 합니다."
+    ),
     ANALYSIS_IMAGE_STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ANALYSIS500_1", "분석 이미지를 저장할 수 없습니다."),
     TAG_NOT_FOUND(HttpStatus.NOT_FOUND, "TAG404_1", "태그를 찾을 수 없습니다."),
     TREND_NOT_FOUND(HttpStatus.NOT_FOUND, "TREND404_1", "트렌드를 찾을 수 없습니다."),

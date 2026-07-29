@@ -37,6 +37,7 @@ IMAGE_CDN_BASE_URL=https://d1p2ierkew26r1.cloudfront.net
 CLOUDFRONT_KEY_PAIR_ID=K1XNJ3JDEDCVL3
 CLOUDFRONT_PRIVATE_KEY_BASE64=bG9jYWwtcHJpdmF0ZS1rZXk=
 HMAC_SECRET_KEY=change-me-to-a-stable-32-byte-random-secret
+FITBACK_AI_TAG_ANALYZER=unavailable
 SHOPIFY_ENABLED=false
 SHOPIFY_GLOBAL_CATALOG_ENDPOINT=https://catalog.shopify.com/api/ucp/mcp
 SHOPIFY_AGENT_PROFILE_URL=https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json
@@ -63,6 +64,20 @@ Shopify 상품은 provider/product/variant/merchant ID만 저장하며 상품명
 상세, 저장 상품 목록, 추천 결과 조회 시 Global Catalog에서 실시간 조회합니다.
 상품 검색에서 발급하는 candidate token은 기본 10분 동안 유효하며
 `SHOPPING_CANDIDATE_TOKEN_TTL`에 ISO-8601 Duration 형식으로 설정합니다.
+
+배포형 최소 프로토타입에서는 다음 비민감 runtime 설정을 함께 전달합니다.
+
+```env
+FITBACK_AI_TAG_ANALYZER=prototype
+SHOPPING_PROVIDER=shopify
+SHOPIFY_ENABLED=true
+```
+
+`prototype` 분석기는 실제 이미지 의미를 판별하는 AI가 아니라 S3 업로드부터 분석·추천까지의
+계약을 검증하기 위한 결정적 fallback입니다. 운영 기본값 `unavailable`은 실제 AI 공급자가
+연결되기 전 데모 태그가 운영 데이터에 섞이지 않도록 fail-closed로 유지합니다.
+Shopify를 사용할 때는 상품 식별자만 저장하며 표시 정보와 구매 URL은 `lookup_catalog`으로
+실시간 조회합니다.
 
 ### 2. MySQL 데이터베이스 생성
 
@@ -123,6 +138,10 @@ CloudFront 기본 도메인의 루트는 `200 OK` 안내 페이지를 반환하�
 발급받아 JPEG, PNG, WebP 이미지를 최대 5 MiB까지 S3로 직접 업로드할 수 있습니다. S3 업로드는
 응답의 `uploadUrl`과 `uploadFields`를 `FormData`로 전송한 뒤 완료 API를 호출하는 방식입니다. 자세한
 계약은 [API 명세](docs/API_SPEC.md)를 참고합니다.
+
+운영 프로필의 분석 생성은 완료된 S3 이미지의 `imageId`를 JSON body로 전달해야 합니다.
+기존 multipart 분석 요청은 로컬 프로필에서만 파일을 저장하며 운영에서는 `ANALYSIS400_3`으로
+거절합니다.
 
 ## Security
 

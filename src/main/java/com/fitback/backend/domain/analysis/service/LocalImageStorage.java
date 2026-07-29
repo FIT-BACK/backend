@@ -10,10 +10,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 @Component
+@Profile({"default", "local", "test"})
 public class LocalImageStorage implements ImageStorage {
 
     private static final long MAX_IMAGE_SIZE = 5L * 1024 * 1024;
