@@ -14,7 +14,9 @@ class ImageLifecycleTest {
 
     @Test
     void completesAndActivatesAnalysisImage() {
-        Image image = image(member(1L), ImagePurpose.ANALYSIS_ORIGINAL);
+        Image image = image(member(1L), ImagePurpose.ANALYSIS);
+
+        assertThat(image.getStatus()).isEqualTo(ImageStatus.PENDING_UPLOAD);
 
         image.completeUpload(1024, "image/jpeg", LocalDateTime.of(2026, 7, 22, 9, 0));
         image.activateForAnalysis(1L, Instant.parse("2026-07-22T00:01:00Z"));
@@ -36,9 +38,9 @@ class ImageLifecycleTest {
     }
 
     @Test
-    void acceptsFuturePurposeAndPendingStatusDuringCompatibilityRelease() {
-        Image image = image(member(1L), ImagePurpose.ANALYSIS);
-        ReflectionTestUtils.setField(image, "status", ImageStatus.PENDING_UPLOAD);
+    void acceptsLegacyPurposeAndPendingStatusDuringReleaseBRollbackWindow() {
+        Image image = image(member(1L), ImagePurpose.ANALYSIS_ORIGINAL);
+        ReflectionTestUtils.setField(image, "status", ImageStatus.PENDING);
 
         image.completeUpload(1024, "image/jpeg", LocalDateTime.of(2026, 7, 22, 9, 0));
         image.activateForAnalysis(1L, Instant.parse("2026-07-22T00:01:00Z"));

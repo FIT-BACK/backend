@@ -114,7 +114,7 @@ public class Image extends BaseCreateTimeEntity {
         this.purpose = Objects.requireNonNull(purpose, "purpose must not be null");
         this.contentType = contentType;
         this.fileSize = fileSize;
-        this.status = ImageStatus.PENDING;
+        this.status = ImageStatus.PENDING_UPLOAD;
         this.visibility = Objects.requireNonNull(visibility, "visibility must not be null");
         this.presignedExpiresAt = Objects.requireNonNull(
                 presignedExpiresAt,

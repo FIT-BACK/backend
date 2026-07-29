@@ -79,11 +79,11 @@ class ImageControllerIntegrationTest {
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT purpose FROM image",
                 String.class
-        )).isEqualTo("ANALYSIS_ORIGINAL");
+        )).isEqualTo("ANALYSIS");
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT status FROM image",
                 String.class
-        )).isEqualTo("PENDING");
+        )).isEqualTo("PENDING_UPLOAD");
     }
 
     @Test

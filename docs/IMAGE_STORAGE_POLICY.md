@@ -59,22 +59,24 @@ FIT-BACK의 사용자 업로드 이미지를 안전하게 저장하고, 업로�
 
 ## 3. 현재 구현 상태와 반영 원칙
 
-이 문서는 최종 목표 정책을 정의한다. 2026-07-24 기준 Issue #95는 expand/contract 호환 릴리스 A만 수행한다. 운영 S3 CORS 반영과 production smoke test는 별도 운영 이슈 `#83`에서 확인한다.
+이 문서는 최종 목표 정책을 정의한다. Issue #95의 expand 릴리스 A가 운영에 배포된 뒤
+Issue #96의 릴리스 B에서 신규값 write와 backfill을 수행한다. 운영 S3 CORS 반영과 production
+smoke test는 별도 운영 이슈 `#83`에서 확인한다.
 
-| 항목 | 공용 API 계약 | 릴리스 A 구현 | 후속 단계 |
+| 항목 | 공용 API 계약 | 릴리스 B 구현 | 후속 단계 |
 |---|---|---|---|
 | S3 업로드 방식 | Presigned POST | Presigned POST | 유지 |
 | 발급 API | `POST /api/v1/images/upload-requests` | 동일 | 유지 |
 | 업로드 응답 | `imageId`, `uploadUrl`, `uploadMethod=POST`, `uploadFields`, `expiresAt` | 동일, `requiredHeaders`/`imageUrl` 미포함 | 유지 |
 | API 이미지 용도 | `ANALYSIS`, `LOOKBOOK`, `PROFILE` | request DTO에서 사용 | 유지 |
-| DB purpose 저장 | API 값과 분리 | 신규 writer는 `ANALYSIS→ANALYSIS_ORIGINAL`, `LOOKBOOK→LOOKBOOK_ORIGINAL`, `PROFILE→PROFILE` 저장. 기존 `LOOKBOOK_MATCHED`는 보존 | B(`#96`)에서 new-write/backfill, C(`#97`)에서 legacy 제거 |
+| DB purpose 저장 | API 값과 분리 | 신규 writer와 V18은 `ANALYSIS`, `LOOKBOOK`, `PROFILE` 저장. A rollback 호환을 위해 legacy enum은 dual-read | C(`#97`)에서 legacy 제거 |
 | API 논리 초기 상태 | `PENDING_UPLOAD` | API 명세·도메인 논리 상태로 사용 | 유지 |
-| DB status 저장 | API 값과 분리 | 신규 writer는 rollback 호환을 위해 `PENDING` 저장. reader/domain check는 `PENDING`/`PENDING_UPLOAD` 모두 지원 | B(`#96`)에서 new-write/backfill, C(`#97`)에서 legacy 제거 |
-| V4 migration | 호환 제약 확장 | 데이터 UPDATE 없이 check constraint만 old/new purpose와 `PENDING`/`PENDING_UPLOAD`를 모두 허용 | C(`#97`)에서 constraint 축소 |
+| DB status 저장 | API 값과 분리 | 신규 writer와 V18은 `PENDING_UPLOAD` 저장. A rollback 호환을 위해 `PENDING`도 dual-read | C(`#97`)에서 legacy 제거 |
+| V4/V18 migration | 호환 제약 유지와 backfill | V4 dual constraint를 유지하고 V18이 legacy purpose/status를 신규값으로 변환 | C(`#97`)에서 constraint 축소 |
 | Object key | `images/{purpose}/{memberId}/{yyyy}/{MM}/{imageId}.{ext}` | API purpose 기반 신규 key 사용 | 유지 |
 | 기존 S3 객체 | 기존 경로에 존재 | 이동하지 않음 | 조회 호환 유지 |
 | `retryCount`, `nextRetryAt` | 저장 유지 | DB에 저장 | 유지 |
-| 자동 삭제 조회 | 논리 미사용 이미지 정리 | `PENDING`/`PENDING_UPLOAD`는 `createdAt`, `READY`/`REJECTED`는 `COALESCE(uploadedAt, createdAt)`, `DELETE_FAILED`는 `nextRetryAt` 기준 | 유지 |
+| 자동 삭제 조회 | 논리 미사용 이미지 정리 | rollback window 동안 `PENDING`/`PENDING_UPLOAD`는 `createdAt`, `READY`/`REJECTED`는 `COALESCE(uploadedAt, createdAt)`, `DELETE_FAILED`는 `nextRetryAt` 기준 | C에서 `PENDING` 제거 |
 | multipart 분석 API | 전환 기간 유지 | 호환용으로 유지 | 후속 contract 이슈에서 정리 |
 | JSON 분석 API 요청 | 현재 단일 `{ imageId }` | 유지 | 후속 contract 이슈에서 `images[]/role/sourceType` 전환 |
 | `ACTIVE` 마지막 참조 해제 자동 삭제 | 후속 기능 | 완료로 표시하지 않음 | 후속 contract 이슈에서 구현 |
@@ -278,8 +280,10 @@ POST /api/v1/images/{imageId}/complete
 | 상태 | `PENDING_UPLOAD` 상태 |
 
 검증 성공 시 `PENDING_UPLOAD → READY`로 전환한다. 검증 실패 시 `REJECTED`로 전환하고 24시간 정리 대상에 포함한다.
-릴리스 A에서는 DB의 `PENDING`과 미래 저장값 `PENDING_UPLOAD`를 모두 논리
-`PENDING_UPLOAD`로 처리하므로 완료와 재발급 조건이 같다.
+릴리스 B는 신규 row를 `PENDING_UPLOAD`로 저장한다. A rollback window에서는 DB의
+`PENDING`과 `PENDING_UPLOAD`를 모두 같은 논리 상태로 처리하므로 완료와 재발급 조건이 같다.
+B가 시작될 때마다 startup reconciliation이 rollback 중 생성된 `PENDING`을 다시
+`PENDING_UPLOAD`로 변환하고 legacy 잔여가 0건이 아니면 readiness 전에 기동을 실패시킨다.
 
 ### 8.2 재발급 API
 

@@ -96,8 +96,8 @@ providerIdentityKey = SHA-256(
 | `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(30)` | `SIMILARITY_V1`, `SIMILARITY_THRESHOLD_V2` |
 | `ProductTagSource` | `product_tag.source VARCHAR(20)` | `PROVIDER`, `AI`, `RULE`, `MANUAL` |
 | `ImageUploadPurpose` | API request enum | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
-| `ImagePurpose` | `image.purpose VARCHAR(30)` 호환 저장 enum | 릴리스 A writer: `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `PROFILE`; reader/domain check: `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `LOOKBOOK_MATCHED`, `PROFILE`, `ANALYSIS`, `LOOKBOOK` |
-| `ImageStatus` | `image.status VARCHAR(20)` 호환 저장 enum | 릴리스 A writer: `PENDING`; reader/domain check: `PENDING`, `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
+| `ImagePurpose` | `image.purpose VARCHAR(30)` 호환 저장 enum | 릴리스 B writer: `ANALYSIS`, `LOOKBOOK`, `PROFILE`; rollback reader: `ANALYSIS_ORIGINAL`, `LOOKBOOK_ORIGINAL`, `LOOKBOOK_MATCHED`, `PROFILE`, `ANALYSIS`, `LOOKBOOK` |
+| `ImageStatus` | `image.status VARCHAR(20)` 호환 저장 enum | 릴리스 B writer: `PENDING_UPLOAD`; rollback reader: `PENDING`, `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
 | `ImageVisibility` | `image.visibility VARCHAR(20)` | `PRIVATE`, `PUBLIC` |
 
 카테고리는 위 순서로 노출하고 각 추천 그룹은 최대 10개이며 빈 그룹도 반환한다. 외부 공급자의
@@ -630,10 +630,10 @@ JPA `ddl-auto=validate`로 Entity mapping을 검증한다.
 | `image_id` | `VARCHAR(36)` | N | UUID PK, `owner_id`와 `UK_IMAGE_ID_OWNER` |
 | `owner_id` | `BIGINT` | N | `member.member_id` FK |
 | `object_key` | `VARCHAR(512)` | N | S3 object key, `UK_IMAGE_OBJECT_KEY`. 신규 업로드는 `images/{purpose}/{memberId}/{yyyy}/{MM}/{imageId}.{ext}` |
-| `purpose` | `VARCHAR(30)` | N | DB 호환 저장값. 릴리스 A 신규 writer는 API `ANALYSIS`→`ANALYSIS_ORIGINAL`, `LOOKBOOK`→`LOOKBOOK_ORIGINAL`, `PROFILE`→`PROFILE`로 저장하고 기존 `LOOKBOOK_MATCHED`는 보존 |
+| `purpose` | `VARCHAR(30)` | N | DB 호환 저장값. 릴리스 B 신규 writer와 V18 backfill은 `ANALYSIS`, `LOOKBOOK`, `PROFILE`을 사용하며 A rollback을 위해 legacy 값도 constraint가 허용 |
 | `content_type` | `VARCHAR(30)` | N | 허용된 MIME type |
 | `file_size` | `BIGINT` | N | 발급 요청 크기. 완료 검증 시 S3 실제값 재검증 |
-| `status` | `VARCHAR(20)` | N | DB 호환 저장값. API 논리 초기 상태는 `PENDING_UPLOAD`지만 릴리스 A 신규 writer는 rollback 호환을 위해 `PENDING` 저장 |
+| `status` | `VARCHAR(20)` | N | DB 호환 저장값. 릴리스 B 신규 writer와 V18 backfill은 `PENDING_UPLOAD`을 사용하며 A rollback을 위해 `PENDING`도 constraint가 허용 |
 | `visibility` | `VARCHAR(20)` | N | 신규 발급은 `PRIVATE` |
 | `presigned_expires_at` | `DATETIME(6)` | Y | 업로드 URL 만료 시각. 완료·거부·삭제 선점 시 NULL |
 | `uploaded_at` | `DATETIME(6)` | Y | S3 객체 검증 완료 또는 거부 처리 시각 |
