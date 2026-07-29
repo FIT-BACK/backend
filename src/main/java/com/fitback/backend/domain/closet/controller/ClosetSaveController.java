@@ -13,6 +13,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -38,12 +40,13 @@ public class ClosetSaveController {
                     + "분석리포트는 /api/v1/analyses/{reportId}/save를 사용."
     )
     @PostMapping
-    public ApiResponse<ClosetSaveResponse.Created> saveCloset(
+    public ResponseEntity<ApiResponse<ClosetSaveResponse.Created>> saveCloset(
             @AuthenticationPrincipal AuthMember authMember,
             @Valid @RequestBody ClosetSaveRequest.Create request
     ) {
         ClosetSave closetSave = closetSaveService.save(requireMemberId(authMember), request);
-        return ApiResponse.onCreated(ClosetSaveResponse.Created.from(closetSave));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.onCreated(ClosetSaveResponse.Created.from(closetSave)));
     }
 
     @Operation(

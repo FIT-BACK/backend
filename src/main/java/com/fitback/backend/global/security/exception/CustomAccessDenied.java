@@ -26,7 +26,7 @@ public class CustomAccessDenied implements AccessDeniedHandler {
         response.setStatus(code.getHttpStatus().value());
 
         // Response Body에 응답통일한 객체를 넣기
-        ApiResponse<Void> errorResponse = ApiResponse.onFailure(code.getCode(),code.getMessage(), null);
+        ApiResponse<Void> errorResponse = ApiResponse.onFailure(code.getCode(), code.getMessage());
 
         // 실제 Response로 덮어쓰기
         objectMapper.writeValue(response.getOutputStream(), errorResponse);

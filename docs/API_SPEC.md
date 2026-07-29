@@ -78,6 +78,7 @@ GET과 body 없는 DELETE에는 `Content-Type`을 생략할 수 있다.
 
 ErrorCode enum 식별자와 wire code는 구분한다. 예를 들어 Java 식별자
 `PRODUCT_PROVIDER_UNAVAILABLE`의 wire code는 `PRODUCT503_1`이다.
+실패 응답의 `data`는 오류 종류와 관계없이 항상 `null`이다.
 
 ### 1.5 금액과 시간
 
