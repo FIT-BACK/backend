@@ -26,6 +26,7 @@ public class TrendService {
 
     private static final int TREND_PAGE_SIZE = 10;
     private static final Pageable TREND_PAGE_REQUEST = PageRequest.of(0, TREND_PAGE_SIZE + 1);
+    private static final Pageable SEARCH_PAGE_REQUEST = PageRequest.of(0, TREND_PAGE_SIZE);
 
     private final TrendContentRepository trendContentRepository;
     private final TrendTagRepository trendTagRepository;
@@ -50,25 +51,7 @@ public class TrendService {
                 Math.min(trendPage.size(), TREND_PAGE_SIZE)
         );
 
-        // trendId 추출
-        List<Long> trendIds = trends.stream()
-                .map(TrendContent::getId)
-                .toList();
-
-        // trendId 로 태그 조회
-        Map<Long, List<String>> tagsByTrendId = findTagsByTrendIds(trendIds);
-
-        // 현재 로그인 한 유저가 클로젯에 저장한 트렌드 조회
-        Set<Long> savedTrendIds = findSavedTrendIds(trendIds, member);
-
-        // responseDTO 로 변환
-        List<TrendResponse.TrendItem> items = trends.stream()
-                .map(trend -> TrendResponse.TrendItem.toTrendItem(
-                        trend,
-                        tagsByTrendId.getOrDefault(trend.getId(), List.of()),
-                        savedTrendIds.contains(trend.getId())
-                ))
-                .toList();
+        List<TrendResponse.TrendItem> items = toTrendItems(trends, member);
 
         // 다음 cursor 계산
         Long nextCursor = hasNext && !trends.isEmpty()
@@ -76,6 +59,15 @@ public class TrendService {
                 : null;
 
         return TrendResponse.TrendList.toTrendList(items, nextCursor, hasNext, TREND_PAGE_SIZE);
+    }
+
+    @Transactional(readOnly = true)
+    public List<TrendResponse.TrendItem> searchTrends(String keyword, Member member) {
+        List<TrendContent> trends = trendContentRepository.searchByKeyword(
+                keyword,
+                SEARCH_PAGE_REQUEST
+        );
+        return toTrendItems(trends, member);
     }
 
     // 트렌드 상세 조회
@@ -141,6 +133,24 @@ public class TrendService {
             return Set.of();
         }
         return closetSaveRepository.findSavedTargetIds(member.getId(), ClosetTargetType.TREND, trendIds);
+    }
+
+    private List<TrendResponse.TrendItem> toTrendItems(
+            List<TrendContent> trends,
+            Member member
+    ) {
+        List<Long> trendIds = trends.stream()
+                .map(TrendContent::getId)
+                .toList();
+        Map<Long, List<String>> tagsByTrendId = findTagsByTrendIds(trendIds);
+        Set<Long> savedTrendIds = findSavedTrendIds(trendIds, member);
+        return trends.stream()
+                .map(trend -> TrendResponse.TrendItem.toTrendItem(
+                        trend,
+                        tagsByTrendId.getOrDefault(trend.getId(), List.of()),
+                        savedTrendIds.contains(trend.getId())
+                ))
+                .toList();
     }
 
     // 트렌드 id 로 태그 조회 (단건)

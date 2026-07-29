@@ -47,6 +47,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class LookbookService {
 
     private static final int DEFAULT_LOOKBOOK_PAGE_SIZE = 20;
+    private static final Pageable SEARCH_PAGE_REQUEST = PageRequest.of(0, 10);
 
     private final LookbookRepository lookbookRepository;
     private final LookbookImageRepository lookbookImageRepository;
@@ -207,27 +208,7 @@ public class LookbookService {
                 Math.min(lookbookPage.size(), resolvedPageSize)
         );
 
-        // lookbookId 추출
-        List<Long> lookbookIds = lookbooks.stream()
-                .map(Lookbook::getId)
-                .toList();
-
-        // lookbookId 로 태그 조회
-        Map<Long, List<String>> tagNamesByLookbookId = findTagNamesByLookbookId(lookbookIds);
-
-        // 현재 로그인 한 유저가 좋아요를 누른 룩북 조회
-        Set<Long> likedLookbookIds = findLikedLookbookIds(lookbookIds, member);
-
-        // responseDTO 로 변환
-        List<LookbookResponse.LookbookItem> items = lookbooks.stream()
-                .map(lookbook -> LookbookResponse.LookbookItem.toLookbookItem(
-                        lookbook,
-                        imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
-                        resolveMatchedImageUrl(lookbook),
-                        tagNamesByLookbookId.getOrDefault(lookbook.getId(), List.of()),
-                        likedLookbookIds.contains(lookbook.getId())
-                ))
-                .toList();
+        List<LookbookResponse.LookbookItem> items = toLookbookItems(lookbooks, member);
 
         // 다음 cursor 계산
         Long nextCursor = hasNext && !lookbooks.isEmpty()
@@ -240,6 +221,19 @@ public class LookbookService {
                 hasNext,
                 resolvedPageSize
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<LookbookResponse.LookbookItem> searchLookbooks(
+            String keyword,
+            Member member
+    ) {
+        List<Lookbook> lookbooks = lookbookRepository.searchByKeyword(
+                keyword,
+                LookbookModerationStatus.VISIBLE,
+                SEARCH_PAGE_REQUEST
+        );
+        return toLookbookItems(lookbooks, member);
     }
 
     // 룩북 상세 조회
@@ -429,6 +423,28 @@ public class LookbookService {
             return Set.of();
         }
         return lookbookLikeRepository.findLikedLookbookIds(member.getId(), lookbookIds);
+    }
+
+    private List<LookbookResponse.LookbookItem> toLookbookItems(
+            List<Lookbook> lookbooks,
+            Member member
+    ) {
+        List<Long> lookbookIds = lookbooks.stream()
+                .map(Lookbook::getId)
+                .toList();
+        Map<Long, List<String>> tagNamesByLookbookId = findTagNamesByLookbookId(
+                lookbookIds
+        );
+        Set<Long> likedLookbookIds = findLikedLookbookIds(lookbookIds, member);
+        return lookbooks.stream()
+                .map(lookbook -> LookbookResponse.LookbookItem.toLookbookItem(
+                        lookbook,
+                        imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
+                        resolveMatchedImageUrl(lookbook),
+                        tagNamesByLookbookId.getOrDefault(lookbook.getId(), List.of()),
+                        likedLookbookIds.contains(lookbook.getId())
+                ))
+                .toList();
     }
 
     // 태그 유효성 검사
