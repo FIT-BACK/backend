@@ -572,6 +572,14 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
   `SavedAnalysisItem`으로 카테고리별 선택 상품 스냅샷을 구현한다.
 - 추천 실행 이력은 요구사항이 생길 때 별도 migration으로 추가한다.
 
+### 7.6 프로토타입 분석 기준 태그
+
+- V16 migration은 기존 태그를 변경하지 않고 누락된 `미니멀(DETAIL)`,
+  `와이드핏(SILHOUETTE)`, `베이지톤(COLOR)`만 멱등하게 추가한다.
+- 이 세 태그는 명시적 prototype 분석 모드의 결정적 end-to-end 검증 데이터다.
+- 실제 AI 공급자를 연결할 때는 모델 결과를 승인된 태그 taxonomy에 매핑하고 prototype 분석기를
+  비활성화한다.
+
 ---
 
 ## 8. 경계와 검증 체크리스트

@@ -47,6 +47,8 @@ seed_baseline_schema() {
     "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
     'CREATE TABLE recommended_item (recommend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, report_id BIGINT NOT NULL, product_id BIGINT NOT NULL, `rank` INT NOT NULL, category VARCHAR(50) NOT NULL, similarity_score INT NOT NULL, is_value_match BOOLEAN NOT NULL, created_at DATETIME(6) NOT NULL);' \
     "INSERT INTO recommended_item (report_id, product_id, \`rank\`, category, similarity_score, is_value_match, created_at) VALUES (7001, 1, 1, 'TOP', 90, TRUE, NOW());" \
+    'CREATE TABLE tag (tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, tag_name VARCHAR(50) NOT NULL, tag_type VARCHAR(30) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, CONSTRAINT UK_TAG_NAME UNIQUE (tag_name));' \
+    "INSERT INTO tag (tag_name, tag_type, created_at) VALUES ('기존태그', 'DETAIL', NOW());" \
     'CREATE TABLE member_tag (member_tag_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_MEMBER_TAG_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     'CREATE TABLE report_tag (report_tag_id BIGINT NOT NULL PRIMARY KEY, report_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_REPORT_TAG_REPORT_OLD FOREIGN KEY (report_id) REFERENCES analysis_report (report_id));' \
     'CREATE TABLE closet_save (closet_save_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, target_type VARCHAR(30) NOT NULL, target_id BIGINT NOT NULL, CONSTRAINT FK_CLOSET_SAVE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
@@ -1052,6 +1054,25 @@ expected_password_reset_constraints="$(printf '%s\n' \
 if [ "$password_reset_constraints" != "$expected_password_reset_constraints" ]; then
   echo 'Unexpected password reset token constraints:' >&2
   printf '%s\n' "$password_reset_constraints" >&2
+  exit 1
+fi
+
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V16__seed_prototype_analysis_tags.sql
+
+prototype_tag_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        SUM(tag_name = '미니멀' AND tag_type = 'DETAIL'), ':',
+        SUM(tag_name = '와이드핏' AND tag_type = 'SILHOUETTE'), ':',
+        SUM(tag_name = '베이지톤' AND tag_type = 'COLOR'), ':',
+        SUM(tag_name = '기존태그' AND tag_type = 'DETAIL'), ':',
+        COUNT(*)
+      )
+      FROM fitback.tag;")"
+
+if [ "$prototype_tag_contract" != '1:1:1:1:4' ]; then
+  echo "Unexpected prototype tag contract: $prototype_tag_contract" >&2
   exit 1
 fi
 
