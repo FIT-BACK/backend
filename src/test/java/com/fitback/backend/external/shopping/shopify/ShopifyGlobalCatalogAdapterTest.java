@@ -78,6 +78,17 @@ class ShopifyGlobalCatalogAdapterTest {
                 });
     }
 
+    @Test
+    void exposesIdentityOnlyPersistenceCapabilities() {
+        ShopifyGlobalCatalogAdapter adapter = adapter(new StubClient());
+
+        assertThat(adapter.capabilities().canPersistResult()).isTrue();
+        assertThat(adapter.capabilities().canPersistPrice()).isFalse();
+        assertThat(adapter.capabilities().canPersistImageUrl()).isFalse();
+        assertThat(adapter.capabilities().requiresLiveLookup()).isTrue();
+        assertThat(adapter.capabilities().maxTtl()).isNull();
+    }
+
     private static ShopifyGlobalCatalogAdapter adapter(ShopifyGlobalCatalogClient client) {
         return new ShopifyGlobalCatalogAdapter(
                 client,

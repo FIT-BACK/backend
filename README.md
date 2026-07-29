@@ -59,6 +59,8 @@ FRONT_PASSWORD_RESET_URL=http://localhost:3000/reset-password
 쇼핑 공급자는 기본값으로 `fixture`를 사용합니다. Shopify Global Catalog를 사용하려면
 `SHOPPING_PROVIDER=shopify`와 `SHOPIFY_ENABLED=true`를 함께 설정합니다. 익명 호출에는 API
 키가 필요하지 않지만 agent profile URL이 필요하며, 기본 profile은 개발 검증용입니다.
+Shopify 상품은 provider/product/variant/merchant ID만 저장하며 상품명·가격·이미지·구매 URL은
+상세, 저장 상품 목록, 추천 결과 조회 시 Global Catalog에서 실시간 조회합니다.
 상품 검색에서 발급하는 candidate token은 기본 10분 동안 유효하며
 `SHOPPING_CANDIDATE_TOKEN_TTL`에 ISO-8601 Duration 형식으로 설정합니다.
 

@@ -688,6 +688,8 @@ Controller와 Service는 Shopify 등 공급자 이름을 DTO 계약에 노출하
 - 상품 검색은 DB write를 하지 않는다.
 - `/product-references`, 추천 결과 materialization, 사용자 저장 요청만 명시적으로 저장한다.
 - 공급자 정책이 snapshot 저장을 금지하면 provider identity만 저장하고 응답 시 live lookup한다.
+- Shopify Global Catalog 상품은 `IDENTITY_ONLY`로 저장하며 상품명·가격·이미지·구매 URL은
+  상세·저장 상품 목록·추천 결과 응답 시 live lookup한다.
 - 안정 identity가 없지만 snapshot 저장이 명시적으로 허용되면 내부 UUID 전략을 사용할 수 있다.
 - identity와 snapshot 모두 허용되지 않으면 상세·저장을 비활성화한다.
 - 현재 추천 세트에는 materialize 가능한 Product만 포함하고 ephemeral 추천 행은 두지 않는다.

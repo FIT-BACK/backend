@@ -48,6 +48,35 @@ public class ProductPersistenceService {
             String providerIdentityKey,
             ProductSnapshot snapshot
     ) {
+        return materialize(
+                providerRef,
+                providerIdentityKey,
+                () -> createSnapshotProduct(providerRef, providerIdentityKey, snapshot)
+        );
+    }
+
+    public MaterializationResult materializeIdentityOnly(
+            ProviderProductRef providerRef,
+            String providerIdentityKey
+    ) {
+        return materialize(
+                providerRef,
+                providerIdentityKey,
+                () -> Product.createIdentityOnly(
+                        providerRef.provider(),
+                        providerIdentityKey,
+                        providerRef.externalProductId(),
+                        providerRef.externalVariantId(),
+                        providerRef.merchantId()
+                )
+        );
+    }
+
+    private MaterializationResult materialize(
+            ProviderProductRef providerRef,
+            String providerIdentityKey,
+            java.util.function.Supplier<Product> productFactory
+    ) {
         try {
             return Objects.requireNonNull(transactionTemplate.execute(status -> {
                 Product existing = findStableProduct(
@@ -58,7 +87,7 @@ public class ProductPersistenceService {
                     return new MaterializationResult(existing, false);
                 }
 
-                Product product = createProduct(providerRef, providerIdentityKey, snapshot);
+                Product product = productFactory.get();
                 return new MaterializationResult(productRepository.saveAndFlush(product), true);
             }));
         } catch (DataIntegrityViolationException exception) {
@@ -74,7 +103,7 @@ public class ProductPersistenceService {
         }
     }
 
-    private static Product createProduct(
+    private static Product createSnapshotProduct(
             ProviderProductRef providerRef,
             String providerIdentityKey,
             ProductSnapshot snapshot

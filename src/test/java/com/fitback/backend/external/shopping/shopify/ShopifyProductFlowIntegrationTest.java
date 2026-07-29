@@ -14,6 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fitback.backend.domain.product.entity.Product;
 import com.fitback.backend.domain.product.repository.ProductRepository;
+import com.fitback.backend.domain.product.service.model.ProductAvailability;
+import com.fitback.backend.domain.product.service.model.ProductStorageMode;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -131,11 +133,14 @@ class ShopifyProductFlowIntegrationTest {
         assertThat(stored.getExternalProductId()).isEqualTo(PRODUCT_ID);
         assertThat(stored.getExternalVariantId()).isEqualTo(VARIANT_ID);
         assertThat(stored.getMerchantId()).isEqualTo(MERCHANT_ID);
-        assertThat(stored.getCurrentPrice()).isEqualByComparingTo("73.00");
-        assertThat(stored.getCurrency()).isEqualTo("USD");
-        assertThat(stored.getPurchaseUrl())
-                .isEqualTo("https://merchant.example/products/hoodie");
-        assertThat(stored.getSnapshotExpiresAt()).isNotNull();
+        assertThat(stored.getStorageMode()).isEqualTo(ProductStorageMode.IDENTITY_ONLY);
+        assertThat(stored.getAvailability()).isEqualTo(ProductAvailability.UNKNOWN);
+        assertThat(stored.getName()).isNull();
+        assertThat(stored.getCurrentPrice()).isNull();
+        assertThat(stored.getCurrency()).isNull();
+        assertThat(stored.getImageUrl()).isNull();
+        assertThat(stored.getPurchaseUrl()).isNull();
+        assertThat(stored.getSnapshotExpiresAt()).isNull();
 
         mockMvc.perform(post("/api/v1/product-references")
                         .header("Authorization", bearer(accessToken))
@@ -156,6 +161,13 @@ class ShopifyProductFlowIntegrationTest {
                 .andExpect(jsonPath("$.data.price.amount").value(73.00))
                 .andExpect(jsonPath("$.data.price.currency").value("USD"))
                 .andExpect(jsonPath("$.data.dataStatus").value("LIVE"));
+
+        Product afterDetail = productRepository.findById(productId).orElseThrow();
+        assertThat(afterDetail.getStorageMode()).isEqualTo(ProductStorageMode.IDENTITY_ONLY);
+        assertThat(afterDetail.getName()).isNull();
+        assertThat(afterDetail.getCurrentPrice()).isNull();
+        assertThat(afterDetail.getImageUrl()).isNull();
+        assertThat(afterDetail.getPurchaseUrl()).isNull();
 
         verify(shopifyClient).search("hoodie shirt top", null, 10);
         verify(shopifyClient, times(2)).lookup(PRODUCT_ID, VARIANT_ID);

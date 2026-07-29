@@ -44,10 +44,10 @@ public final class ShopifyGlobalCatalogAdapter implements ProductCatalogPort {
                 true,
                 true,
                 true,
+                false,
+                false,
                 true,
-                true,
-                true,
-                properties.snapshotTtl(),
+                null,
                 true
         );
     }
