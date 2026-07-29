@@ -58,8 +58,8 @@ class LookbookReportCommandServiceTest {
 
         lookbook = Lookbook.create(
                 owner,
-                readyImage("report-command-original", owner, ImagePurpose.LOOKBOOK_ORIGINAL),
-                readyImage("report-command-matched", owner, ImagePurpose.LOOKBOOK_MATCHED),
+                readyImage("report-command-original", owner, ImagePurpose.LOOKBOOK),
+                readyImage("report-command-matched", owner, ImagePurpose.LOOKBOOK),
                 null,
                 null
         );

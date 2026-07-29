@@ -59,24 +59,25 @@ FIT-BACK의 사용자 업로드 이미지를 안전하게 저장하고, 업로�
 
 ## 3. 현재 구현 상태와 반영 원칙
 
-이 문서는 최종 목표 정책을 정의한다. Issue #95의 expand 릴리스 A가 운영에 배포된 뒤
-Issue #96의 릴리스 B에서 신규값 write와 backfill을 수행한다. 운영 S3 CORS 반영과 production
-smoke test는 별도 운영 이슈 `#83`에서 확인한다.
+이 문서는 최종 목표 정책을 정의한다. Issue #95의 expand 릴리스 A와 Issue #96의
+new-write/backfill 릴리스 B가 운영에 배포됐고, Issue #97의 릴리스 C에서 legacy 값과
+호환 코드를 제거한다. 운영 S3 CORS와 production smoke test는 별도 운영 이슈 `#83`에서
+확인한다.
 
-| 항목 | 공용 API 계약 | 릴리스 B 구현 | 후속 단계 |
+| 항목 | 공용 API 계약 | 릴리스 C 구현 | 후속 단계 |
 |---|---|---|---|
 | S3 업로드 방식 | Presigned POST | Presigned POST | 유지 |
 | 발급 API | `POST /api/v1/images/upload-requests` | 동일 | 유지 |
 | 업로드 응답 | `imageId`, `uploadUrl`, `uploadMethod=POST`, `uploadFields`, `expiresAt` | 동일, `requiredHeaders`/`imageUrl` 미포함 | 유지 |
 | API 이미지 용도 | `ANALYSIS`, `LOOKBOOK`, `PROFILE` | request DTO에서 사용 | 유지 |
-| DB purpose 저장 | API 값과 분리 | 신규 writer와 V18은 `ANALYSIS`, `LOOKBOOK`, `PROFILE` 저장. A rollback 호환을 위해 legacy enum은 dual-read | C(`#97`)에서 legacy 제거 |
+| DB purpose 저장 | API와 동일 | `ANALYSIS`, `LOOKBOOK`, `PROFILE`만 저장·조회 | 유지 |
 | API 논리 초기 상태 | `PENDING_UPLOAD` | API 명세·도메인 논리 상태로 사용 | 유지 |
-| DB status 저장 | API 값과 분리 | 신규 writer와 V18은 `PENDING_UPLOAD` 저장. A rollback 호환을 위해 `PENDING`도 dual-read | C(`#97`)에서 legacy 제거 |
-| V4/V18 migration | 호환 제약 유지와 backfill | V4 dual constraint를 유지하고 V18이 legacy purpose/status를 신규값으로 변환 | C(`#97`)에서 constraint 축소 |
+| DB status 저장 | API와 동일 | 신규 row는 `PENDING_UPLOAD`; legacy `PENDING` 제거 | 유지 |
+| V4/V18/V19 migration | expand/backfill/contract | V19 최종 catch-up과 zero gate 후 신규값 전용 constraint 적용 | 유지 |
 | Object key | `images/{purpose}/{memberId}/{yyyy}/{MM}/{imageId}.{ext}` | API purpose 기반 신규 key 사용 | 유지 |
 | 기존 S3 객체 | 기존 경로에 존재 | 이동하지 않음 | 조회 호환 유지 |
 | `retryCount`, `nextRetryAt` | 저장 유지 | DB에 저장 | 유지 |
-| 자동 삭제 조회 | 논리 미사용 이미지 정리 | rollback window 동안 `PENDING`/`PENDING_UPLOAD`는 `createdAt`, `READY`/`REJECTED`는 `COALESCE(uploadedAt, createdAt)`, `DELETE_FAILED`는 `nextRetryAt` 기준 | C에서 `PENDING` 제거 |
+| 자동 삭제 조회 | 논리 미사용 이미지 정리 | `PENDING_UPLOAD`는 `createdAt`, `READY`/`REJECTED`는 `COALESCE(uploadedAt, createdAt)`, `DELETE_FAILED`는 `nextRetryAt` 기준 | 유지 |
 | multipart 분석 API | 전환 기간 유지 | 호환용으로 유지 | 후속 contract 이슈에서 정리 |
 | JSON 분석 API 요청 | 현재 단일 `{ imageId }` | 유지 | 후속 contract 이슈에서 `images[]/role/sourceType` 전환 |
 | `ACTIVE` 마지막 참조 해제 자동 삭제 | 후속 기능 | 완료로 표시하지 않음 | 후속 contract 이슈에서 구현 |
@@ -280,10 +281,8 @@ POST /api/v1/images/{imageId}/complete
 | 상태 | `PENDING_UPLOAD` 상태 |
 
 검증 성공 시 `PENDING_UPLOAD → READY`로 전환한다. 검증 실패 시 `REJECTED`로 전환하고 24시간 정리 대상에 포함한다.
-릴리스 B는 신규 row를 `PENDING_UPLOAD`로 저장한다. A rollback window에서는 DB의
-`PENDING`과 `PENDING_UPLOAD`를 모두 같은 논리 상태로 처리하므로 완료와 재발급 조건이 같다.
-B가 시작될 때마다 startup reconciliation이 rollback 중 생성된 `PENDING`을 다시
-`PENDING_UPLOAD`로 변환하고 legacy 잔여가 0건이 아니면 readiness 전에 기동을 실패시킨다.
+신규 row는 `PENDING_UPLOAD`로 저장한다. V19가 Release B rollback window에서 생긴 legacy
+`PENDING`을 최종 catch-up한 뒤 zero gate를 통과해야 신규값 전용 constraint를 적용한다.
 
 ### 8.2 재발급 API
 
@@ -307,7 +306,7 @@ POST /api/v1/images/{imageId}/upload-request
 
 ```text
 (
-  status IN (PENDING, PENDING_UPLOAD) AND createdAt < 현재 시각 - 24시간
+  status = PENDING_UPLOAD AND createdAt < 현재 시각 - 24시간
   OR status = READY AND COALESCE(uploadedAt, createdAt) < 현재 시각 - 24시간
   OR status = REJECTED AND COALESCE(uploadedAt, createdAt) < 현재 시각 - 24시간
   OR status = DELETE_FAILED AND (nextRetryAt IS NULL OR nextRetryAt <= 현재 시각)
@@ -320,7 +319,7 @@ AND 분석·룩북·프로필 등 실제 도메인 참조가 존재하지 않음
 
 ### 9.2 삭제 처리 순서
 
-1. 오래된 `PENDING`/`PENDING_UPLOAD`/`READY`/`REJECTED` 또는 재시도 시각에 도달한 `DELETE_FAILED` 중 도메인 참조가 없는 이미지를 일정 개수만큼 조회한다.
+1. 오래된 `PENDING_UPLOAD`/`READY`/`REJECTED` 또는 재시도 시각에 도달한 `DELETE_FAILED` 중 도메인 참조가 없는 이미지를 일정 개수만큼 조회한다.
 2. 같은 트랜잭션에서 참조 부재를 다시 확인한다.
 3. DB 락 또는 조건부 상태 변경으로 `DELETING`을 선점한다.
 4. 선점에 성공한 작업자만 S3 객체를 삭제한다.
@@ -358,10 +357,10 @@ DB 트랜잭션 안에서 S3 삭제를 직접 실행하지 않는다. 다만 `AC
 
 ```text
 status(logical): PENDING_UPLOAD | READY | ACTIVE | DELETING | DELETE_FAILED | DELETED | REJECTED
-status(persisted compatibility): PENDING | PENDING_UPLOAD | READY | ACTIVE | DELETING | DELETE_FAILED | DELETED | REJECTED
+status(persisted): PENDING_UPLOAD | READY | ACTIVE | DELETING | DELETE_FAILED | DELETED | REJECTED
 visibility: PRIVATE | PUBLIC
 purpose(logical): ANALYSIS | LOOKBOOK | PROFILE
-purpose(persisted compatibility): ANALYSIS_ORIGINAL | LOOKBOOK_ORIGINAL | LOOKBOOK_MATCHED | PROFILE | ANALYSIS | LOOKBOOK
+purpose(persisted): ANALYSIS | LOOKBOOK | PROFILE
 ```
 
 | 이미지 종류 | MVP 공개 범위 | 제공 방법 |

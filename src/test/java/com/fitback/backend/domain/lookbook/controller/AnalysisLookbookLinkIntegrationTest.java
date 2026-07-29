@@ -98,7 +98,7 @@ class AnalysisLookbookLinkIntegrationTest {
         Image originalImage = imageRepository.save(readyImage(
                 "analysis-original",
                 member,
-                ImagePurpose.ANALYSIS_ORIGINAL
+                ImagePurpose.ANALYSIS
         ));
         AnalysisReport report = analysisReportRepository.save(
                 AnalysisReport.create(member, originalImage, 70)

@@ -11,51 +11,10 @@ import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ImageRepository extends JpaRepository<Image, String> {
-
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query(
-            value = """
-                    UPDATE image
-                    SET purpose = CASE
-                            WHEN purpose = 'ANALYSIS_ORIGINAL' THEN 'ANALYSIS'
-                            WHEN purpose IN ('LOOKBOOK_ORIGINAL', 'LOOKBOOK_MATCHED')
-                                THEN 'LOOKBOOK'
-                            ELSE purpose
-                        END,
-                        status = CASE
-                            WHEN status = 'PENDING' THEN 'PENDING_UPLOAD'
-                            ELSE status
-                        END
-                    WHERE purpose IN (
-                            'ANALYSIS_ORIGINAL',
-                            'LOOKBOOK_ORIGINAL',
-                            'LOOKBOOK_MATCHED'
-                        )
-                       OR status = 'PENDING'
-                    """,
-            nativeQuery = true
-    )
-    int reconcileLegacyLifecycleValues();
-
-    @Query(
-            value = """
-                    SELECT COUNT(*)
-                    FROM image
-                    WHERE purpose IN (
-                            'ANALYSIS_ORIGINAL',
-                            'LOOKBOOK_ORIGINAL',
-                            'LOOKBOOK_MATCHED'
-                        )
-                       OR status = 'PENDING'
-                    """,
-            nativeQuery = true
-    )
-    long countLegacyLifecycleValues();
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Image> findByIdAndOwnerId(String imageId, Long ownerId);
@@ -68,10 +27,8 @@ public interface ImageRepository extends JpaRepository<Image, String> {
               and (:afterId is null or image.id > :afterId)
               and (
                     (
-                        image.status in (
-                            com.fitback.backend.domain.image.entity.ImageStatus.PENDING,
+                        image.status =
                             com.fitback.backend.domain.image.entity.ImageStatus.PENDING_UPLOAD
-                        )
                         and image.createdAt < :createdBefore
                     )
                     or (

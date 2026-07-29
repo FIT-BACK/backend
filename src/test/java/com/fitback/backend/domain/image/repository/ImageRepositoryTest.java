@@ -26,7 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 class ImageRepositoryTest {
 
     private static final List<ImageStatus> CLEANUP_STATUSES = List.of(
-            ImageStatus.PENDING,
             ImageStatus.PENDING_UPLOAD,
             ImageStatus.READY,
             ImageStatus.REJECTED,
@@ -102,13 +101,10 @@ class ImageRepositoryTest {
     }
 
     @Test
-    void findsBothLegacyAndFuturePendingUploadStatuses() {
-        Member owner = persistOwner("pending-compatibility@fitback.com");
-        Image legacyPending = pendingImage("legacy-pending", owner);
-        Image futurePending = pendingImage("future-pending", owner);
-        ReflectionTestUtils.setField(legacyPending, "status", ImageStatus.PENDING);
-        entityManager.persist(legacyPending);
-        entityManager.persist(futurePending);
+    void findsPendingUploadStatus() {
+        Member owner = persistOwner("pending-upload@fitback.com");
+        Image pending = pendingImage("pending-upload", owner);
+        entityManager.persist(pending);
         entityManager.flush();
 
         List<Image> candidates = imageRepository.findCleanupCandidates(
@@ -120,7 +116,7 @@ class ImageRepositoryTest {
         );
 
         assertThat(candidates).extracting(Image::getId)
-                .contains("legacy-pending", "future-pending");
+                .containsExactly("pending-upload");
     }
 
     private Member persistOwner(String email) {

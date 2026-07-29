@@ -28,7 +28,7 @@ class ImageLifecycleTest {
 
     @Test
     void rejectsActivationForAnotherOwner() {
-        Image image = image(member(1L), ImagePurpose.ANALYSIS_ORIGINAL);
+        Image image = image(member(1L), ImagePurpose.ANALYSIS);
         image.completeUpload(1024, "image/jpeg", LocalDateTime.of(2026, 7, 22, 9, 0));
 
         assertThatThrownBy(() -> image.activateForAnalysis(
@@ -38,23 +38,12 @@ class ImageLifecycleTest {
     }
 
     @Test
-    void acceptsLegacyPurposeAndPendingStatusDuringReleaseBRollbackWindow() {
-        Image image = image(member(1L), ImagePurpose.ANALYSIS_ORIGINAL);
-        ReflectionTestUtils.setField(image, "status", ImageStatus.PENDING);
-
-        image.completeUpload(1024, "image/jpeg", LocalDateTime.of(2026, 7, 22, 9, 0));
-        image.activateForAnalysis(1L, Instant.parse("2026-07-22T00:01:00Z"));
-
-        assertThat(image.getStatus()).isEqualTo(ImageStatus.ACTIVE);
-    }
-
-    @Test
     void rejectsFileLargerThanFiveMebibytes() {
         assertThatThrownBy(() -> Image.createPending(
                 "too-large",
                 member(1L),
                 "prod/images/analysis_original/2026/07/too-large.jpg",
-                ImagePurpose.ANALYSIS_ORIGINAL,
+                ImagePurpose.ANALYSIS,
                 "image/jpeg",
                 Image.MAX_FILE_SIZE + 1,
                 ImageVisibility.PRIVATE,

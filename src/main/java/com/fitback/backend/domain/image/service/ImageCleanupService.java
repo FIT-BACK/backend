@@ -32,7 +32,6 @@ public class ImageCleanupService {
     public List<String> claimExpiredImages() {
         LocalDateTime createdBefore = LocalDateTime.now(clock).minusHours(24);
         List<ImageStatus> cleanupStatuses = List.of(
-                ImageStatus.PENDING,
                 ImageStatus.PENDING_UPLOAD,
                 ImageStatus.READY,
                 ImageStatus.REJECTED,
