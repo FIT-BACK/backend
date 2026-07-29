@@ -58,6 +58,7 @@ public class SecurityConfig {
     private static final String[] PUBLIC_READ_URLS = {
             "/api/v1/trends/**",
             "/api/v1/tags/**",
+            "/api/v1/content-search",
             "/api/v1/lookbooks",
             "/api/v1/lookbooks/*"
     };

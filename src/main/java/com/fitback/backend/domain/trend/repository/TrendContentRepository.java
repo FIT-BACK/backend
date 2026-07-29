@@ -16,6 +16,24 @@ public interface TrendContentRepository extends JpaRepository<TrendContent, Long
     @Query("""
             SELECT trend
             FROM TrendContent trend
+            WHERE LOCATE(:keyword, LOWER(trend.title)) > 0
+               OR LOCATE(:keyword, LOWER(CAST(COALESCE(trend.description, '') AS String))) > 0
+               OR EXISTS (
+                  SELECT trendTag.id
+                  FROM TrendTag trendTag
+                  WHERE trendTag.trend = trend
+                    AND LOCATE(:keyword, LOWER(trendTag.tag.tagName)) > 0
+               )
+            ORDER BY trend.createdAt DESC, trend.id DESC
+            """)
+    List<TrendContent> searchByKeyword(
+            @Param("keyword") String keyword,
+            Pageable pageable
+    );
+
+    @Query("""
+            SELECT trend
+            FROM TrendContent trend
             WHERE trend.createdAt < :cursorCreatedAt
                OR (trend.createdAt = :cursorCreatedAt AND trend.id < :cursorId)
             ORDER BY trend.createdAt DESC, trend.id DESC

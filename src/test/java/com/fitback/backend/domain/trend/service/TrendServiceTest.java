@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
@@ -173,6 +174,35 @@ class TrendServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TREND_NOT_FOUND)
                 );
+    }
+
+    @Test
+    void searchTrendsMapsTagsAndSavedState() {
+        TrendContent trend = createTrend(100L, LocalDateTime.of(2026, 7, 16, 12, 0));
+        when(trendContentRepository.searchByKeyword(eq("minimal"), any(Pageable.class)))
+                .thenReturn(List.of(trend));
+        when(trendTagRepository.findAllByTrendIdInOrderByIdAsc(List.of(100L)))
+                .thenReturn(List.of(TrendTag.create(trend, minimalTag)));
+        when(closetSaveRepository.findSavedTargetIds(
+                1L,
+                com.fitback.backend.domain.closet.entity.ClosetTargetType.TREND,
+                List.of(100L)
+        )).thenReturn(java.util.Set.of(100L));
+
+        List<TrendResponse.TrendItem> response = trendService.searchTrends(
+                "minimal",
+                member
+        );
+
+        assertThat(response).singleElement().satisfies(item -> {
+            assertThat(item.trendId()).isEqualTo(100L);
+            assertThat(item.tags()).containsExactly("미니멀");
+            assertThat(item.isSaved()).isTrue();
+        });
+        org.mockito.ArgumentCaptor<Pageable> pageable =
+                org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        verify(trendContentRepository).searchByKeyword(eq("minimal"), pageable.capture());
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(10);
     }
 
     private TrendContent createTrend(Long trendId, LocalDateTime createdAt) {
