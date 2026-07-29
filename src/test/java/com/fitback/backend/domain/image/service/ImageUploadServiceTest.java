@@ -120,8 +120,8 @@ class ImageUploadServiceTest {
         );
         assertThat(response.uploadFields())
                 .containsEntry("key", savedImage.getObjectKey());
-        assertThat(savedImage.getPurpose()).isEqualTo(ImagePurpose.ANALYSIS_ORIGINAL);
-        assertThat(savedImage.getStatus()).isEqualTo(ImageStatus.PENDING);
+        assertThat(savedImage.getPurpose()).isEqualTo(ImagePurpose.ANALYSIS);
+        assertThat(savedImage.getStatus()).isEqualTo(ImageStatus.PENDING_UPLOAD);
         assertThat(savedImage.getContentType()).isEqualTo("image/jpeg");
         verify(imageUploadUrlPort).create(
                 any(),

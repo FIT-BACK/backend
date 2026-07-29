@@ -840,13 +840,13 @@ image_policy_contract="$(docker exec "$container_name" mysql -uroot \
       ORDER BY image_id;")"
 
 expected_image_policy_contract="$(printf '%s\n' \
-  'legacy-analysis:ANALYSIS_ORIGINAL:PENDING:prod/images/analysis_original/legacy-analysis.jpg' \
-  'legacy-lookbook-matched:LOOKBOOK_MATCHED:DELETE_FAILED:prod/images/lookbook_matched/legacy-matched.jpg' \
-  'legacy-lookbook-original:LOOKBOOK_ORIGINAL:READY:prod/images/lookbook_original/legacy-original.jpg' \
+  'legacy-analysis:ANALYSIS:PENDING_UPLOAD:prod/images/analysis_original/legacy-analysis.jpg' \
+  'legacy-lookbook-matched:LOOKBOOK:DELETE_FAILED:prod/images/lookbook_matched/legacy-matched.jpg' \
+  'legacy-lookbook-original:LOOKBOOK:READY:prod/images/lookbook_original/legacy-original.jpg' \
   'legacy-profile:PROFILE:REJECTED:prod/images/profile/legacy-profile.jpg')"
 
 if [ "$image_policy_contract" != "$expected_image_policy_contract" ]; then
-  echo 'Unexpected V4 image policy migration result:' >&2
+  echo 'Unexpected V18 image lifecycle backfill result:' >&2
   printf '%s\n' "$image_policy_contract" >&2
   exit 1
 fi
@@ -893,6 +893,31 @@ docker exec "$container_name" mysql -uroot fitback -e \
        'future-contract-write', 9001, 'images/analysis/9001/2026/07/future-contract.jpg',
        'ANALYSIS', 'image/jpeg', 1024, 'PENDING_UPLOAD', 'PRIVATE', 0, NOW()
    );"
+
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V18__backfill_image_lifecycle_values.sql
+
+rollback_catchup_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(image_id, ':', purpose, ':', status)
+      FROM fitback.image
+      WHERE image_id IN (
+        'legacy-profile',
+        'rollback-legacy-write',
+        'future-contract-write'
+      )
+      ORDER BY image_id;")"
+
+expected_rollback_catchup_contract="$(printf '%s\n' \
+  'future-contract-write:ANALYSIS:PENDING_UPLOAD' \
+  'legacy-profile:LOOKBOOK:PENDING_UPLOAD' \
+  'rollback-legacy-write:ANALYSIS:PENDING_UPLOAD')"
+
+if [ "$rollback_catchup_contract" != "$expected_rollback_catchup_contract" ]; then
+  echo 'Unexpected Release B rollback catch-up result:' >&2
+  printf '%s\n' "$rollback_catchup_contract" >&2
+  exit 1
+fi
 
 if docker exec "$container_name" mysql -uroot fitback -e \
   "UPDATE image SET purpose = 'UNKNOWN' WHERE image_id = 'legacy-profile';" \

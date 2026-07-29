@@ -106,7 +106,7 @@ class ImageRepositoryTest {
         Member owner = persistOwner("pending-compatibility@fitback.com");
         Image legacyPending = pendingImage("legacy-pending", owner);
         Image futurePending = pendingImage("future-pending", owner);
-        ReflectionTestUtils.setField(futurePending, "status", ImageStatus.PENDING_UPLOAD);
+        ReflectionTestUtils.setField(legacyPending, "status", ImageStatus.PENDING);
         entityManager.persist(legacyPending);
         entityManager.persist(futurePending);
         entityManager.flush();

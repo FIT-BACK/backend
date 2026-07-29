@@ -173,8 +173,8 @@ public class ImageUploadService {
 
     private ImagePurpose toStoredPurpose(ImageUploadPurpose purpose) {
         return switch (purpose) {
-            case ANALYSIS -> ImagePurpose.ANALYSIS_ORIGINAL;
-            case LOOKBOOK -> ImagePurpose.LOOKBOOK_ORIGINAL;
+            case ANALYSIS -> ImagePurpose.ANALYSIS;
+            case LOOKBOOK -> ImagePurpose.LOOKBOOK;
             case PROFILE -> ImagePurpose.PROFILE;
         };
     }
