@@ -53,6 +53,7 @@ public enum ErrorCode {
     MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER404_1", "회원을 찾을 수 없습니다."),
 
     NOTIFICATION_SETTING_EMPTY(HttpStatus.BAD_REQUEST, "NOTIFICATION400_1", "변경할 알림 설정 값이 없습니다."),
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION404_1", "알림을 찾을 수 없습니다."),
 
     IMAGE_UNSUPPORTED_CONTENT_TYPE(
             HttpStatus.BAD_REQUEST,
