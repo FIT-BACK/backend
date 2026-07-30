@@ -81,9 +81,10 @@
       form.append("file", file);
       const uploadResponse = await fetch(upload.uploadUrl, {
         method: upload.uploadMethod,
-        body: form
+        body: form,
+        mode: "no-cors"
       });
-      if (!uploadResponse.ok) {
+      if (uploadResponse.type !== "opaque" && !uploadResponse.ok) {
         throw new Error(`storage upload: ${uploadResponse.status}`);
       }
 
