@@ -15,7 +15,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface AnalysisReportRepository extends JpaRepository<AnalysisReport, Long> {
 
-    boolean existsByOriginalImageId(String imageId);
+    boolean existsByOriginalImageIdAndDeletedAtIsNull(String imageId);
 
     long countByMemberIdAndDeletedAtIsNull(Long memberId);
 

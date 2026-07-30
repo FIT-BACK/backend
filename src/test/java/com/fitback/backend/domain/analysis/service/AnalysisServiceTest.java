@@ -17,6 +17,7 @@ import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImagePurpose;
 import com.fitback.backend.domain.image.entity.ImageVisibility;
+import com.fitback.backend.domain.image.event.ImageReferencesReleasedEvent;
 import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -67,6 +69,9 @@ class AnalysisServiceTest {
     @Mock
     private AnalysisReportSaveService analysisReportSaveService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private final Clock clock = Clock.fixed(
             Instant.parse("2026-07-22T00:00:00Z"),
             ZoneOffset.UTC
@@ -84,6 +89,7 @@ class AnalysisServiceTest {
                 recommendationResultProvider,
                 imageUploadService,
                 analysisReportSaveService,
+                eventPublisher,
                 clock
         );
     }
@@ -271,7 +277,18 @@ class AnalysisServiceTest {
     @Test
     void softDeletesOwnedReportWithoutRemovingRelationships() {
         Member member = member(1L);
-        AnalysisReport report = report(501L, member);
+        Image image = Image.createPending(
+                "analysis-image",
+                member,
+                "images/analysis/1/2026/07/analysis-image.jpg",
+                ImagePurpose.ANALYSIS,
+                "image/jpeg",
+                1024,
+                ImageVisibility.PRIVATE,
+                clock.instant().plusSeconds(300)
+        );
+        AnalysisReport report = AnalysisReport.create(member, image, 70);
+        ReflectionTestUtils.setField(report, "id", 501L);
         when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
                 .thenReturn(Optional.of(report));
 
@@ -279,6 +296,7 @@ class AnalysisServiceTest {
 
         assertThat(report.getDeletedAt()).isEqualTo(clock.instant());
         verify(analysisReportRepository, never()).delete(any());
+        verify(eventPublisher).publishEvent(any(ImageReferencesReleasedEvent.class));
     }
 
     private Member member(Long id) {

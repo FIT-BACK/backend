@@ -18,6 +18,7 @@ import com.fitback.backend.domain.analysis.service.AnalysisReportSaveService;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImagePurpose;
 import com.fitback.backend.domain.image.entity.ImageStatus;
+import com.fitback.backend.domain.image.event.ImageReferencesReleasedEvent;
 import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
 import com.fitback.backend.domain.lookbook.dto.LookbookRequest;
 import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
@@ -57,6 +58,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -102,6 +104,9 @@ class LookbookServiceTest {
 
     @Mock
     private ProductRepository productRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private LookbookService lookbookService;
@@ -441,6 +446,7 @@ class LookbookServiceTest {
                 eq(ImageStatus.ACTIVE),
                 any(Instant.class)
         );
+        verify(eventPublisher).publishEvent(any(ImageReferencesReleasedEvent.class));
     }
 
     @Test
@@ -627,6 +633,7 @@ class LookbookServiceTest {
         lookbookService.deleteLookbook(100L, member);
 
         assertThat(lookbook.getDeletedAt()).isNotNull();
+        verify(eventPublisher).publishEvent(any(ImageReferencesReleasedEvent.class));
     }
 
     @Test

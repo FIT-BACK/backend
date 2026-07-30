@@ -7,6 +7,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -70,6 +71,29 @@ public class ImageCleanupService {
             }
         }
         return claimedImageIds;
+    }
+
+    @Transactional
+    public List<String> claimReleasedActiveImages(Collection<String> imageIds) {
+        List<String> distinctImageIds = imageIds.stream().distinct().toList();
+        if (distinctImageIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> claimedImageIds = new ArrayList<>();
+        List<Image> candidates = imageRepository.findAllByIdInAndStatusForUpdate(
+                distinctImageIds,
+                ImageStatus.ACTIVE
+        );
+        for (Image image : candidates) {
+            boolean referenced = imageReferenceProbes.stream()
+                    .anyMatch(probe -> probe.exists(image.getId()));
+            if (!referenced) {
+                image.claimActiveForDeletion(clock.instant());
+                claimedImageIds.add(image.getId());
+            }
+        }
+        return List.copyOf(claimedImageIds);
     }
 
     @Transactional
