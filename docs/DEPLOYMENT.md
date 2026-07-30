@@ -319,8 +319,8 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 
 ## 임시 P0 운영 스모크
 
-`/swagger-ui/index.html`은 검증 창 동안 기존 Swagger UI를 대체하여 P0 JPEG/PNG의
-presigned POST, 업로드 완료,
+`/swagger-ui/prototype-smoke.html`은 검증 창 동안 루트 안내 페이지의 `P0 Smoke`
+링크로 진입하여 P0 JPEG/PNG의 presigned POST, 업로드 완료,
 분석, Shopify 추천, 상품 상세 `LIVE` 조회를 한 번 확인하기 위한 임시 경로다.
 운영 검증 중에만 배포하고 결과 확인 직후 제거 PR을 병합한다.
 
