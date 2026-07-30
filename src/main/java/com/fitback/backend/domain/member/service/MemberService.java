@@ -2,6 +2,7 @@ package com.fitback.backend.domain.member.service;
 
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
+import com.fitback.backend.domain.image.repository.ImageRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.entity.WithdrawalEmailBlock;
@@ -40,6 +41,7 @@ public class MemberService {
     private final TagRepository tagRepository;
 
     private final AnalysisReportRepository analysisReportRepository;
+    private final ImageRepository imageRepository;
     private final ClosetSaveRepository closetSaveRepository;
     private final LookbookRepository lookbookRepository;
     private final LookbookLikeRepository lookbookLikeRepository;
@@ -145,7 +147,12 @@ public class MemberService {
         //룩북은 삭제하지 않고 탈퇴 회원 계정으로 익명화 (member 삭제 전에)
         lookbookRepository.reassignToWithdrawnMember(deleteMember.getId(), withdrawnMember);
 
-        //그 외(마이 클로젯·분석·관심태그·본인 좋아요)는 cascade로 삭제
+        //분석은 이미지와 복합 FK로 연결되어 있어 먼저 삭제하고,
+        //룩북에 남을 수 있는 이미지는 탈퇴 회원 계정으로 재배정한다.
+        analysisReportRepository.deleteAllByMemberId(deleteMember.getId());
+        imageRepository.reassignToWithdrawnMember(deleteMember.getId(), withdrawnMember);
+
+        //그 외(마이 클로젯·관심태그·본인 좋아요)는 cascade로 삭제
         memberRepository.delete(deleteMember);
 
 
