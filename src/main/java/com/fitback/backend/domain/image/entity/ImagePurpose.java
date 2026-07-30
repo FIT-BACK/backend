@@ -12,4 +12,8 @@ public enum ImagePurpose {
     public boolean isLookbook() {
         return this == LOOKBOOK;
     }
+
+    public boolean isProfile() {
+        return this == PROFILE;
+    }
 }

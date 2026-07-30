@@ -2,7 +2,10 @@ package com.fitback.backend.domain.member.service;
 
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.event.ImageReferencesReleasedEvent;
 import com.fitback.backend.domain.image.repository.ImageRepository;
+import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.entity.WithdrawalEmailBlock;
@@ -23,12 +26,14 @@ import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.util.HmacUtil;
 import com.fitback.backend.global.util.LowercaseNormalizer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -42,6 +47,8 @@ public class MemberService {
 
     private final AnalysisReportRepository analysisReportRepository;
     private final ImageRepository imageRepository;
+    private final ImageUploadService imageUploadService;
+    private final MemberProfileImageService memberProfileImageService;
     private final ClosetSaveRepository closetSaveRepository;
     private final LookbookRepository lookbookRepository;
     private final LookbookLikeRepository lookbookLikeRepository;
@@ -50,6 +57,7 @@ public class MemberService {
 
     private final WithdrawalEmailBlockRepository withdrawalEmailBlockRepository;
     private final HmacUtil hmacUtil;
+    private final ApplicationEventPublisher eventPublisher;
 
     //회원정보 수정
     @Transactional
@@ -63,9 +71,9 @@ public class MemberService {
         }
 
         //프로필 이미지: 전달된 경우에만 교체 (미전송/null 시 기존 유지)
-        if(dto.profileImageUrl() != null){
-            member.changeProfileImageUrl(dto.profileImageUrl());
-        }
+        String profileImageUrl = dto.profileImageId() == null
+                ? memberProfileImageService.resolveProfileImageUrl(member)
+                : replaceProfileImage(member, dto.profileImageId());
 
         //관심 태그: 전달된 경우에만 교체 (미전송 시 기존 유지, [] 전체 해제)
         List<MemberTag> memberTagList;
@@ -75,7 +83,7 @@ public class MemberService {
             memberTagList = memberTagRepository.findByMemberIdFetchTag(member.getId());
         }
 
-        return MemberResponse.toUpdateMemberResponse(member, memberTagList);
+        return MemberResponse.toUpdateMemberResponse(member, memberTagList, profileImageUrl);
     }
 
 
@@ -112,7 +120,15 @@ public class MemberService {
         //현재 회원의 관심 태그 (fetch join으로 N+1 방지)
         List<MemberTag> memberTagList = memberTagRepository.findByMemberIdFetchTag(member.getId());
 
-        return MemberResponse.toMyPageResponse(savedCount, analysisCount, uploadCount, member, memberTagList);
+        String profileImageUrl = memberProfileImageService.resolveProfileImageUrl(member);
+        return MemberResponse.toMyPageResponse(
+                savedCount,
+                analysisCount,
+                uploadCount,
+                member,
+                memberTagList,
+                profileImageUrl
+        );
     }
 
     //회원 탈퇴
@@ -147,6 +163,11 @@ public class MemberService {
         //룩북은 삭제하지 않고 탈퇴 회원 계정으로 익명화 (member 삭제 전에)
         lookbookRepository.reassignToWithdrawnMember(deleteMember.getId(), withdrawnMember);
 
+        //프로필 이미지 참조를 먼저 해제해야 이미지 소유자를 안전하게 변경할 수 있다.
+        String profileImageId = deleteMember.getProfileImageId();
+        deleteMember.clearProfileImageId();
+        memberRepository.flush();
+
         //분석은 이미지와 복합 FK로 연결되어 있어 먼저 삭제하고,
         //룩북에 남을 수 있는 이미지는 탈퇴 회원 계정으로 재배정한다.
         analysisReportRepository.deleteAllByMemberId(deleteMember.getId());
@@ -155,6 +176,7 @@ public class MemberService {
         //그 외(마이 클로젯·관심태그·본인 좋아요)는 cascade로 삭제
         memberRepository.delete(deleteMember);
 
+        publishReleasedProfileImage(profileImageId);
 
     }
 
@@ -171,14 +193,14 @@ public class MemberService {
         applyNickname(member,dto.nickname());
 
         //프로필 이미지가 전달된 경우 프로필 이미지 설정
-        if(dto.profileImageUrl() != null){
-            member.changeProfileImageUrl(dto.profileImageUrl());
-        }
+        String profileImageUrl = dto.profileImageId() == null
+                ? memberProfileImageService.resolveProfileImageUrl(member)
+                : replaceProfileImage(member, dto.profileImageId());
 
         //태그 설정
         List<MemberTag> memberTagList = setTags(member, dto.tagIds());
 
-        return MemberResponse.toOnboardingResponse(member, memberTagList);
+        return MemberResponse.toOnboardingResponse(member, memberTagList, profileImageUrl);
     }
 
     //회원 태그 변경
@@ -240,6 +262,30 @@ public class MemberService {
             return true;
         }
         return !memberRepository.existsByNickname(nickname);
+    }
+
+    private String replaceProfileImage(Member member, String profileImageId) {
+        //업로드가 완료된 본인 소유 PROFILE 이미지만 회원 프로필에 연결
+        Image profileImage = imageUploadService.activateProfileImage(
+                member.getId(),
+                profileImageId
+        );
+        String previousProfileImageId = member.getProfileImageId();
+        member.changeProfileImageId(profileImage.getId());
+
+        //교체된 이전 이미지는 트랜잭션 커밋 후 남은 참조를 확인해 정리
+        if (!Objects.equals(previousProfileImageId, profileImage.getId())) {
+            publishReleasedProfileImage(previousProfileImageId);
+        }
+        return imageUploadService.createReadUrl(profileImage);
+    }
+
+    private void publishReleasedProfileImage(String profileImageId) {
+        if (profileImageId != null) {
+            eventPublisher.publishEvent(
+                    new ImageReferencesReleasedEvent(List.of(profileImageId))
+            );
+        }
     }
 
     //회원의 태그 설정 함수

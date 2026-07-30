@@ -28,6 +28,7 @@ public class AuthService {
     private final MemberRepository memberRepository;
     private final JwtUtil jwtUtil;
     private final TempTokenStore tempTokenStore;
+    private final MemberProfileImageService memberProfileImageService;
 
     private final RejoinBlockChecker rejoinBlockChecker;
     private final NotificationSettingService notificationSettingService;
@@ -103,7 +104,12 @@ public class AuthService {
         //발급한 RefreshToken 저장
         member.updateRefreshToken(refreshToken);
 
-        return MemberResponse.toLoginResponse(accessToken, refreshToken, member);
+        return MemberResponse.toLoginResponse(
+                accessToken,
+                refreshToken,
+                member,
+                memberProfileImageService.resolveProfileImageUrl(member)
+        );
     }
 
     @Transactional
@@ -165,4 +171,5 @@ public class AuthService {
 
         return MemberResponse.toTokenExchangeResponse(accessToken, refreshToken, payload.isNewMember());
     }
+
 }
