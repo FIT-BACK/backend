@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.notification.entity.Notification;
@@ -24,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
@@ -43,8 +43,8 @@ class NotificationControllerIntegrationTest {
     @Autowired
     private NotificationRepository notificationRepository;
 
-    //JSON 생성/파싱용, 컨텍스트에 빈이 없어 직접 생성
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    private ObjectMapper objectMapper;
 
     //회원가입 후 access 토큰 반환
     private String signUpAndGetAccessToken(String email) throws Exception {
@@ -232,5 +232,29 @@ class NotificationControllerIntegrationTest {
                         .header("Authorization", bearer(accessToken)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOTIFICATION404_1"));
+    }
+
+    //다른 회원의 알림은 삭제하지 않고 404
+    @Test
+    void deleteOtherMemberNotificationNotFoundTest() throws Exception {
+        String accessToken =
+                signUpAndGetAccessToken("delete-owner-a@fitback.com");
+        signUpAndGetAccessToken("delete-owner-b@fitback.com");
+        Member otherMember =
+                memberRepository.findByEmail("delete-owner-b@fitback.com").orElseThrow();
+        Notification notification =
+                saveNotification(otherMember, NotificationType.LOOKBOOK_LIKED, 10L);
+
+        mockMvc.perform(delete(
+                        "/api/v1/notifications/{notificationId}",
+                        notification.getId()
+                )
+                        .header("Authorization", bearer(accessToken)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOTIFICATION404_1"));
+
+        //404 응답 후에도 다른 회원의 알림은 유지
+        assertThat(notificationRepository.findById(notification.getId()))
+                .isPresent();
     }
 }

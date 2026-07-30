@@ -230,6 +230,21 @@ class NotificationServiceTest {
         verify(notificationRepository).delete(notification);
     }
 
+    //알림 삭제 - 없거나 다른 회원의 알림이면 동일한 404
+    @Test
+    void deleteNotificationNotFoundTest() {
+        when(notificationRepository.findByIdAndMemberId(1L, 1L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> notificationService.deleteNotification(1L, 1L))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.NOTIFICATION_NOT_FOUND));
+
+        //소유권 검증 실패 시 삭제 미발생
+        verify(notificationRepository, never()).delete(any(Notification.class));
+    }
+
     //페이지 크기 범위를 벗어나면 조회 전 검증 오류
     @Test
     void getNotificationsInvalidPageSizeTest() {
