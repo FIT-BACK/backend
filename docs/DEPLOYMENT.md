@@ -317,6 +317,20 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 
 Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. GitHub Actions는 managed node 전달 제한 60초와 실행 제한 900초를 합친 구간에 여유 시간을 더해 polling한다. workflow 중단 또는 polling timeout이 발생하면 `ssm:CancelCommand`를 호출하고, 최대 60초 동안 terminal 상태를 확인한 뒤 마지막 상태와 표준 출력을 기록한다. `send-command --timeout-seconds`는 실행 제한이 아니라 managed node 전달 제한이다.
 
+## 임시 P0 운영 스모크
+
+`/swagger-ui/prototype-smoke.html`은 P0 JPEG/PNG의 presigned POST, 업로드 완료,
+분석, Shopify 추천, 상품 상세 `LIVE` 조회를 한 번 확인하기 위한 임시 경로다.
+운영 검증 중에만 배포하고 결과 확인 직후 제거 PR을 병합한다.
+
+1. JPEG 1개와 PNG 1개를 선택해 운영 흐름을 실행한다.
+2. 파일 SHA-256, 분석 태그, 추천 필드, 상품 상세 `dataStatus`를 기록한다.
+3. `임시 계정 정리`를 실행한다. 실패 시 화면에 표시된 이메일을 운영 DB에서 수동 정리한다.
+4. 임시 페이지 제거 PR을 병합하고 해당 URL이 `404`인지 확인한다.
+
+페이지는 스토리지 POST 응답과 backend의 `/complete` 검증이 모두 성공해야 업로드 완료로
+판정한다. 액세스 토큰, 비밀번호, presigned 필드는 화면이나 로그에 출력하지 않는다.
+
 ## 배포 및 Rollback 검증 범위
 
 운영 서비스에 고의 장애를 주지 않기 위해 실제 AWS와 결정적 mock 통합 테스트의 검증 범위를 구분한다.
