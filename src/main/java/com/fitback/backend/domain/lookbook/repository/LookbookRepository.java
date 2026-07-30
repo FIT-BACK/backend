@@ -17,6 +17,17 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
 
     long countByMemberIdAndDeletedAtIsNull(Long memberId);
 
+    @Query("""
+            select count(lookbook) > 0
+            from Lookbook lookbook
+            where lookbook.deletedAt is null
+              and (
+                    lookbook.originalImage.id = :imageId
+                    or lookbook.matchedImage.id = :imageId
+              )
+            """)
+    boolean existsActiveImageReference(@Param("imageId") String imageId);
+
     @EntityGraph(
             attributePaths = {
                 "member", "matchedProduct", "matchedImage", "originalImage"

@@ -5,6 +5,7 @@ import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.analysis.service.AnalysisReportSaveService;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImageStatus;
+import com.fitback.backend.domain.image.event.ImageReferencesReleasedEvent;
 import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
 import com.fitback.backend.domain.lookbook.dto.LookbookRequest;
 import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
@@ -37,6 +38,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -62,6 +64,7 @@ public class LookbookService {
     private final AnalysisReportSaveService analysisReportSaveService;
     private final RecommendedItemRepository recommendedItemRepository;
     private final ProductRepository productRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     // 룩북 업로드
     @Transactional
@@ -134,6 +137,7 @@ public class LookbookService {
                 request.sourceReportId()
         );
 
+        List<String> releasedImageIds = imageIdsOf(lookbook);
         updateLookbook(lookbook, request, assets);
 
         // 수정된 태그로 교체
@@ -145,6 +149,7 @@ public class LookbookService {
                 .toList();
         lookbookTagRepository.saveAll(lookbookTags);
         activateReadyImages(assets);
+        publishReleasedImageReferences(releasedImageIds);
 
         return LookbookResponse.LookbookUpdate.toLookbookUpdate(lookbook);
     }
@@ -291,7 +296,9 @@ public class LookbookService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "룩북 삭제 권한이 없습니다.");
         }
 
+        List<String> releasedImageIds = imageIdsOf(lookbook);
         lookbook.softDelete();
+        publishReleasedImageReferences(releasedImageIds);
     }
 
     // 룩북 좋아요
@@ -679,6 +686,23 @@ public class LookbookService {
                 ImageStatus.ACTIVE,
                 Instant.now()
         );
+    }
+
+    private List<String> imageIdsOf(Lookbook lookbook) {
+        return java.util.stream.Stream.of(
+                        lookbook.getOriginalImage(),
+                        lookbook.getMatchedImage()
+                )
+                .filter(Objects::nonNull)
+                .map(Image::getId)
+                .distinct()
+                .toList();
+    }
+
+    private void publishReleasedImageReferences(List<String> imageIds) {
+        if (!imageIds.isEmpty()) {
+            eventPublisher.publishEvent(new ImageReferencesReleasedEvent(imageIds));
+        }
     }
 
     private record LookbookAssets(
