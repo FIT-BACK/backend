@@ -69,7 +69,7 @@ test "$root_status" = '200'
 grep -Eiq '^Content-Type: text/html([;[:space:]]|$)' "$response_headers"
 grep -Fq 'FITBACK Backend API' "$response_body"
 grep -Fq 'href="/swagger-ui.html"' "$response_body"
-grep -Fq 'href="/swagger-ui/prototype-smoke.html"' "$response_body"
+grep -Fq 'href="/p0"' "$response_body"
 grep -Fq 'href="/actuator/health/readiness"' "$response_body"
 
 echo 'Nginx public entrypoint tests passed.'
