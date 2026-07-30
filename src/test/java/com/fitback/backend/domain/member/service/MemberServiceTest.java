@@ -146,6 +146,29 @@ class MemberServiceTest {
         verify(memberRepository, never()).existsByNickname(anyString());
     }
 
+    //회원정보 수정 - 현재 프로필 이미지 재전송 시 재활성화 없이 기존 이미지 유지
+    @Test
+    void updateMemberSameProfileImageKeepsActiveImageTest(){
+        Member member = createTestMember(1L, "test@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
+        member.changeProfileImageId("profile-image");
+        AuthMember authMember = new AuthMember(member);
+        MemberRequest.UpdateMemberRequest request =
+                new MemberRequest.UpdateMemberRequest(null, "profile-image", null);
+
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(memberTagRepository.findByMemberIdFetchTag(1L)).thenReturn(List.of());
+        when(memberProfileImageService.resolveProfileImageUrl(member))
+                .thenReturn("https://cdn.example.com/profile");
+
+        MemberResponse.UpdateMemberResponse response =
+                memberService.updateMember(authMember, request);
+
+        assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/profile");
+        verify(imageUploadService, never())
+                .activateProfileImage(1L, "profile-image");
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
     //회원정보 수정 - 프로필 교체 시 이전 이미지의 참조 해제 이벤트 발행
     @Test
     void updateMemberReleasesPreviousProfileImageTest(){

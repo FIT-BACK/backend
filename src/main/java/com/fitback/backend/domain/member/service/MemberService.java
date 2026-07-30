@@ -71,9 +71,7 @@ public class MemberService {
         }
 
         //프로필 이미지: 전달된 경우에만 교체 (미전송/null 시 기존 유지)
-        String profileImageUrl = dto.profileImageId() == null
-                ? memberProfileImageService.resolveProfileImageUrl(member)
-                : replaceProfileImage(member, dto.profileImageId());
+        String profileImageUrl = applyProfileImage(member, dto.profileImageId());
 
         //관심 태그: 전달된 경우에만 교체 (미전송 시 기존 유지, [] 전체 해제)
         List<MemberTag> memberTagList;
@@ -193,9 +191,7 @@ public class MemberService {
         applyNickname(member,dto.nickname());
 
         //프로필 이미지가 전달된 경우 프로필 이미지 설정
-        String profileImageUrl = dto.profileImageId() == null
-                ? memberProfileImageService.resolveProfileImageUrl(member)
-                : replaceProfileImage(member, dto.profileImageId());
+        String profileImageUrl = applyProfileImage(member, dto.profileImageId());
 
         //태그 설정
         List<MemberTag> memberTagList = setTags(member, dto.tagIds());
@@ -262,6 +258,15 @@ public class MemberService {
             return true;
         }
         return !memberRepository.existsByNickname(nickname);
+    }
+
+    private String applyProfileImage(Member member, String profileImageId) {
+        //미전송 또는 현재 이미지 재전송은 재활성화하지 않고 기존 프로필 유지
+        if (profileImageId == null
+                || Objects.equals(member.getProfileImageId(), profileImageId)) {
+            return memberProfileImageService.resolveProfileImageUrl(member);
+        }
+        return replaceProfileImage(member, profileImageId);
     }
 
     private String replaceProfileImage(Member member, String profileImageId) {
