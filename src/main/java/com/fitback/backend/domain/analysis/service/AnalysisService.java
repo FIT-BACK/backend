@@ -9,6 +9,7 @@ import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.entity.ReportCustomTag;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.event.ImageReferencesReleasedEvent;
 import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
@@ -22,6 +23,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -42,6 +44,7 @@ public class AnalysisService {
     private final RecommendationResultProvider recommendationResultProvider;
     private final ImageUploadService imageUploadService;
     private final AnalysisReportSaveService analysisReportSaveService;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
     @Transactional
@@ -120,7 +123,13 @@ public class AnalysisService {
     @Transactional
     public void deleteReport(Long memberId, Long reportId) {
         // 화면에서는 즉시 숨기되 관계 데이터 보존을 위해 리포트 행은 soft delete한다.
-        findOwnedReport(memberId, reportId).softDelete(clock.instant());
+        AnalysisReport report = findOwnedReport(memberId, reportId);
+        report.softDelete(clock.instant());
+        if (report.getOriginalImage() != null) {
+            eventPublisher.publishEvent(new ImageReferencesReleasedEvent(
+                    List.of(report.getOriginalImage().getId())
+            ));
+        }
     }
 
     private AnalysisReport findOwnedReport(Long memberId, Long reportId) {

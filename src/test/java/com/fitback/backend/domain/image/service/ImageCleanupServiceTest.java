@@ -80,6 +80,38 @@ class ImageCleanupServiceTest {
         );
     }
 
+    @Test
+    void claimsReleasedActiveImageOnlyWhenNoDomainReferenceRemains() {
+        ImageRepository repository = mock(ImageRepository.class);
+        ImageObjectStorage storage = mock(ImageObjectStorage.class);
+        ImageReferenceProbe analysisReference = mock(ImageReferenceProbe.class);
+        ImageReferenceProbe lookbookReference = mock(ImageReferenceProbe.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-07-22T00:00:00Z"), ZoneOffset.UTC);
+        Image referenced = activeImage("referenced");
+        Image released = activeImage("released");
+        when(repository.findAllByIdInAndStatusForUpdate(
+                List.of("referenced", "released"),
+                ImageStatus.ACTIVE
+        )).thenReturn(List.of(referenced, released));
+        when(analysisReference.exists("referenced")).thenReturn(true);
+        when(analysisReference.exists("released")).thenReturn(false);
+        when(lookbookReference.exists("released")).thenReturn(false);
+        ImageCleanupService service = new ImageCleanupService(
+                repository,
+                storage,
+                List.of(analysisReference, lookbookReference),
+                clock
+        );
+
+        List<String> claimedIds = service.claimReleasedActiveImages(
+                List.of("referenced", "released")
+        );
+
+        assertThat(claimedIds).containsExactly("released");
+        assertThat(referenced.getStatus()).isEqualTo(ImageStatus.ACTIVE);
+        assertThat(released.getStatus()).isEqualTo(ImageStatus.DELETING);
+    }
+
     private Image image(String id) {
         Member member = Member.create(
                 id + "@example.com",
@@ -98,5 +130,16 @@ class ImageCleanupServiceTest {
                 ImageVisibility.PRIVATE,
                 Instant.parse("2026-07-21T00:00:00Z")
         );
+    }
+
+    private Image activeImage(String id) {
+        Image image = image(id);
+        image.completeUpload(
+                1024,
+                "image/jpeg",
+                java.time.LocalDateTime.of(2026, 7, 21, 1, 0)
+        );
+        image.activateForAnalysis(1L, Instant.parse("2026-07-21T01:00:00Z"));
+        return image;
     }
 }

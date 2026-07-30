@@ -194,6 +194,13 @@ public class Image extends BaseCreateTimeEntity {
         this.nextRetryAt = null;
     }
 
+    public void claimActiveForDeletion(Instant requestedAt) {
+        requireStatus(ImageStatus.ACTIVE);
+        this.status = ImageStatus.DELETING;
+        this.deleteRequestedAt = Objects.requireNonNull(requestedAt, "requestedAt must not be null");
+        this.nextRetryAt = null;
+    }
+
     public void markDeleted(Instant deletedAt) {
         requireStatus(ImageStatus.DELETING);
         this.status = ImageStatus.DELETED;

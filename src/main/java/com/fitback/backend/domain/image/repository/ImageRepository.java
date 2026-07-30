@@ -21,6 +21,19 @@ public interface ImageRepository extends JpaRepository<Image, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Image> findByIdAndOwnerId(String imageId, Long ownerId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select image
+            from Image image
+            where image.id in :imageIds
+              and image.status = :status
+            order by image.id
+            """)
+    List<Image> findAllByIdInAndStatusForUpdate(
+            @Param("imageIds") Collection<String> imageIds,
+            @Param("status") ImageStatus status
+    );
+
     @Modifying(flushAutomatically = true)
     @Query("""
             update Image image

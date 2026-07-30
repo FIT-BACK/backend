@@ -21,6 +21,7 @@ logs/
 .env
 .env.*
 !.env.example
+/.local/
 application-local.properties
 application-local.yaml
 application-secret.properties
