@@ -9,6 +9,7 @@ import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -17,6 +18,10 @@ public interface AnalysisReportRepository extends JpaRepository<AnalysisReport, 
     boolean existsByOriginalImageId(String imageId);
 
     long countByMemberIdAndDeletedAtIsNull(Long memberId);
+
+    @Modifying(flushAutomatically = true)
+    @Query("delete from AnalysisReport report where report.member.id = :memberId")
+    void deleteAllByMemberId(@Param("memberId") Long memberId);
 
     @EntityGraph(attributePaths = {"reportTags", "reportTags.tag"})
     Optional<AnalysisReport> findByIdAndMemberIdAndDeletedAtIsNull(Long reportId, Long memberId);

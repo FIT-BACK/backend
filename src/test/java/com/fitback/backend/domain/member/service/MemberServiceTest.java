@@ -2,6 +2,7 @@ package com.fitback.backend.domain.member.service;
 
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
+import com.fitback.backend.domain.image.repository.ImageRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.dto.MemberRequest;
@@ -54,6 +55,8 @@ class MemberServiceTest {
     private TagRepository tagRepository;
     @Mock
     private AnalysisReportRepository analysisReportRepository;
+    @Mock
+    private ImageRepository imageRepository;
     @Mock
     private ClosetSaveRepository closetSaveRepository;
     @Mock
@@ -733,10 +736,18 @@ class MemberServiceTest {
         memberService.deleteAccount(authMember);
 
         //좋아요 수 보정과 재배정이 회원 삭제보다 먼저
-        InOrder inOrder = inOrder(lookbookLikeRepository, lookbookRepository, memberRepository);
+        InOrder inOrder = inOrder(
+                lookbookLikeRepository,
+                lookbookRepository,
+                analysisReportRepository,
+                imageRepository,
+                memberRepository
+        );
         inOrder.verify(lookbookLikeRepository).findLookbookIdsByMemberId(1L);
         inOrder.verify(lookbookRepository).decrementLikeCountByIds(List.of(10L, 20L));
         inOrder.verify(lookbookRepository).reassignToWithdrawnMember(1L, withdrawnMember);
+        inOrder.verify(analysisReportRepository).deleteAllByMemberId(1L);
+        inOrder.verify(imageRepository).reassignToWithdrawnMember(1L, withdrawnMember);
         inOrder.verify(memberRepository).delete(deleteMember);
     }
 
