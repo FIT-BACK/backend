@@ -296,7 +296,9 @@ class AnalysisServiceTest {
 
         assertThat(report.getDeletedAt()).isEqualTo(clock.instant());
         verify(analysisReportRepository, never()).delete(any());
-        verify(eventPublisher).publishEvent(any(ImageReferencesReleasedEvent.class));
+        verify(eventPublisher).publishEvent(
+                new ImageReferencesReleasedEvent(List.of("analysis-image"))
+        );
     }
 
     private Member member(Long id) {

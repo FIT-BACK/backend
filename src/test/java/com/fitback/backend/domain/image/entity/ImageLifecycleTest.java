@@ -51,6 +51,18 @@ class ImageLifecycleTest {
         )).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void keepsActiveStatusWhenDeletionRequestTimeIsNull() {
+        Image image = image(member(1L), ImagePurpose.ANALYSIS);
+        image.completeUpload(1024, "image/jpeg", LocalDateTime.of(2026, 7, 22, 9, 0));
+        image.activateForAnalysis(1L, Instant.parse("2026-07-22T00:01:00Z"));
+
+        assertThatThrownBy(() -> image.claimActiveForDeletion(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("requestedAt must not be null");
+        assertThat(image.getStatus()).isEqualTo(ImageStatus.ACTIVE);
+    }
+
     private Image image(Member member, ImagePurpose purpose) {
         return Image.createPending(
                 "image-id",

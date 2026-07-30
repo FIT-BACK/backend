@@ -112,6 +112,56 @@ class ImageCleanupServiceTest {
         assertThat(released.getStatus()).isEqualTo(ImageStatus.DELETING);
     }
 
+    @Test
+    void keepsReleasedActiveImageWhenLookbookReferenceRemains() {
+        ImageRepository repository = mock(ImageRepository.class);
+        ImageObjectStorage storage = mock(ImageObjectStorage.class);
+        ImageReferenceProbe analysisReference = mock(ImageReferenceProbe.class);
+        ImageReferenceProbe lookbookReference = mock(ImageReferenceProbe.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-07-22T00:00:00Z"), ZoneOffset.UTC);
+        Image referenced = activeImage("lookbook-referenced");
+        when(repository.findAllByIdInAndStatusForUpdate(
+                List.of("lookbook-referenced"),
+                ImageStatus.ACTIVE
+        )).thenReturn(List.of(referenced));
+        when(analysisReference.exists("lookbook-referenced")).thenReturn(false);
+        when(lookbookReference.exists("lookbook-referenced")).thenReturn(true);
+        ImageCleanupService service = new ImageCleanupService(
+                repository,
+                storage,
+                List.of(analysisReference, lookbookReference),
+                clock
+        );
+
+        List<String> claimedIds = service.claimReleasedActiveImages(
+                List.of("lookbook-referenced")
+        );
+
+        assertThat(claimedIds).isEmpty();
+        assertThat(referenced.getStatus()).isEqualTo(ImageStatus.ACTIVE);
+    }
+
+    @Test
+    void returnsStaleDeletingImagesForRetry() {
+        ImageRepository repository = mock(ImageRepository.class);
+        ImageObjectStorage storage = mock(ImageObjectStorage.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-07-22T02:00:00Z"), ZoneOffset.UTC);
+        Image stale = image("stale");
+        stale.claimForDeletion(Instant.parse("2026-07-22T00:00:00Z"));
+        when(repository.findStaleDeletingImages(
+                Instant.parse("2026-07-22T01:00:00Z"),
+                org.springframework.data.domain.PageRequest.of(0, 50)
+        )).thenReturn(List.of(stale));
+        ImageCleanupService service = new ImageCleanupService(
+                repository,
+                storage,
+                List.of(),
+                clock
+        );
+
+        assertThat(service.findStaleDeletingImagesForRetry()).containsExactly("stale");
+    }
+
     private Image image(String id) {
         Member member = Member.create(
                 id + "@example.com",
