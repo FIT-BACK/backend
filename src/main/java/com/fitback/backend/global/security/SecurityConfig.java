@@ -44,6 +44,10 @@ public class SecurityConfig {
             "/v3/api-docs/**"
     };
 
+    private static final String[] PROTOTYPE_URLS = {
+            "/prototype-smoke.html"
+    };
+
     private static final String[] NO_AUTH_URLS = {
             "/api/v1/auth/sign",
             "/api/v1/auth/login",
@@ -86,6 +90,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(SWAGGER_URLS).permitAll()
+                        .requestMatchers(PROTOTYPE_URLS).permitAll()
                         .requestMatchers(HEALTH_URLS).permitAll()
                         .requestMatchers(NO_AUTH_URLS).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_READ_URLS).permitAll()
