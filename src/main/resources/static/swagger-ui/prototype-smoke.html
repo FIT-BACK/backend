@@ -30,6 +30,7 @@
     const runButton = document.querySelector("#run");
     const cleanupButton = document.querySelector("#cleanup");
     let accessToken = null;
+    let currentEmail = null;
 
     function show(value) {
       result.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -78,11 +79,13 @@
       const form = new FormData();
       Object.entries(upload.uploadFields).forEach(([key, value]) => form.append(key, value));
       form.append("file", file);
-      await fetch(upload.uploadUrl, {
+      const uploadResponse = await fetch(upload.uploadUrl, {
         method: upload.uploadMethod,
-        body: form,
-        mode: "no-cors"
+        body: form
       });
+      if (!uploadResponse.ok) {
+        throw new Error(`storage upload: ${uploadResponse.status}`);
+      }
 
       await api(`/api/v1/images/${upload.imageId}/complete`, {
         method: "POST",
@@ -141,7 +144,7 @@
           size: file.size,
           sha256: await sha256(file)
         },
-        uploadCompleted: true,
+        uploadCompletionVerifiedByApi: true,
         reportId: analysis.reportId,
         tags: analysis.suggestedTags.map(tag => tag.name),
         matchPercentage: analysis.matchPercentage,
@@ -172,13 +175,19 @@
 
       runButton.disabled = true;
       try {
-        const nonce = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+        const randomHex = bytes =>
+          [...crypto.getRandomValues(new Uint8Array(bytes))]
+            .map(value => value.toString(16).padStart(2, "0"))
+            .join("");
+        const nonce = `${Date.now()}-${randomHex(8)}`;
+        const password = `Smoke!${randomHex(16)}`;
+        currentEmail = `p0-smoke-${nonce}@fitback.test`;
         const auth = await api("/api/v1/auth/sign", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            email: `p0-smoke-${nonce}@fitback.test`,
-            password: `Smoke!${nonce}`
+            email: currentEmail,
+            password
           })
         });
         accessToken = auth.accessToken;
@@ -192,7 +201,7 @@
       } catch (error) {
         show(`FAILED\n${error.message}`);
       } finally {
-        runButton.disabled = false;
+        if (!accessToken) runButton.disabled = false;
       }
     });
 
@@ -204,10 +213,15 @@
           headers: authHeaders()
         });
         accessToken = null;
+        currentEmail = null;
+        runButton.disabled = false;
         show(`${result.textContent}\n\n임시 계정 정리 완료`);
       } catch (error) {
         cleanupButton.disabled = false;
-        show(`${result.textContent}\n\n임시 계정 정리 실패: ${error.message}`);
+        show(
+          `${result.textContent}\n\n임시 계정 정리 실패: ${error.message}` +
+          `\n수동 정리 대상: ${currentEmail}`
+        );
       }
     });
   </script>
