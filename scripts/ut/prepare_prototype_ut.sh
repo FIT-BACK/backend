@@ -4,6 +4,8 @@ set -euo pipefail
 
 BASE_URL="${FITBACK_UT_BASE_URL:-https://d1ra74et9h0ohu.cloudfront.net}"
 OUTPUT_FILE="${FITBACK_UT_OUTPUT_FILE:-.local/ut/prepared-data.json}"
+CURL_CONNECT_TIMEOUT_SECONDS="${FITBACK_UT_CONNECT_TIMEOUT_SECONDS:-10}"
+CURL_MAX_TIME_SECONDS="${FITBACK_UT_MAX_TIME_SECONDS:-120}"
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -20,24 +22,49 @@ require_env() {
   fi
 }
 
+escape_curl_config_value() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\r'/}"
+  value="${value//$'\n'/}"
+  printf '%s' "${value}"
+}
+
 api_call() {
   local method="$1"
   local path="$2"
   local token="${3:-}"
   local body="${4:-}"
-  local args=(
-    --silent
-    --show-error
-    --request "${method}"
-    --header "Accept: application/json"
-  )
-  if [[ -n "${token}" ]]; then
-    args+=(--header "Authorization: Bearer ${token}")
+  local config_file
+  config_file="$(mktemp)"
+  chmod 600 "${config_file}"
+
+  {
+    printf 'silent\n'
+    printf 'show-error\n'
+    printf 'connect-timeout = %s\n' "${CURL_CONNECT_TIMEOUT_SECONDS}"
+    printf 'max-time = %s\n' "${CURL_MAX_TIME_SECONDS}"
+    printf 'request = "%s"\n' "$(escape_curl_config_value "${method}")"
+    printf 'header = "Accept: application/json"\n'
+    if [[ -n "${token}" ]]; then
+      printf 'header = "Authorization: Bearer %s"\n' \
+        "$(escape_curl_config_value "${token}")"
+    fi
+    if [[ -n "${body}" ]]; then
+      printf 'header = "Content-Type: application/json"\n'
+      printf 'data-binary = @-\n'
+    fi
+    printf 'url = "%s"\n' "$(escape_curl_config_value "${BASE_URL}${path}")"
+  } >"${config_file}"
+
+  local response
+  if ! response="$(printf '%s' "${body}" | curl --config "${config_file}")"; then
+    rm -f "${config_file}"
+    return 1
   fi
-  if [[ -n "${body}" ]]; then
-    args+=(--header "Content-Type: application/json" --data "${body}")
-  fi
-  curl "${args[@]}" "${BASE_URL}${path}"
+  rm -f "${config_file}"
+  printf '%s' "${response}"
 }
 
 require_success() {
@@ -74,21 +101,35 @@ upload_to_s3() {
   local upload_url
   upload_url="$(jq -r '.data.uploadUrl' <<<"${upload_response}")"
 
-  local form_args=()
+  local config_file
+  config_file="$(mktemp)"
+  chmod 600 "${config_file}"
+  {
+    printf 'silent\n'
+    printf 'show-error\n'
+    printf 'connect-timeout = %s\n' "${CURL_CONNECT_TIMEOUT_SECONDS}"
+    printf 'max-time = %s\n' "${CURL_MAX_TIME_SECONDS}"
+    printf 'output = "/dev/null"\n'
+    printf 'write-out = "%%{http_code}"\n'
+    printf 'url = "%s"\n' "$(escape_curl_config_value "${upload_url}")"
+  } >"${config_file}"
+
   while IFS=$'\t' read -r key value; do
-    form_args+=(--form "${key}=${value}")
+    printf 'form = "%s=%s"\n' \
+      "$(escape_curl_config_value "${key}")" \
+      "$(escape_curl_config_value "${value}")" >>"${config_file}"
   done < <(jq -r '.data.uploadFields | to_entries[] | [.key, .value] | @tsv' \
     <<<"${upload_response}")
+  printf 'form = "file=@%s;type=%s"\n' \
+    "$(escape_curl_config_value "${image_path}")" \
+    "$(escape_curl_config_value "${content_type}")" >>"${config_file}"
 
   local status
-  status="$(curl \
-    --silent \
-    --show-error \
-    --output /dev/null \
-    --write-out '%{http_code}' \
-    "${form_args[@]}" \
-    --form "file=@${image_path};type=${content_type}" \
-    "${upload_url}")"
+  if ! status="$(curl --config "${config_file}")"; then
+    rm -f "${config_file}"
+    return 1
+  fi
+  rm -f "${config_file}"
   if [[ "${status}" != "201" && "${status}" != "204" ]]; then
     echo "S3 upload failed: HTTP ${status}" >&2
     exit 1

@@ -188,16 +188,24 @@ public class Image extends BaseCreateTimeEntity {
                 && status != ImageStatus.DELETE_FAILED) {
             throw new IllegalStateException("image is not a cleanup candidate");
         }
+        Instant validatedRequestedAt = Objects.requireNonNull(
+                requestedAt,
+                "requestedAt must not be null"
+        );
         this.status = ImageStatus.DELETING;
-        this.deleteRequestedAt = Objects.requireNonNull(requestedAt, "requestedAt must not be null");
+        this.deleteRequestedAt = validatedRequestedAt;
         this.presignedExpiresAt = null;
         this.nextRetryAt = null;
     }
 
     public void claimActiveForDeletion(Instant requestedAt) {
         requireStatus(ImageStatus.ACTIVE);
+        Instant validatedRequestedAt = Objects.requireNonNull(
+                requestedAt,
+                "requestedAt must not be null"
+        );
         this.status = ImageStatus.DELETING;
-        this.deleteRequestedAt = Objects.requireNonNull(requestedAt, "requestedAt must not be null");
+        this.deleteRequestedAt = validatedRequestedAt;
         this.nextRetryAt = null;
     }
 

@@ -446,7 +446,9 @@ class LookbookServiceTest {
                 eq(ImageStatus.ACTIVE),
                 any(Instant.class)
         );
-        verify(eventPublisher).publishEvent(any(ImageReferencesReleasedEvent.class));
+        verify(eventPublisher).publishEvent(
+                new ImageReferencesReleasedEvent(List.of("original", "matched"))
+        );
     }
 
     @Test
@@ -633,7 +635,9 @@ class LookbookServiceTest {
         lookbookService.deleteLookbook(100L, member);
 
         assertThat(lookbook.getDeletedAt()).isNotNull();
-        verify(eventPublisher).publishEvent(any(ImageReferencesReleasedEvent.class));
+        verify(eventPublisher).publishEvent(
+                new ImageReferencesReleasedEvent(List.of("original", "matched"))
+        );
     }
 
     @Test

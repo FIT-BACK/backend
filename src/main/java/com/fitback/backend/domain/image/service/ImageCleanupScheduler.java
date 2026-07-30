@@ -15,6 +15,8 @@ public class ImageCleanupScheduler {
             initialDelayString = "${image.cleanup.initial-delay-ms:3600000}"
     )
     public void cleanupTemporaryImages() {
+        imageCleanupService.findStaleDeletingImagesForRetry()
+                .forEach(imageCleanupService::deleteClaimedImage);
         imageCleanupService.claimExpiredImages()
                 .forEach(imageCleanupService::deleteClaimedImage);
     }
