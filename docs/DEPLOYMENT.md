@@ -67,8 +67,14 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 | `IMAGE_BUCKET` | EC2 배포 | private 사용자 이미지 버킷 이름이다. 현재 값은 `fitback-prod-images-123209654535-ap-northeast-2`이다. |
 | `IMAGE_CDN_BASE_URL` | EC2 배포 | 서명된 이미지 조회 URL을 만들 CloudFront HTTPS origin이다. 현재 값은 `https://d1p2ierkew26r1.cloudfront.net`이다. |
 | `CLOUDFRONT_KEY_PAIR_ID` | EC2 배포 | CloudFront signed URL에 포함할 public key ID이다. 현재 값은 `K1XNJ3JDEDCVL3`이다. |
+| `FITBACK_AI_TAG_ANALYZER` | 선택 | 분석기 모드다. 미설정 시 `unavailable`; 최소 프로토타입에서만 `prototype`을 사용한다. |
+| `SHOPPING_PROVIDER` | 선택 | 상품 공급자다. 미설정 시 `fixture`; Shopify 프로토타입에서는 `shopify`를 사용한다. |
+| `SHOPIFY_ENABLED` | 선택 | Shopify adapter 활성화 여부다. 미설정 시 `false`; `SHOPPING_PROVIDER=shopify`와 함께 `true`로 설정한다. |
 
 민감정보는 Repository Variable 또는 GitHub command payload에 넣지 않는다.
+배포 workflow는 위 세 feature 설정을 검증한 뒤 SSM command와 release `.env`까지 전달한다.
+최소 프로토타입 운영 검증 시에는 `prototype/shopify/true` 조합을 명시하고, 검증 종료 후
+기본 fail-closed 조합으로 되돌릴 수 있다.
 
 ## SSM Parameter Store
 

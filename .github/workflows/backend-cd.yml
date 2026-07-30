@@ -236,6 +236,9 @@ jobs:
       IMAGE_BUCKET: ${{ vars.IMAGE_BUCKET }}
       IMAGE_CDN_BASE_URL: ${{ vars.IMAGE_CDN_BASE_URL }}
       CLOUDFRONT_KEY_PAIR_ID: ${{ vars.CLOUDFRONT_KEY_PAIR_ID }}
+      FITBACK_AI_TAG_ANALYZER: ${{ vars.FITBACK_AI_TAG_ANALYZER || 'unavailable' }}
+      SHOPPING_PROVIDER: ${{ vars.SHOPPING_PROVIDER || 'fixture' }}
+      SHOPIFY_ENABLED: ${{ vars.SHOPIFY_ENABLED || 'false' }}
       IMAGE_REFERENCE: ${{ needs.publish-image.outputs.image-reference }}
 
     steps:
@@ -251,6 +254,9 @@ jobs:
             IMAGE_BUCKET
             IMAGE_CDN_BASE_URL
             CLOUDFRONT_KEY_PAIR_ID
+            FITBACK_AI_TAG_ANALYZER
+            SHOPPING_PROVIDER
+            SHOPIFY_ENABLED
           )
 
           for variable_name in "${required_variables[@]}"; do
@@ -287,6 +293,28 @@ jobs:
 
           if [ "$CLOUDFRONT_KEY_PAIR_ID" != 'K1XNJ3JDEDCVL3' ]; then
             echo "Unexpected production CloudFront key pair ID: $CLOUDFRONT_KEY_PAIR_ID" >&2
+            exit 1
+          fi
+
+          if [ "$FITBACK_AI_TAG_ANALYZER" != 'unavailable' ] \
+              && [ "$FITBACK_AI_TAG_ANALYZER" != 'prototype' ]; then
+            echo "FITBACK_AI_TAG_ANALYZER must be unavailable or prototype." >&2
+            exit 1
+          fi
+
+          if [ "$SHOPPING_PROVIDER" != 'fixture' ] && [ "$SHOPPING_PROVIDER" != 'shopify' ]; then
+            echo "SHOPPING_PROVIDER must be fixture or shopify." >&2
+            exit 1
+          fi
+
+          if [ "$SHOPIFY_ENABLED" != 'true' ] && [ "$SHOPIFY_ENABLED" != 'false' ]; then
+            echo "SHOPIFY_ENABLED must be true or false." >&2
+            exit 1
+          fi
+
+          if { [ "$SHOPPING_PROVIDER" = 'shopify' ] && [ "$SHOPIFY_ENABLED" != 'true' ]; } \
+              || { [ "$SHOPPING_PROVIDER" != 'shopify' ] && [ "$SHOPIFY_ENABLED" = 'true' ]; }; then
+            echo "SHOPPING_PROVIDER=shopify and SHOPIFY_ENABLED=true must be configured together." >&2
             exit 1
           fi
 
@@ -334,6 +362,9 @@ jobs:
             --arg image_bucket "$IMAGE_BUCKET" \
             --arg image_cdn_base_url "$IMAGE_CDN_BASE_URL" \
             --arg cloudfront_key_pair_id "$CLOUDFRONT_KEY_PAIR_ID" \
+            --arg fitback_ai_tag_analyzer "$FITBACK_AI_TAG_ANALYZER" \
+            --arg shopping_provider "$SHOPPING_PROVIDER" \
+            --arg shopify_enabled "$SHOPIFY_ENABLED" \
             --arg release_dir "$release_dir" \
             '{
               executionTimeout: ["900"],
@@ -348,6 +379,9 @@ jobs:
                   + " IMAGE_BUCKET=" + ($image_bucket | @sh)
                   + " IMAGE_CDN_BASE_URL=" + ($image_cdn_base_url | @sh)
                   + " CLOUDFRONT_KEY_PAIR_ID=" + ($cloudfront_key_pair_id | @sh)
+                  + " FITBACK_AI_TAG_ANALYZER=" + ($fitback_ai_tag_analyzer | @sh)
+                  + " SHOPPING_PROVIDER=" + ($shopping_provider | @sh)
+                  + " SHOPIFY_ENABLED=" + ($shopify_enabled | @sh)
                   + " DEPLOY_ROOT=/opt/fitback"
                   + " RELEASE_DIR=" + ($release_dir | @sh)
                   + " " + (($release_dir + "/scripts/deploy/remote_deploy.sh") | @sh))
