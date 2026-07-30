@@ -64,6 +64,20 @@ class MemberProfileImageServiceTest {
         assertThat(profileImageUrl).isEqualTo("https://cdn.example.com/profile-1");
     }
 
+    //단일 조회 - 저장된 프로필 이미지가 없으면 IMAGE_NOT_FOUND
+    @Test
+    void failsWhenSingleProfileImageDoesNotExist() {
+        Member member = member(1L, "missing-profile");
+        MemberProfileImageService service =
+                new MemberProfileImageService(imageRepository, imageAccessUrlProvider);
+        when(imageRepository.findById("missing-profile")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.resolveProfileImageUrl(member))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.IMAGE_NOT_FOUND)
+                );
+    }
+
     @Test
     void resolvesMultipleProfileImagesWithSingleRepositoryCall() {
         Member firstMember = member(1L, "profile-1");
