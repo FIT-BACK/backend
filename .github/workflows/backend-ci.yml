@@ -133,6 +133,17 @@ jobs:
             abort 'Backend CD deploy-production must consume the digest-pinned image reference.'
           end
 
+          expected_feature_env = {
+            'FITBACK_AI_TAG_ANALYZER' => "#{expression_open} vars.FITBACK_AI_TAG_ANALYZER || 'unavailable' }}",
+            'SHOPPING_PROVIDER' => "#{expression_open} vars.SHOPPING_PROVIDER || 'fixture' }}",
+            'SHOPIFY_ENABLED' => "#{expression_open} vars.SHOPIFY_ENABLED || 'false' }}"
+          }
+          expected_feature_env.each do |name, expected_value|
+            unless deploy_job.dig('env', name) == expected_value
+              abort "Backend CD feature setting is missing or unsafe: #{name}"
+            end
+          end
+
           deploy_steps = Array(deploy_job['steps'])
           payload_step = deploy_steps.find { |step| step['name'] == 'Build the SSM deployment payload' }
           payload_script = payload_step&.fetch('run', '').to_s
@@ -143,6 +154,18 @@ jobs:
 
           unless payload_script.include?('/opt/fitback/releases/') && payload_script.include?('RELEASE_DIR=')
             abort 'Backend CD must deploy into an immutable release directory.'
+          end
+
+          required_feature_payload = %w[
+            FITBACK_AI_TAG_ANALYZER
+            SHOPPING_PROVIDER
+            SHOPIFY_ENABLED
+          ]
+          missing_feature_payload = required_feature_payload.reject do |name|
+            payload_script.include?("#{name}=")
+          end
+          unless missing_feature_payload.empty?
+            abort "Backend CD SSM payload is missing feature settings: #{missing_feature_payload.join(', ')}"
           end
 
           send_step = deploy_steps.find { |step| step['name'] == 'Send deployment command' }
