@@ -46,6 +46,8 @@ class AuthServiceTest {
     private NotificationSettingService notificationSettingService;
     @Mock
     private TempTokenStore tempTokenStore;
+    @Mock
+    private MemberProfileImageService memberProfileImageService;
 
     //authService 실제 객체 생성 후 mock 객체 주입
     @InjectMocks
@@ -143,6 +145,7 @@ class AuthServiceTest {
         MemberRequest.LoginRequest request = new MemberRequest.LoginRequest("Test@FITBACK.COM", "password123");
         //id, 이메일, 암호화된 비밀번호를 가진 테스트 회원 생성
         Member member = createTestMember(1L, "test@fitback.com", "encodedPw");
+        member.changeProfileImageId("profile-image");
 
         //given
         //이메일로 회원 조회 시 위 회원 반환
@@ -152,6 +155,8 @@ class AuthServiceTest {
         //테스트용 토큰
         when(jwtUtil.createAccessToken(any(AuthMember.class))).thenReturn("access-token");
         when(jwtUtil.createRefreshToken(any(AuthMember.class))).thenReturn("refresh-token");
+        when(memberProfileImageService.resolveProfileImageUrl(member))
+                .thenReturn("https://cdn.example.com/profile");
 
         //when
         MemberResponse.LoginResponse response = authService.login(request);
@@ -159,6 +164,7 @@ class AuthServiceTest {
         //then
         assertThat(response.accessToken()).isEqualTo("access-token");
         assertThat(response.memberId()).isEqualTo(1L);
+        assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/profile");
         //발급한 refresh 토큰이 회원에 저장되었는지 검증
         assertThat(member.getRefreshToken()).isEqualTo("refresh-token");
     }

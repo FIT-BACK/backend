@@ -775,7 +775,7 @@ done
 actual_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CASE
-          WHEN TABLE_NAME = 'member' AND COLUMN_NAME = 'social_uid'
+          WHEN TABLE_NAME = 'member' AND COLUMN_NAME IN ('social_uid', 'profile_image_id')
             THEN CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE, ':', COLUMN_TYPE)
           ELSE CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE)
         END
@@ -783,7 +783,10 @@ actual_contract="$(docker exec "$container_name" mysql -uroot \
       WHERE TABLE_SCHEMA = 'fitback'
         AND (
           (TABLE_NAME = 'image' AND COLUMN_NAME = 'presigned_expires_at')
-          OR (TABLE_NAME = 'member' AND COLUMN_NAME IN ('refresh_token', 'social_uid'))
+          OR (
+            TABLE_NAME = 'member'
+            AND COLUMN_NAME IN ('refresh_token', 'social_uid', 'profile_image_id')
+          )
           OR (
             TABLE_NAME = 'analysis_report'
             AND COLUMN_NAME IN ('original_image_id', 'deleted_at', 'purge_after')
@@ -819,6 +822,7 @@ expected_contract="$(printf '%s\n' \
   'marketing_consent_history.is_agreed=NO' \
   'marketing_consent_history.marketing_consent_history_id=NO' \
   'marketing_consent_history.member_id=NO' \
+  'member.profile_image_id=YES:varchar(36)' \
   'member.refresh_token=YES' \
   'member.social_uid=YES:varchar(100)' \
   'member_notification_setting.analysis_complete_enabled=NO' \
@@ -835,6 +839,46 @@ expected_contract="$(printf '%s\n' \
 if [ "$actual_contract" != "$expected_contract" ]; then
   echo 'Unexpected MySQL migration contract:' >&2
   printf '%s\n' "$actual_contract" >&2
+  exit 1
+fi
+
+profile_image_fk="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        tc.CONSTRAINT_NAME, ':',
+        GROUP_CONCAT(
+          CONCAT(k.COLUMN_NAME, '->', k.REFERENCED_COLUMN_NAME)
+          ORDER BY k.ORDINAL_POSITION
+        )
+      )
+      FROM information_schema.TABLE_CONSTRAINTS tc
+      JOIN information_schema.KEY_COLUMN_USAGE k
+        ON k.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+       AND k.TABLE_NAME = tc.TABLE_NAME
+       AND k.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+      WHERE tc.TABLE_SCHEMA = 'fitback'
+        AND tc.TABLE_NAME = 'member'
+        AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY'
+        AND tc.CONSTRAINT_NAME = 'FK_MEMBER_PROFILE_IMAGE_OWNER'
+      GROUP BY tc.CONSTRAINT_NAME;")"
+
+if [ "$profile_image_fk" != \
+  'FK_MEMBER_PROFILE_IMAGE_OWNER:profile_image_id->image_id,member_id->owner_id' ]; then
+  echo "Unexpected member profile image FK: $profile_image_fk" >&2
+  exit 1
+fi
+
+docker exec "$container_name" mysql -uroot fitback -e \
+  "UPDATE member
+   SET profile_image_id = 'legacy-profile'
+   WHERE member_id = 9001;"
+
+if docker exec "$container_name" mysql -uroot fitback -e \
+  "UPDATE member
+   SET profile_image_id = 'legacy-profile'
+   WHERE member_id = 8001;" \
+  >/dev/null 2>&1; then
+  echo 'Member profile FK accepted an image owned by another member.' >&2
   exit 1
 fi
 

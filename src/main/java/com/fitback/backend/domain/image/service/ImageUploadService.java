@@ -117,6 +117,20 @@ public class ImageUploadService {
         }
     }
 
+    @Transactional
+    public Image activateProfileImage(Long memberId, String imageId) {
+        //READY 프로필 이미지의 소유권과 목적을 검증한 후 ACTIVE로 전환
+        Image image = findOwnedImage(memberId, imageId);
+        try {
+            image.activateForProfile(memberId, clock.instant());
+            return image;
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.IMAGE_NOT_FOUND);
+        } catch (IllegalStateException exception) {
+            throw new BusinessException(ErrorCode.IMAGE_INVALID_STATE);
+        }
+    }
+
     @Transactional(readOnly = true)
     public String createReadUrl(Image image) {
         return imageAccessUrlProvider.createReadUrl(image);

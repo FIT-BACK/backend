@@ -80,7 +80,7 @@ new-write/backfill 릴리스 B가 운영에 배포됐고, Issue #97의 릴리스
 | 자동 삭제 조회 | 논리 미사용 이미지 정리 | `PENDING_UPLOAD`는 `createdAt`, `READY`/`REJECTED`는 `COALESCE(uploadedAt, createdAt)`, `DELETE_FAILED`는 `nextRetryAt` 기준 | 유지 |
 | multipart 분석 API | 전환 기간 유지 | 호환용으로 유지 | 후속 contract 이슈에서 정리 |
 | JSON 분석 API 요청 | 현재 단일 `{ imageId }` | 유지 | 후속 contract 이슈에서 `images[]/role/sourceType` 전환 |
-| `ACTIVE` 마지막 참조 해제 자동 삭제 | 분석·룩북 적용 | 마지막 논리 참조 해제 시 커밋 후 삭제 | 프로필 imageId 연동 시 probe 추가 |
+| `ACTIVE` 마지막 참조 해제 자동 삭제 | 분석·룩북·프로필 적용 | 마지막 논리 참조 해제 시 커밋 후 삭제 | 유지 |
 
 기존 운영 데이터와 S3 객체는 강제로 이동하지 않는다. 새 object key 정책은 신규 업로드부터 적용한다.
 
@@ -337,10 +337,11 @@ AND 분석·룩북·프로필 등 실제 도메인 참조가 존재하지 않음
 ```text
 분석 리포트 ─┐
              ├─ 동일한 imageId
-룩북 게시물 ─┘
+룩북 게시물 ─┤
+회원 프로필 ─┘
 ```
 
-분석 리포트 삭제, 룩북 삭제, 룩북 이미지 교체에는 다음 흐름을 적용한다.
+분석 리포트 삭제, 룩북 삭제, 룩북 이미지 교체, 프로필 이미지 교체에는 다음 흐름을 적용한다.
 
 1. 삭제하는 도메인과 이미지 사이의 참조를 논리적으로 비활성화한다. 분석 리포트는
    관계 행을 물리 삭제하지 않고 `deletedAt`을 설정하며, 활성 참조 조회에서 제외한다.
@@ -350,12 +351,12 @@ AND 분석·룩북·프로필 등 실제 도메인 참조가 존재하지 않음
 5. 커밋 후 삭제 작업자가 S3 객체를 삭제한다.
 6. 삭제 성공 시 `DELETED`, 실패 시 `DELETE_FAILED`로 변경한다.
 
-DB 트랜잭션 안에서 S3 삭제를 직접 실행하지 않는다. 삭제·교체 트랜잭션이 커밋된 뒤 분석과
-삭제되지 않은 룩북 참조를 다시 확인하고 마지막 논리 참조가 없을 때만 객체를 삭제한다.
-분석과 룩북이 같은 `imageId`를 공유하면 한쪽 참조가 남아 있는 동안 `ACTIVE`를 유지한다.
+DB 트랜잭션 안에서 S3 삭제를 직접 실행하지 않는다. 삭제·교체 트랜잭션이 커밋된 뒤 분석,
+삭제되지 않은 룩북, 회원 프로필 참조를 다시 확인하고 마지막 논리 참조가 없을 때만 객체를
+삭제한다. 어느 한 도메인에서라도 같은 `imageId`를 참조하면 `ACTIVE`를 유지한다.
 
-현재 프로필은 `imageId` FK가 아니라 URL 문자열을 사용하므로 이번 참조 probe 범위에 포함되지
-않는다. 프로필을 imageId 계약으로 전환할 때 프로필 참조 probe를 추가한다.
+회원 프로필 교체는 새 `PROFILE + READY` 이미지를 `ACTIVE`로 전환하고
+`member.profile_image_id`를 변경한 뒤 이전 이미지의 참조 해제 이벤트를 발행한다.
 
 ## 11. 공개 범위와 CloudFront
 
@@ -420,6 +421,7 @@ MVP에서는 비공개 CloudFront Signed URL 유효시간을 기존 구현처럼
 - 룩북 API는 `ORIGINAL`과 `MATCHED` 역할을 구분한다.
 - 룩북의 `MATCHED` 이미지는 직접 업로드 이미지(`UPLOADED + imageId`) 또는 상품 이미지(`PRODUCT + productId`)일 수 있다.
 - 프로필 API는 단일 `imageId`를 사용한다.
+- 회원 수정·온보딩 요청은 `profileImageId`, 조회 응답은 표시용 `profileImageUrl`을 사용한다.
 - 사용자 업로드 이미지는 `imageId`로 전달한다.
 - 쇼핑 API 상품 이미지는 내부 `productId`로 전달한다.
 - `imageUrl`은 응답과 화면 표시 용도로만 사용한다.
@@ -524,8 +526,7 @@ S3 객체 수명 주기 자동 만료는 `ACTIVE`와 미사용 이미지를 구�
 - WebP 강제 변환
 - CloudFront 캐시 TTL과 invalidation 세부 정책
 - Signed Cookie 적용 여부
-- `ACTIVE` 마지막 참조 해제 자동 삭제의 전체 도메인 연동
-- 룩북·프로필 이미지 참조 확인용 `ImageReferenceProbe` 구현
+- `ACTIVE` 마지막 참조 해제 자동 삭제의 후속 도메인 연동
 - 지수 백오프와 최대 삭제 재시도 횟수
 
 ## 19. 향후 구현 API 범위와 이미지 연계 메모

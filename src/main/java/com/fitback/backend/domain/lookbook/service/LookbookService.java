@@ -20,6 +20,7 @@ import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
+import com.fitback.backend.domain.member.service.MemberProfileImageService;
 import com.fitback.backend.domain.product.entity.Product;
 import com.fitback.backend.domain.product.repository.ProductRepository;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
@@ -65,6 +66,7 @@ public class LookbookService {
     private final RecommendedItemRepository recommendedItemRepository;
     private final ProductRepository productRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MemberProfileImageService memberProfileImageService;
 
     // 룩북 업로드
     @Transactional
@@ -267,11 +269,14 @@ public class LookbookService {
         // 로그인 회원이 룩북 작성자인지 여부 계산
         boolean isOwner = member != null
                 && Objects.equals(lookbook.getMember().getId(), member.getId());
+        String authorProfileImageUrl =
+                memberProfileImageService.resolveProfileImageUrl(lookbook.getMember());
 
         return LookbookResponse.LookbookDetail.toLookbookDetail(
                 lookbook,
                 imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
                 resolveMatchedImageUrl(lookbook),
+                authorProfileImageUrl,
                 tags,
                 isLiked,
                 isOwner
@@ -443,11 +448,18 @@ public class LookbookService {
                 lookbookIds
         );
         Set<Long> likedLookbookIds = findLikedLookbookIds(lookbookIds, member);
+        Map<Long, String> profileImageUrls =
+                memberProfileImageService.resolveProfileImageUrls(
+                        lookbooks.stream()
+                                .map(Lookbook::getMember)
+                                .toList()
+                );
         return lookbooks.stream()
                 .map(lookbook -> LookbookResponse.LookbookItem.toLookbookItem(
                         lookbook,
                         imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
                         resolveMatchedImageUrl(lookbook),
+                        profileImageUrls.get(lookbook.getMember().getId()),
                         tagNamesByLookbookId.getOrDefault(lookbook.getId(), List.of()),
                         likedLookbookIds.contains(lookbook.getId())
                 ))

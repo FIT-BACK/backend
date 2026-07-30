@@ -2,7 +2,10 @@ package com.fitback.backend.domain.member.service;
 
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.event.ImageReferencesReleasedEvent;
 import com.fitback.backend.domain.image.repository.ImageRepository;
+import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.dto.MemberRequest;
@@ -29,6 +32,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -58,6 +62,10 @@ class MemberServiceTest {
     @Mock
     private ImageRepository imageRepository;
     @Mock
+    private ImageUploadService imageUploadService;
+    @Mock
+    private MemberProfileImageService memberProfileImageService;
+    @Mock
     private ClosetSaveRepository closetSaveRepository;
     @Mock
     private LookbookRepository lookbookRepository;
@@ -69,6 +77,8 @@ class MemberServiceTest {
     private WithdrawalEmailBlockRepository withdrawalEmailBlockRepository;
     @Mock
     private HmacUtil hmacUtil;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     //memberService 실제 객체 생성 후 mock 객체 주입
     @InjectMocks
@@ -116,17 +126,72 @@ class MemberServiceTest {
     void updateMemberProfileImageOnlyTest(){
         Member member = createTestMember(1L, "test@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
         AuthMember authMember = new AuthMember(member);
-        MemberRequest.UpdateMemberRequest request = new MemberRequest.UpdateMemberRequest(null, "http://img/new.png", null);
+        Image profileImage = mock(Image.class);
+        MemberRequest.UpdateMemberRequest request =
+                new MemberRequest.UpdateMemberRequest(null, "new-profile-image", null);
 
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
         when(memberTagRepository.findByMemberIdFetchTag(1L)).thenReturn(List.of());
+        when(imageUploadService.activateProfileImage(1L, "new-profile-image"))
+                .thenReturn(profileImage);
+        when(profileImage.getId()).thenReturn("new-profile-image");
+        when(imageUploadService.createReadUrl(profileImage))
+                .thenReturn("https://cdn.example.com/profile");
 
         MemberResponse.UpdateMemberResponse response = memberService.updateMember(authMember, request);
 
-        assertThat(member.getProfileImageUrl()).isEqualTo("http://img/new.png");
-        assertThat(response.profileImageUrl()).isEqualTo("http://img/new.png");
+        assertThat(member.getProfileImageId()).isEqualTo("new-profile-image");
+        assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/profile");
         //닉네임 미전송 -> 중복검사 안 함
         verify(memberRepository, never()).existsByNickname(anyString());
+    }
+
+    //회원정보 수정 - 현재 프로필 이미지 재전송 시 재활성화 없이 기존 이미지 유지
+    @Test
+    void updateMemberSameProfileImageKeepsActiveImageTest(){
+        Member member = createTestMember(1L, "test@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
+        member.changeProfileImageId("profile-image");
+        AuthMember authMember = new AuthMember(member);
+        MemberRequest.UpdateMemberRequest request =
+                new MemberRequest.UpdateMemberRequest(null, "profile-image", null);
+
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(memberTagRepository.findByMemberIdFetchTag(1L)).thenReturn(List.of());
+        when(memberProfileImageService.resolveProfileImageUrl(member))
+                .thenReturn("https://cdn.example.com/profile");
+
+        MemberResponse.UpdateMemberResponse response =
+                memberService.updateMember(authMember, request);
+
+        assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/profile");
+        verify(imageUploadService, never())
+                .activateProfileImage(1L, "profile-image");
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    //회원정보 수정 - 프로필 교체 시 이전 이미지의 참조 해제 이벤트 발행
+    @Test
+    void updateMemberReleasesPreviousProfileImageTest(){
+        Member member = createTestMember(1L, "test@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
+        member.changeProfileImageId("old-profile-image");
+        AuthMember authMember = new AuthMember(member);
+        Image profileImage = mock(Image.class);
+        MemberRequest.UpdateMemberRequest request =
+                new MemberRequest.UpdateMemberRequest(null, "new-profile-image", null);
+
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(memberTagRepository.findByMemberIdFetchTag(1L)).thenReturn(List.of());
+        when(imageUploadService.activateProfileImage(1L, "new-profile-image"))
+                .thenReturn(profileImage);
+        when(profileImage.getId()).thenReturn("new-profile-image");
+        when(imageUploadService.createReadUrl(profileImage))
+                .thenReturn("https://cdn.example.com/profile");
+
+        memberService.updateMember(authMember, request);
+
+        verify(eventPublisher).publishEvent(
+                new ImageReferencesReleasedEvent(List.of("old-profile-image"))
+        );
     }
 
     //회원정보 수정 - tagIds가 null이면 기존 태그 그대로 유지
@@ -357,7 +422,7 @@ class MemberServiceTest {
     @Test
     void myPageSuccessTest(){
         Member member = createTestMember(1L, "test@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
-        member.changeProfileImageUrl("http://img/p.png");
+        member.changeProfileImageId("profile-image");
         AuthMember authMember = new AuthMember(member);
         Tag tag = createTag(10L, "미니멀", TagType.SILHOUETTE);
         MemberTag memberTag = MemberTag.create(member, tag);
@@ -366,13 +431,15 @@ class MemberServiceTest {
         when(analysisReportRepository.countByMemberIdAndDeletedAtIsNull(1L)).thenReturn(5L);
         when(lookbookRepository.countByMemberIdAndDeletedAtIsNull(1L)).thenReturn(7L);
         when(memberTagRepository.findByMemberIdFetchTag(1L)).thenReturn(List.of(memberTag));
+        when(memberProfileImageService.resolveProfileImageUrl(member))
+                .thenReturn("https://cdn.example.com/profile");
 
         MemberResponse.MyPageResponse response = memberService.myPage(authMember);
 
         assertThat(response.memberId()).isEqualTo(1L);
         assertThat(response.email()).isEqualTo("test@fitback.com");
         assertThat(response.nickname()).isEqualTo("nick");
-        assertThat(response.profileImageUrl()).isEqualTo("http://img/p.png");
+        assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/profile");
         assertThat(response.loginProvider()).isEqualTo(LoginProvider.EMAIL);
         assertThat(response.savedCount()).isEqualTo(3L);
         assertThat(response.analysisCount()).isEqualTo(5L);
@@ -391,17 +458,25 @@ class MemberServiceTest {
         Member member = createTestMember(1L, "test@fitback.com", "tempNick", "encodedPw", LoginProvider.EMAIL);
         AuthMember authMember = new AuthMember(member);
         Tag tag = createTag(10L, "미니멀", TagType.SILHOUETTE);
-        MemberRequest.OnboardingRequest request = new MemberRequest.OnboardingRequest("realNick", "http://img/p.png", List.of(10L));
+        Image profileImage = mock(Image.class);
+        MemberRequest.OnboardingRequest request =
+                new MemberRequest.OnboardingRequest("realNick", "profile-image", List.of(10L));
 
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
         when(memberRepository.existsByNickname("realNick")).thenReturn(false);
         when(tagRepository.findAllById(anyList())).thenReturn(List.of(tag));
         when(memberTagRepository.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+        when(imageUploadService.activateProfileImage(1L, "profile-image"))
+                .thenReturn(profileImage);
+        when(profileImage.getId()).thenReturn("profile-image");
+        when(imageUploadService.createReadUrl(profileImage))
+                .thenReturn("https://cdn.example.com/profile");
 
         MemberResponse.OnboardingResponse response = memberService.onboarding(authMember, request);
 
         assertThat(member.getNickname()).isEqualTo("realNick");
-        assertThat(member.getProfileImageUrl()).isEqualTo("http://img/p.png");
+        assertThat(member.getProfileImageId()).isEqualTo("profile-image");
+        assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/profile");
         assertThat(response.tags()).hasSize(1);
         assertThat(response.tags().get(0).tagId()).isEqualTo(10L);
         verify(memberTagRepository).deleteByMemberId(1L);
@@ -724,6 +799,7 @@ class MemberServiceTest {
     @Test
     void deleteAccountReassignThenDeleteTest(){
         Member deleteMember = createTestMember(1L, "user@fitback.com", "nick", "encodedPw", LoginProvider.EMAIL);
+        deleteMember.changeProfileImageId("profile-image");
         AuthMember authMember = new AuthMember(deleteMember);
         Member withdrawnMember = createTestMember(99L, WithdrawnMember.EMAIL, WithdrawnMember.NICKNAME, null, LoginProvider.EMAIL);
 
@@ -746,9 +822,14 @@ class MemberServiceTest {
         inOrder.verify(lookbookLikeRepository).findLookbookIdsByMemberId(1L);
         inOrder.verify(lookbookRepository).decrementLikeCountByIds(List.of(10L, 20L));
         inOrder.verify(lookbookRepository).reassignToWithdrawnMember(1L, withdrawnMember);
+        inOrder.verify(memberRepository).flush();
         inOrder.verify(analysisReportRepository).deleteAllByMemberId(1L);
         inOrder.verify(imageRepository).reassignToWithdrawnMember(1L, withdrawnMember);
         inOrder.verify(memberRepository).delete(deleteMember);
+        assertThat(deleteMember.getProfileImageId()).isNull();
+        verify(eventPublisher).publishEvent(
+                new ImageReferencesReleasedEvent(List.of("profile-image"))
+        );
     }
 
     //회원 탈퇴 - 탈퇴 회원 계정 픽스처가 없으면 INTERNAL_SERVER_ERROR

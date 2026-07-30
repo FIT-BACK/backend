@@ -114,6 +114,7 @@ erDiagram
     MEMBER ||--o{ CLOSET_SAVE : saves_to_closet
     MEMBER ||--o{ LOOKBOOK : uploads
     MEMBER ||--o{ IMAGE : owns
+    IMAGE o|--o| MEMBER : used_as_profile
     ANALYSIS_REPORT ||--o{ RECOMMENDED_ITEM : has_current_set
     ANALYSIS_REPORT ||--o{ REPORT_CUSTOM_TAG : has_custom_input
     IMAGE o|--o{ ANALYSIS_REPORT : used_as_original
@@ -125,6 +126,24 @@ erDiagram
     IMAGE ||--o{ LOOKBOOK : used_as_original_or_matched
     PRODUCT ||--o{ PRODUCT_TAG : tagged_with
     TAG ||--o{ PRODUCT_TAG : classifies
+
+    MEMBER {
+        BIGINT member_id PK
+        VARCHAR email
+        VARCHAR nickname
+        VARCHAR profile_image_id FK
+        VARCHAR profile_image_url
+        VARCHAR login_provider
+    }
+
+    IMAGE {
+        VARCHAR image_id PK
+        BIGINT owner_id FK
+        VARCHAR object_key
+        VARCHAR purpose
+        VARCHAR status
+        VARCHAR visibility
+    }
 
     ANALYSIS_REPORT {
         BIGINT report_id PK
@@ -624,6 +643,17 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 `image`는 S3 객체 자체가 아니라 소유권, 업로드 의도, 검증 및 삭제 생명주기를 관리한다.
 운영 DDL은 `src/main/resources/db/migration`의 Flyway migration으로 순서대로 적용하고
 JPA `ddl-auto=validate`로 Entity mapping을 검증한다.
+
+회원 프로필은 `member.profile_image_id`로 이미지를 참조한다. 이미지 소유 관계와 프로필
+관계를 모두 보장하기 위해 다음 복합 FK를 사용한다.
+
+```text
+FK_MEMBER_PROFILE_IMAGE_OWNER(profile_image_id, member_id)
+  -> image(image_id, owner_id)
+```
+
+`member.profile_image_url`은 배포 롤백을 위해 물리 컬럼만 임시 유지하며 신규 애플리케이션
+코드는 읽거나 쓰지 않는다. 기존 URL은 대응하는 `imageId`를 확인할 수 없으므로 백필하지 않는다.
 
 | 컬럼 | 타입 | NULL | 제약/의미 |
 | --- | --- | --- | --- |

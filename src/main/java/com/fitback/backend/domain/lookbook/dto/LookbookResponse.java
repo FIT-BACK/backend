@@ -99,6 +99,7 @@ public final class LookbookResponse {
                 Lookbook lookbook,
                 String originalImageUrl,
                 String matchedImageUrl,
+                String authorProfileImageUrl,
                 List<String> tags,
                 boolean isLiked
         ) {
@@ -110,7 +111,7 @@ public final class LookbookResponse {
                             ? null
                             : lookbook.getMatchedProduct().getId())
                     .authorNickname(lookbook.getMember().getNickname())
-                    .authorProfileImageUrl(lookbook.getMember().getProfileImageUrl())
+                    .authorProfileImageUrl(authorProfileImageUrl)
                     .tags(List.copyOf(tags))
                     .likeCount(lookbook.getLikeCount())
                     .isLiked(isLiked)
@@ -139,6 +140,7 @@ public final class LookbookResponse {
                 Lookbook lookbook,
                 String originalImageUrl,
                 String matchedImageUrl,
+                String authorProfileImageUrl,
                 List<TagItem> tags,
                 boolean isLiked,
                 boolean isOwner
@@ -150,7 +152,7 @@ public final class LookbookResponse {
                             ? null
                             : lookbook.getMatchedProduct().getId())
                     .authorNickname(lookbook.getMember().getNickname())
-                    .authorProfileImageUrl(lookbook.getMember().getProfileImageUrl())
+                    .authorProfileImageUrl(authorProfileImageUrl)
                     .createdAt(lookbook.getCreatedAt())
                     .purchaseUrl(lookbook.getPurchaseUrl())
                     .comment(lookbook.getComment())

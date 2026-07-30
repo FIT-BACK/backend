@@ -181,6 +181,16 @@ public class Image extends BaseCreateTimeEntity {
         this.activatedAt = Objects.requireNonNull(activatedAt, "activatedAt must not be null");
     }
 
+    public void activateForProfile(Long memberId, Instant activatedAt) {
+        requireOwner(memberId);
+        if (!purpose.isProfile()) {
+            throw new IllegalStateException("image purpose must be PROFILE");
+        }
+        requireStatus(ImageStatus.READY);
+        this.status = ImageStatus.ACTIVE;
+        this.activatedAt = Objects.requireNonNull(activatedAt, "activatedAt must not be null");
+    }
+
     public void claimForDeletion(Instant requestedAt) {
         if (!status.isPendingUpload()
                 && status != ImageStatus.READY

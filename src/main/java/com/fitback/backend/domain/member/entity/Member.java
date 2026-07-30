@@ -46,8 +46,8 @@ public class Member extends BaseTimeEntity {
     @Column(name = "login_provider", nullable = false, length = 20)
     private LoginProvider loginProvider;
 
-    @Column(name = "profile_image_url", length = 2048)
-    private String profileImageUrl;
+    @Column(name = "profile_image_id", length = 36)
+    private String profileImageId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 20)
@@ -85,8 +85,15 @@ public class Member extends BaseTimeEntity {
         this.nickname = Objects.requireNonNull(nickname, "nickname must not be null");
     }
 
-    public void changeProfileImageUrl(String profileImageUrl) {
-        this.profileImageUrl = profileImageUrl;
+    public void changeProfileImageId(String profileImageId) {
+        this.profileImageId = Objects.requireNonNull(
+                profileImageId,
+                "profileImageId must not be null"
+        );
+    }
+
+    public void clearProfileImageId() {
+        this.profileImageId = null;
     }
 
     public void changeRole(MemberRole role) {

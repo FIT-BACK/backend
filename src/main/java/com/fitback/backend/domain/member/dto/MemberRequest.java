@@ -57,7 +57,7 @@ public class MemberRequest {
     public record UpdateMemberRequest(
             @Size(min = 2, max = 16, message = "닉네임은 2~16자여야 합니다.")
             String nickname,
-            String profileImageUrl,
+            String profileImageId,
             @Size(max = 5, message = "관심 태그는 최대 5개까지 선택할 수 있습니다.")
             List<Long> tagIds
     ) {}
@@ -77,7 +77,7 @@ public class MemberRequest {
             @NotBlank(message = "닉네임은 필수 입력값 입니다.")
             @Size(min = 2, max = 16, message = "닉네임은 2~16자여야 합니다.")
             String nickname,
-            String profileImageUrl,
+            String profileImageId,
             @NotNull(message = "관심 태그 필드가 포함되어야 합니다. (빈 배열 허용)")
             @Size(max = 5, message = "관심 태그는 최대 5개까지 선택할 수 있습니다.")
             List<Long> tagIds

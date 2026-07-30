@@ -1,6 +1,12 @@
 package com.fitback.backend.domain.member.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fitback.backend.domain.image.entity.Image;
+import com.fitback.backend.domain.image.entity.ImagePurpose;
+import com.fitback.backend.domain.image.entity.ImageVisibility;
+import com.fitback.backend.domain.image.repository.ImageRepository;
+import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
+import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
@@ -11,13 +17,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -40,6 +51,12 @@ class MemberControllerIntegrationTest {
 
     @Autowired
     private TagRepository tagRepository;
+
+    @Autowired
+    private ImageRepository imageRepository;
+
+    @MockitoBean
+    private ImageAccessUrlProvider imageAccessUrlProvider;
 
     //JSON 생성/파싱용, 컨텍스트에 빈이 없어 직접 생성
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -72,6 +89,32 @@ class MemberControllerIntegrationTest {
     //JSON 문자열 생성
     private String json(Map<String, Object> body) throws Exception {
         return objectMapper.writeValueAsString(body);
+    }
+
+    //업로드 완료 API까지 통과한 상태의 회원 소유 이미지 생성
+    private String saveReadyImage(String email, String imageId, ImagePurpose purpose) {
+        Member owner = memberRepository.findByEmail(email)
+                .orElseThrow();
+        Image image = Image.createPending(
+                imageId,
+                owner,
+                "images/%s/%d/2026/07/%s.jpg".formatted(
+                        purpose.name().toLowerCase(),
+                        owner.getId(),
+                        imageId
+                ),
+                purpose,
+                "image/jpeg",
+                1024,
+                ImageVisibility.PRIVATE,
+                Instant.parse("2026-07-31T00:05:00Z")
+        );
+        image.completeUpload(
+                1024,
+                "image/jpeg",
+                LocalDateTime.of(2026, 7, 31, 9, 0)
+        );
+        return imageRepository.save(image).getId();
     }
 
     // ---------- 인증 가드 ----------
@@ -280,8 +323,15 @@ class MemberControllerIntegrationTest {
     @Test
     void updateMemberPartialKeepsOthersTest() throws Exception {
         String token = signUpAndGetAccessToken("partial@fitback.com", "password123");
+        String profileImageId = saveReadyImage(
+                "partial@fitback.com",
+                "partial-profile-image",
+                ImagePurpose.PROFILE
+        );
         Long tagId1 = saveTag("미니멀", TagType.SILHOUETTE);
         Long tagId2 = saveTag("블랙", TagType.COLOR);
+        when(imageAccessUrlProvider.createReadUrl(any(Image.class)))
+                .thenReturn("https://cdn.example.com/profile");
 
         //먼저 프로필 이미지와 태그 2개 세팅
         mockMvc.perform(put("/api/v1/members/me/onboarding")
@@ -289,11 +339,11 @@ class MemberControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
                                 "nickname", "beforeNick",
-                                "profileImageUrl", "http://img/keep.png",
+                                "profileImageId", profileImageId,
                                 "tagIds", List.of(tagId1, tagId2)))))
                 .andExpect(status().isOk());
 
-        //닉네임만 수정, profileImageUrl·tagIds는 미전송
+        //닉네임만 수정, profileImageId·tagIds는 미전송
         mockMvc.perform(patch("/api/v1/members/me")
                         .header("Authorization", bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -301,7 +351,8 @@ class MemberControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.nickname").value("afterNick"))
                 //미전송 필드는 기존 값 유지
-                .andExpect(jsonPath("$.data.profileImageUrl").value("http://img/keep.png"))
+                .andExpect(jsonPath("$.data.profileImageUrl")
+                        .value("https://cdn.example.com/profile"))
                 .andExpect(jsonPath("$.data.tags.length()").value(2));
     }
 
@@ -439,21 +490,50 @@ class MemberControllerIntegrationTest {
     @Test
     void onboardingSuccessTest() throws Exception {
         String token = signUpAndGetAccessToken("onboarding@fitback.com", "password123");
+        String profileImageId = saveReadyImage(
+                "onboarding@fitback.com",
+                "onboarding-profile-image",
+                ImagePurpose.PROFILE
+        );
         Long tagId1 = saveTag("미니멀", TagType.SILHOUETTE);
         Long tagId2 = saveTag("블랙", TagType.COLOR);
+        when(imageAccessUrlProvider.createReadUrl(any(Image.class)))
+                .thenReturn("https://cdn.example.com/profile");
 
         mockMvc.perform(put("/api/v1/members/me/onboarding")
                         .header("Authorization", bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
                                 "nickname", "onboardNick",
-                                "profileImageUrl", "http://img/p.png",
+                                "profileImageId", profileImageId,
                                 "tagIds", List.of(tagId1, tagId2)))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("COMMON200_1"))
                 .andExpect(jsonPath("$.data.nickname").value("onboardNick"))
-                .andExpect(jsonPath("$.data.profileImageUrl").value("http://img/p.png"))
+                .andExpect(jsonPath("$.data.profileImageUrl")
+                        .value("https://cdn.example.com/profile"))
                 .andExpect(jsonPath("$.data.tags.length()").value(2));
+    }
+
+    //온보딩 - PROFILE 용도가 아닌 이미지는 프로필로 연결할 수 없음
+    @Test
+    void onboardingRejectsNonProfileImageTest() throws Exception {
+        String token = signUpAndGetAccessToken("wrong-purpose@fitback.com", "password123");
+        String analysisImageId = saveReadyImage(
+                "wrong-purpose@fitback.com",
+                "analysis-image",
+                ImagePurpose.ANALYSIS
+        );
+
+        mockMvc.perform(put("/api/v1/members/me/onboarding")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "nickname", "onboardNick",
+                                "profileImageId", analysisImageId,
+                                "tagIds", List.of()))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IMAGE409_1"));
     }
 
     //온보딩 - 존재하지 않는 태그 포함 시 400

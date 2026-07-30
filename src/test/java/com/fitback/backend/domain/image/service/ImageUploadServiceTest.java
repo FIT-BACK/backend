@@ -28,6 +28,7 @@ import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
@@ -290,5 +291,74 @@ class ImageUploadServiceTest {
         inOrder.verify(imageObjectStorage).inspect("object-key");
         inOrder.verify(imageUploadTransactionService)
                 .completeUpload(7L, "image-id", storedObject);
+    }
+
+    @Test
+    void activatesReadyProfileImage() {
+        Member owner = member(42L);
+        Image image = readyImage("profile-image", owner, ImagePurpose.PROFILE);
+        when(imageRepository.findByIdAndOwnerId("profile-image", 42L))
+                .thenReturn(Optional.of(image));
+
+        Image activatedImage = imageUploadService.activateProfileImage(42L, "profile-image");
+
+        assertThat(activatedImage).isSameAs(image);
+        assertThat(image.getStatus()).isEqualTo(ImageStatus.ACTIVE);
+    }
+
+    @Test
+    void rejectsProfileImageNotOwnedByMember() {
+        when(imageRepository.findByIdAndOwnerId("profile-image", 42L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                imageUploadService.activateProfileImage(42L, "profile-image")
+        ).isInstanceOfSatisfying(BusinessException.class, exception ->
+                assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.IMAGE_NOT_FOUND)
+        );
+    }
+
+    @Test
+    void rejectsImageWithWrongProfilePurpose() {
+        Member owner = member(42L);
+        Image image = readyImage("analysis-image", owner, ImagePurpose.ANALYSIS);
+        when(imageRepository.findByIdAndOwnerId("analysis-image", 42L))
+                .thenReturn(Optional.of(image));
+
+        assertThatThrownBy(() ->
+                imageUploadService.activateProfileImage(42L, "analysis-image")
+        ).isInstanceOfSatisfying(BusinessException.class, exception ->
+                assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.IMAGE_INVALID_STATE)
+        );
+    }
+
+    private Member member(Long memberId) {
+        Member member = Member.create(
+                "member-%d@fitback.com".formatted(memberId),
+                "member-%d".formatted(memberId),
+                "password",
+                LoginProvider.EMAIL
+        );
+        ReflectionTestUtils.setField(member, "id", memberId);
+        return member;
+    }
+
+    private Image readyImage(String imageId, Member owner, ImagePurpose purpose) {
+        Image image = Image.createPending(
+                imageId,
+                owner,
+                "images/%s/%d/2026/07/%s.jpg".formatted(
+                        purpose.name().toLowerCase(),
+                        owner.getId(),
+                        imageId
+                ),
+                purpose,
+                "image/jpeg",
+                1024,
+                ImageVisibility.PRIVATE,
+                NOW.plusSeconds(300)
+        );
+        image.completeUpload(1024, "image/jpeg", LocalDateTime.of(2026, 7, 22, 14, 0));
+        return image;
     }
 }
