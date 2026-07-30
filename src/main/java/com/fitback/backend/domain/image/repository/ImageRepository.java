@@ -78,4 +78,17 @@ public interface ImageRepository extends JpaRepository<Image, String> {
             @Param("afterId") String afterId,
             Pageable pageable
     );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select image
+            from Image image
+            where image.status = com.fitback.backend.domain.image.entity.ImageStatus.DELETING
+              and image.deleteRequestedAt <= :requestedBefore
+            order by image.id
+            """)
+    List<Image> findStaleDeletingImages(
+            @Param("requestedBefore") Instant requestedBefore,
+            Pageable pageable
+    );
 }

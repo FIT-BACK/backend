@@ -23,6 +23,7 @@ public class ImageCleanupService {
     private static final Logger log = LoggerFactory.getLogger(ImageCleanupService.class);
     private static final int CLEANUP_BATCH_SIZE = 50;
     private static final Duration RETRY_DELAY = Duration.ofHours(1);
+    private static final Duration STALE_DELETING_DELAY = Duration.ofHours(1);
 
     private final ImageRepository imageRepository;
     private final ImageObjectStorage imageObjectStorage;
@@ -94,6 +95,16 @@ public class ImageCleanupService {
             }
         }
         return List.copyOf(claimedImageIds);
+    }
+
+    @Transactional
+    public List<String> findStaleDeletingImagesForRetry() {
+        return imageRepository.findStaleDeletingImages(
+                        clock.instant().minus(STALE_DELETING_DELAY),
+                        PageRequest.of(0, CLEANUP_BATCH_SIZE)
+                ).stream()
+                .map(Image::getId)
+                .toList();
     }
 
     @Transactional

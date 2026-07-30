@@ -77,15 +77,20 @@ Content-Type: application/json
 
 ```json
 {
-  "imageId": "019c1234-abcd-7000-8000-123456789abc",
-  "uploadUrl": "https://s3.example.com/bucket",
-  "uploadMethod": "POST",
-  "uploadFields": {
-    "key": "images/analysis/1/2026/07/image-id.jpg",
-    "policy": "...",
-    "x-amz-signature": "..."
-  },
-  "expiresAt": "2026-07-30T12:05:00Z"
+  "success": true,
+  "code": "COMMON200_1",
+  "message": "성공적으로 요청을 처리했습니다.",
+  "data": {
+    "imageId": "019c1234-abcd-7000-8000-123456789abc",
+    "uploadUrl": "https://s3.example.com/bucket",
+    "uploadMethod": "POST",
+    "uploadFields": {
+      "key": "images/analysis/1/2026/07/image-id.jpg",
+      "policy": "...",
+      "x-amz-signature": "..."
+    },
+    "expiresAt": "2026-07-30T12:05:00Z"
+  }
 }
 ```
 
@@ -122,8 +127,13 @@ Authorization: Bearer {accessToken}
 
 ```json
 {
-  "imageId": "019c1234-abcd-7000-8000-123456789abc",
-  "status": "READY"
+  "success": true,
+  "code": "COMMON200_1",
+  "message": "성공적으로 요청을 처리했습니다.",
+  "data": {
+    "imageId": "019c1234-abcd-7000-8000-123456789abc",
+    "status": "READY"
+  }
 }
 ```
 
@@ -143,15 +153,20 @@ Content-Type: application/json
 
 ```json
 {
-  "reportId": 501,
-  "imageUrl": "https://signed-cdn.example/image",
-  "matchPercentage": 70,
-  "suggestedTags": [
-    {
-      "tagId": 10,
-      "tagName": "미니멀"
-    }
-  ]
+  "success": true,
+  "code": "COMMON200_1",
+  "message": "성공적으로 요청을 처리했습니다.",
+  "data": {
+    "reportId": 501,
+    "imageUrl": "https://signed-cdn.example/image",
+    "matchPercentage": 70,
+    "suggestedTags": [
+      {
+        "tagId": 10,
+        "tagName": "미니멀"
+      }
+    ]
+  }
 }
 ```
 
@@ -181,34 +196,39 @@ Authorization: Bearer {accessToken}
 
 ```json
 {
-  "reportId": 501,
-  "analysisTags": ["미니멀", "출근룩"],
-  "matchPercentage": 75,
-  "recommendationStatus": "CURRENT",
-  "recommendationGroups": [
-    {
-      "category": "TOP",
-      "items": [
-        {
-          "productId": 101,
-          "rank": 1,
-          "imageUrl": "https://...",
-          "name": "상품명",
-          "sellerName": "판매자",
-          "price": {
-            "amount": 34000,
-            "currency": "KRW",
-            "type": "CURRENT"
-          },
-          "purchaseUrl": "https://...",
-          "availability": "AVAILABLE",
-          "isSaved": false
-        }
-      ]
-    }
-  ],
-  "partial": false,
-  "warnings": []
+  "success": true,
+  "code": "COMMON200_1",
+  "message": "성공적으로 요청을 처리했습니다.",
+  "data": {
+    "reportId": 501,
+    "analysisTags": ["미니멀", "출근룩"],
+    "matchPercentage": 75,
+    "recommendationStatus": "CURRENT",
+    "recommendationGroups": [
+      {
+        "category": "TOP",
+        "items": [
+          {
+            "productId": 101,
+            "rank": 1,
+            "imageUrl": "https://...",
+            "name": "상품명",
+            "sellerName": "판매자",
+            "price": {
+              "amount": 34000,
+              "currency": "KRW",
+              "type": "CURRENT"
+            },
+            "purchaseUrl": "https://...",
+            "availability": "AVAILABLE",
+            "isSaved": false
+          }
+        ]
+      }
+    ],
+    "partial": false,
+    "warnings": []
+  }
 }
 ```
 
@@ -224,22 +244,27 @@ Authorization: Bearer {accessToken}
 
 ```json
 {
-  "productId": 101,
-  "imageUrl": "https://...",
-  "name": "상품명",
-  "brandName": "브랜드",
-  "sellerName": "판매자",
-  "category": "TOP",
-  "price": {
-    "amount": 34000,
-    "currency": "KRW",
-    "type": "CURRENT"
-  },
-  "purchaseUrl": "https://...",
-  "availability": "AVAILABLE",
-  "dataStatus": "LIVE",
-  "tags": [],
-  "isSaved": false
+  "success": true,
+  "code": "COMMON200_1",
+  "message": "성공적으로 요청을 처리했습니다.",
+  "data": {
+    "productId": 101,
+    "imageUrl": "https://...",
+    "name": "상품명",
+    "brandName": "브랜드",
+    "sellerName": "판매자",
+    "category": "TOP",
+    "price": {
+      "amount": 34000,
+      "currency": "KRW",
+      "type": "CURRENT"
+    },
+    "purchaseUrl": "https://...",
+    "availability": "AVAILABLE",
+    "dataStatus": "LIVE",
+    "tags": [],
+    "isSaved": false
+  }
 }
 ```
 
