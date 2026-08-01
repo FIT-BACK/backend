@@ -715,7 +715,7 @@ body는 없다.
 | `ANALYSIS_IMAGE_STORAGE_ERROR` | `ANALYSIS500_1` | 500 | 분석 이미지 저장 실패 |
 | `TAG_NOT_FOUND` | `TAG404_1` | 404 | 확정 요청의 기본 태그 ID가 존재하지 않음 |
 | `TREND_NOT_FOUND` | `TREND404_1` | 404 | 트렌드 없음 |
-| `LOOKBOOK_NOT_FOUND` | `LOOKBOOK404_1` | 404 | 룩북 없음 또는 삭제됨 |
+| `LOOKBOOK_NOT_FOUND` | `LOOKBOOK404_1` | 404 | 통합 클로젯 저장 대상으로 지정한 룩북이 없거나 삭제됨 |
 | `CLOSET_ALREADY_SAVED` | `CLOSET400_1` | 400 | 통합 클로젯에 이미 저장됨 |
 | `CLOSET_NOT_FOUND` | `CLOSET404_1` | 404 | 저장 항목 없음 또는 소유권 없음 |
 | `CLOSET_TARGET_UNSUPPORTED` | `CLOSET422_1` | 422 | 지원하지 않는 저장 대상 |
