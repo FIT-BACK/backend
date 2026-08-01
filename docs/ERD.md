@@ -46,8 +46,8 @@
 
 ```text
 providerIdentityKey = SHA-256(
-  identityVersion + "|" + sourceApi + "|" + externalProductId + "|"
-  + nullToEmpty(externalVariantId) + "|" + nullToEmpty(merchantId)
+  provider + NUL + externalProductId + NUL
+  + nullToEmpty(externalVariantId) + NUL + nullToEmpty(merchantId)
 )
 ```
 
@@ -621,7 +621,7 @@ FK_MARKETING_CONSENT_HISTORY_MEMBER(member_id)
 IDX_MARKETING_CONSENT_HISTORY_MEMBER_ID(member_id)
 ```
 
-V7은 기존 회원에 기본 설정 row를 멱등 backfill한다. 신규 회원가 생성될
+V7은 기존 회원에 기본 설정 row를 멱등 backfill한다. 신규 회원이 생성될
 때도 서비스가 기본 설정을 만들고, 설정 조회 시 row가 없으면 동일한 기본값을
 생성한다. `marketing_enabled`가 실제로 변경될 때만 동의 이력을 추가한다.
 

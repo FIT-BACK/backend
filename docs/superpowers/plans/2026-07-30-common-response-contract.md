@@ -1,7 +1,7 @@
 # Common Response Contract Implementation Plan
 
 > **상태 (2026-08-01): 완료·병합됨.** [Issue #161](https://github.com/FIT-BACK/backend/issues/161)과 [PR #163](https://github.com/FIT-BACK/backend/pull/163)의 실행 기록이다. 아래 본문과 체크박스는 작성 당시 계획을 보존하며 현재 완료 여부를 나타내지 않는다. 최신 계약은 [API_SPEC.md](../../API_SPEC.md)와 구현 코드를 기준으로 한다.
-
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Align the closet-save creation HTTP status with its common response code and prevent failure responses from carrying payload data.

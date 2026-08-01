@@ -359,7 +359,10 @@ AND 분석·룩북·프로필 등 실제 도메인 참조가 존재하지 않음
 
 DB 트랜잭션 안에서 S3 삭제를 직접 실행하지 않는다. 삭제·교체 트랜잭션이 커밋된 뒤 분석,
 삭제되지 않은 룩북, 회원 프로필 참조를 다시 확인하고 마지막 논리 참조가 없을 때만 객체를
-삭제한다. 어느 한 도메인에서라도 같은 `imageId`를 참조하면 `ACTIVE`를 유지한다.
+삭제한다. `claimReleasedActiveImages()`는 같은 DB 트랜잭션에서 후보 `ACTIVE` row를
+비관 잠금하고 모든 참조 probe를 다시 확인한 다음 `ACTIVE → DELETING`을 선점한다. 선점에
+성공한 ID만 커밋 후 S3 삭제 후보가 된다. 어느 한 도메인에서라도 같은 `imageId`를 참조하면
+`ACTIVE`를 유지하며, `DELETING` 상태는 새 룩북 연결의 허용 상태(`READY` 또는 `ACTIVE`)가 아니다.
 
 회원 프로필 교체는 새 `PROFILE + READY` 이미지를 `ACTIVE`로 전환하고
 `member.profile_image_id`를 변경한 뒤 이전 이미지의 참조 해제 이벤트를 발행한다.

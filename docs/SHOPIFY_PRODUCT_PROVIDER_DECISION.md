@@ -7,11 +7,8 @@
 > [`ShoppingProviderConfig.java`](../src/main/java/com/fitback/backend/external/shopping/config/ShoppingProviderConfig.java)에서
 > `SHOPPING_PROVIDER=shopify`와 `SHOPIFY_ENABLED=true`가 함께 설정된 경우 Shopify adapter를
 > 선택한다. 실행 방법은 [README.md](../README.md)를 함께 확인한다.
-
 > 상태: 최소 프로토타입에 한해 채택, 정식 운영 채택은 보류
->
 > 검증 일시: 2026-07-30 08:04 KST
->
 > 관련 이슈: #92
 
 ## 1. 결정

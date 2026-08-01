@@ -1,7 +1,7 @@
 # Shopify Identity-Only Persistence Implementation Plan
 
 > **상태 (2026-08-01): 완료·병합됨.** [PR #154](https://github.com/FIT-BACK/backend/pull/154)의 실행 기록이다. 아래 본문과 체크박스는 작성 당시 계획을 보존하며 현재 완료 여부를 나타내지 않는다. 최신 공급자 경계는 [SHOPIFY_PRODUCT_PROVIDER_DECISION.md](../../SHOPIFY_PRODUCT_PROVIDER_DECISION.md)와 구현 코드를 기준으로 한다.
-
+>
 > **For Codex:** Execute this plan in the current PR branch and keep verification proportional to the requested scope.
 
 **Goal:** Persist only Shopify provider identity while resolving product name, price, image, and purchase URL from live `lookup_catalog` calls.

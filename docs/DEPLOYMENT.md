@@ -14,7 +14,7 @@
 4. `EC2_INSTANCE_ID` 저장소 변수가 설정된 경우에만 SSM Run Command로 EC2 배포를 실행한다.
 5. EC2는 고유한 release 디렉터리에서 Parameter Store의 DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값을 읽고 Compose stack을 갱신한다.
 6. Nginx health와 readiness 기반 backend container health 중 하나라도 실패하면 직전 release 전체로 rollback한다.
-7. `PUBLIC_BASE_URL`이 설정되어 있으면 CloudFront HTTPS 주소에서 Nginx와 backend readiness를 다시 확인한다.
+7. `PUBLIC_BASE_URL`이 설정되어 있으면 CloudFront HTTPS 주소에서 Nginx와 backend readiness를 다시 확인한다. 이 공개 경로 확인은 경고성 사후 검증이므로 실패해도 앞서 성공한 SSM release를 rollback하지 않으며, 복구 뒤 다시 실행해 확인한다.
 
 SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 운영 프로필은 메일 서버 장애가 애플리케이션 전체 health에 반영되지 않도록 mail health indicator를 비활성화한다.

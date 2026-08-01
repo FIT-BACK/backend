@@ -1,7 +1,7 @@
 # UT 준비 및 ACTIVE 이미지 참조 해제 구현 계획
 
 > **상태 (2026-08-01): 완료·후속 보완까지 병합됨.** [Issue #192](https://github.com/FIT-BACK/backend/issues/192), 구현 [PR #193](https://github.com/FIT-BACK/backend/pull/193), 피드백 반영 [PR #196](https://github.com/FIT-BACK/backend/pull/196)의 실행 기록이다. 아래 본문과 체크박스는 작성 당시 계획을 보존하며 현재 완료 여부를 나타내지 않는다. 최신 이미지 계약은 [IMAGE_STORAGE_POLICY.md](../../IMAGE_STORAGE_POLICY.md)와 구현 코드를 기준으로 한다.
-
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 최소 프로토타입의 프론트엔드 연동 계약과 UT 사전 데이터를 준비하고, ACTIVE 이미지의 마지막 논리 참조가 해제되면 커밋 후 객체를 자동 삭제한다.

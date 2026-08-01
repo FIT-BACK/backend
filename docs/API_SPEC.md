@@ -394,8 +394,9 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
 ### 규칙
 
 - candidate token 서명·만료·공급자 capability를 검증한다.
-- 현재는 안정 provider identity의 `(provider_type, provider_product_id)` unique 계약으로
-  재시도를 멱등 처리한다.
+- 현재는 `ProductIdentityHasher`가 `provider`, `externalProductId`, 선택 `externalVariantId`,
+  선택 `merchantId`를 NUL 구분자로 정규화해 만든 SHA-256 hex `providerIdentityKey`와
+  `UNIQUE(source_api, provider_identity_key)` 계약으로 재시도를 멱등 처리한다.
 - 가능한 경우 live lookup으로 identity와 현재 상태를 재확인한다.
 - 현재 `IDENTITY_ONLY` 방식은 provider identity와 내부 카테고리만 저장하며 표시 필드는 live
   lookup으로 가져온다.

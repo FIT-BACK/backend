@@ -1,7 +1,7 @@
 # Composite Unique Migration Implementation Plan
 
 > **상태 (2026-08-01): 완료·병합됨.** [Issue #87](https://github.com/FIT-BACK/backend/issues/87)과 [PR #166](https://github.com/FIT-BACK/backend/pull/166)의 실행 기록이다. 아래 본문과 체크박스는 작성 당시 계획을 보존하며 현재 완료 여부를 나타내지 않는다. 최신 스키마 계약은 [ERD.md](../../ERD.md)와 Flyway migration을 기준으로 한다.
-
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 운영 `closet_save`와 `trend_tag`의 중복을 결정적으로 정리하고 Entity와 같은 복합 UNIQUE 제약을 보장한다.

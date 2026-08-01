@@ -1,7 +1,7 @@
 # Image Enum Release B Implementation Plan
 
 > **상태 (2026-08-01): 완료·병합·운영 반영됨.** [Issue #96](https://github.com/FIT-BACK/backend/issues/96), [PR #168](https://github.com/FIT-BACK/backend/pull/168), 운영 반영 [PR #169](https://github.com/FIT-BACK/backend/pull/169)의 실행 기록이다. 아래 본문은 Release B 당시의 롤백 호환 계획이며 현재 계약은 Release C까지 완료된 [IMAGE_STORAGE_POLICY.md](../../IMAGE_STORAGE_POLICY.md)와 구현 코드를 기준으로 한다.
-
+>
 > **For Codex:** Execute Release B independently from Release C and preserve rollback compatibility with Release A.
 
 **Goal:** Write only the new image purpose/status values, backfill existing rows, and catch up legacy rows created during an A rollback without narrowing the dual constraints.
