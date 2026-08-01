@@ -50,6 +50,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class LookbookService {
 
     private static final int DEFAULT_LOOKBOOK_PAGE_SIZE = 20;
+    private static final int MAX_LOOKBOOK_PAGE_SIZE = 20;
     private static final Pageable SEARCH_PAGE_REQUEST = PageRequest.of(0, 10);
 
     private final LookbookRepository lookbookRepository;
@@ -198,6 +199,7 @@ public class LookbookService {
 
         // pageSize 를 따로 입력받지 않으면 20 으로 계산
         int resolvedPageSize = pageSize == null ? DEFAULT_LOOKBOOK_PAGE_SIZE : pageSize;
+        validateLookbookPageRequest(cursor, resolvedPageSize);
 
         // 입력 받은 태그의 앞 뒤 공백 제거
         String normalizedTag = normalizeTag(tag);
@@ -709,6 +711,14 @@ public class LookbookService {
                 .map(Image::getId)
                 .distinct()
                 .toList();
+    }
+
+    private void validateLookbookPageRequest(Long cursor, int pageSize) {
+        if ((cursor != null && cursor <= 0)
+                || pageSize < 1
+                || pageSize > MAX_LOOKBOOK_PAGE_SIZE) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
     }
 
     private void publishReleasedImageReferences(List<String> imageIds) {

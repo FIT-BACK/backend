@@ -1,29 +1,34 @@
 package com.fitback.backend.global.security.filter;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.response.ApiResponse;
 import com.fitback.backend.global.security.service.CustomUserDetailsService;
 import com.fitback.backend.global.security.util.JwtUtil;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.filter.OncePerRequestFilter;
-
-import java.io.IOException;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.servlet.ModelAndView;
+import tools.jackson.databind.ObjectMapper;
 
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final CustomUserDetailsService customUserDetailsService;
-
+    private final ObjectMapper objectMapper;
+    private final HandlerExceptionResolver handlerExceptionResolver;
 
     @Override
     protected void doFilterInternal(
@@ -32,45 +37,58 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
-        try {
-            //토큰 가져오기
-            String token = request.getHeader("Authorization");
-            //token이 없거나 Bearer가 아니면 넘기기
-            if (token == null || !token.startsWith("Bearer ")) {
-                filterChain.doFilter(request, response);
-                return;
-            }
-            //Bearer이면 추출
-            token = token.replace("Bearer ", "");
-            //Token 검증
-            if(jwtUtil.isValid(token)){
-                //AccessToken 여부 확인
-                if(jwtUtil.isAccessToken(token)){
-                    //토큰에서 이메일 추출
-                    String email = jwtUtil.getEmailFromToken(token);
-                    //인증 객체 생성
-                    UserDetails userDetails = customUserDetailsService.loadUserByUsername(email);
-                    Authentication auth = new UsernamePasswordAuthenticationToken(
-                            userDetails,
-                            null,
-                            userDetails.getAuthorities()
-                    );
-                    //인증 후 SecurityContextHolder에 넣기
-                    SecurityContextHolder.getContext().setAuthentication(auth);
-                }
-
-            }
+        String authorization = request.getHeader("Authorization");
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
-        } catch (Exception e){
-            ObjectMapper mapper = new ObjectMapper();
-            ErrorCode code = ErrorCode.UNAUTHORIZED;
-
-            response.setContentType("application/json;charset=UTF-8");
-            response.setStatus(code.getHttpStatus().value());
-
-            ApiResponse<Void> errorResponse = ApiResponse.onFailure(code.getCode(), code.getMessage());
-
-            mapper.writeValue(response.getOutputStream(), errorResponse);
+            return;
         }
+
+        String email;
+        try {
+            email = jwtUtil.getAccessTokenSubject(authorization.substring(7));
+        } catch (JwtException | IllegalArgumentException exception) {
+            SecurityContextHolder.clearContext();
+            writeUnauthorizedResponse(response);
+            return;
+        }
+
+        UserDetails userDetails;
+        try {
+            userDetails = customUserDetailsService.loadUserByUsername(email);
+        } catch (UsernameNotFoundException exception) {
+            SecurityContextHolder.clearContext();
+            writeUnauthorizedResponse(response);
+            return;
+        } catch (RuntimeException exception) {
+            SecurityContextHolder.clearContext();
+            ModelAndView resolved = handlerExceptionResolver.resolveException(
+                    request,
+                    response,
+                    null,
+                    exception
+            );
+            if (resolved == null) {
+                throw exception;
+            }
+            return;
+        }
+        Authentication authentication = new UsernamePasswordAuthenticationToken(
+                userDetails,
+                null,
+                userDetails.getAuthorities()
+        );
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        filterChain.doFilter(request, response);
+    }
+
+    private void writeUnauthorizedResponse(HttpServletResponse response) throws IOException {
+        ErrorCode errorCode = ErrorCode.UNAUTHORIZED;
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8.name());
+        response.setStatus(errorCode.getHttpStatus().value());
+        objectMapper.writeValue(
+                response.getOutputStream(),
+                ApiResponse.onFailure(errorCode.getCode(), errorCode.getMessage())
+        );
     }
 }

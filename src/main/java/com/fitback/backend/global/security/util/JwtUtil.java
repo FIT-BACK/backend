@@ -96,6 +96,18 @@ public class JwtUtil {
         }
     }
 
+    public String getAccessTokenSubject(String token) {
+        Claims claims = getClaims(token).getPayload();
+        if (!TOKEN_TYPE_ACCESS.equals(claims.get(CLAIM_TYPE, String.class))) {
+            throw new MalformedJwtException("JWT is not an access token");
+        }
+        String subject = claims.getSubject();
+        if (subject == null || subject.isBlank()) {
+            throw new MalformedJwtException("JWT subject is missing");
+        }
+        return subject;
+    }
+
     //토큰 유효성 확인(매개변수 token의 유효성 확인 true/false)
     public boolean isValid(String token){
         try{

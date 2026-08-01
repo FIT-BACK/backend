@@ -25,6 +25,7 @@ import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.util.HmacUtil;
 import com.fitback.backend.global.util.LowercaseNormalizer;
+import com.fitback.backend.global.validation.BCryptPasswordPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -88,6 +89,7 @@ public class MemberService {
     //비밀번호 변경
     @Transactional
     public void changePassword(AuthMember authMember, MemberRequest.ChangePasswordRequest dto) {
+        BCryptPasswordPolicy.validate(dto.newPassword());
         Member member = memberRepository.findById(authMember.getMember().getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
 

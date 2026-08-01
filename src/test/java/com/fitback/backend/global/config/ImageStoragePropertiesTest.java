@@ -20,6 +20,8 @@ class ImageStoragePropertiesTest {
         assertThat(properties.toString())
                 .contains("fitback-images", "KEYPAIR", "cloudfrontPrivateKeyBase64=****")
                 .doesNotContain("private-key-value");
+        assertThat(properties.apiCallTimeout()).isEqualTo(java.time.Duration.ofSeconds(5));
+        assertThat(properties.apiCallAttemptTimeout()).isEqualTo(java.time.Duration.ofSeconds(2));
     }
 
     @Test

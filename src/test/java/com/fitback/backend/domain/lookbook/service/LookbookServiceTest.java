@@ -56,6 +56,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -787,6 +788,23 @@ class LookbookServiceTest {
                 );
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(6);
         verify(memberProfileImageService).resolveProfileImageUrls(anyList());
+    }
+
+    @Test
+    void getLookbooksRejectsNonPositiveCursor() {
+        assertThatThrownBy(() -> lookbookService.getLookbooks(0L, 20, null, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR)
+                );
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, Integer.MAX_VALUE})
+    void getLookbooksRejectsPageSizeOutsideAllowedRange(int pageSize) {
+        assertThatThrownBy(() -> lookbookService.getLookbooks(null, pageSize, null, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR)
+                );
     }
 
     @Test
