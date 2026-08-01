@@ -9,16 +9,18 @@
 3. ECR에서 `sha256` digest를 확인해 변경 불가능한 이미지 참조를 생성한다.
 4. `EC2_INSTANCE_ID` 저장소 변수가 설정된 경우에만 SSM Run Command로 EC2 배포를 실행한다.
 5. EC2는 고유한 release 디렉터리에서 Parameter Store의 DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값을 읽고 Compose stack을 갱신한다.
-6. Nginx와 backend health check가 실패하면 직전 release 전체로 rollback한다.
+6. Nginx health와 readiness 기반 backend container health 중 하나라도 실패하면 직전 release 전체로 rollback한다.
 7. `PUBLIC_BASE_URL`이 설정되어 있으면 CloudFront HTTPS 주소에서 Nginx와 backend readiness를 다시 확인한다.
 
 SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 운영 프로필은 메일 서버 장애가 애플리케이션 전체 health에 반영되지 않도록 mail health indicator를 비활성화한다.
-배포 및 rollback 판정은 `/actuator/health/readiness`만 사용한다.
+배포 및 rollback 판정은 `/nginx-health`와 readiness 기반 backend container health를 함께 사용한다.
 
-## 현재 운영 구성
+## 기록된 운영 구성과 최근 배포 증적
 
-2026-07-24 KST 기준 운영 구성은 다음과 같다. 비밀값과 private RDS endpoint는 문서에 기록하지 않는다.
+아래 리소스 값은 2026-07-24 KST에 확인한 운영 인프라 스냅샷이다. 현재 AWS 상태나 비용을
+실시간으로 보장하지 않으며, 배포 전에는 콘솔·CloudFront·SSM에서 다시 확인한다. 비밀값과 private
+RDS endpoint는 문서에 기록하지 않는다.
 
 | 항목 | 현재 값 |
 | --- | --- |
@@ -35,7 +37,13 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 | RDS Security Group | `sg-0655806f06e276341`, EC2 SG에서 MySQL 3306만 inbound |
 | GitHub OIDC Role | `FitbackGitHubDeployRole` |
 | EC2 Instance Role / Profile | `FitbackProductionEC2Role` / `FitbackProductionEC2Profile` |
-| 현재 검증 digest | `sha256:a0d33a7c3566b7b7e2e5c984e493cd33fd73ca6166072be21dde337283f00620` |
+| 2026-07-24 검증 digest | `sha256:a0d33a7c3566b7b7e2e5c984e493cd33fd73ca6166072be21dde337283f00620` |
+
+마지막으로 기록된 성공 `main` 배포는 2026-07-30 KST의
+[`Backend CD` run 30550498810](https://github.com/FIT-BACK/backend/actions/runs/30550498810)이다.
+해당 run은 `main` `b09a7de8c122d801465aee705a45ad6890b0b2a2`를 성공적으로 배포했고, 기록된
+이미지 digest는 `sha256:8b550a46dc9a4fddbdca41955eb3ee195a4fbfc7ea7d96d3e0316873100fa09f`다.
+이는 배포 증적이지 이 문서를 읽는 시점의 실행 중 digest 보증은 아니다.
 
 실제 Production CD 증적:
 
@@ -239,7 +247,8 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - S3 버킷은 Block Public Access와 Bucket owner enforced를 유지한다.
 - 버킷 정책은 CloudFront distribution `EV1PM17XDVYU5`의 OAC `s3:GetObject`만 허용한다.
 - CloudFront 기본 동작은 HTTPS redirect, `GET`/`HEAD`, `CachingOptimized`, trusted key group `fitback-private-images`를 사용한다.
-- 이미지 조회는 signed URL 또는 signed cookie만 허용하며 서명 없는 요청은 `403`이다.
+- CloudFront 인프라는 trusted key group으로 서명 없는 요청을 `403`으로 거부한다. 현재 백엔드는
+  signed URL만 발급하며 signed cookie는 구현하지 않았다.
 - 운영 EC2 역할은 Presigned POST 발급, 업로드 완료 검증, 미사용 객체 정리에 필요한
   `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`만 가진다.
 - 실제 적용 위치는 IAM role `FitbackProductionEC2Role`의 inline policy
@@ -260,11 +269,13 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
   `82543ae`로 배포됐다. [Production CD #30499561977](https://github.com/FIT-BACK/backend/actions/runs/30499561977)에서
   image publish, SSM deploy, public HTTPS readiness가 모두 성공했으며 릴리스 C의 직전
   rollback target이다.
-- 릴리스 C(`#97`)의 V19는 B rollback window의 legacy row를 최종 catch-up하고 temporary
-  CHECK gate로 잔여 0건을 확인한 뒤 purpose/status constraint를 신규값 전용으로 원자 교체한다.
-  Java legacy enum과 startup reconciliation도 제거한다.
-- C 실패 시 B로 rollback한다. B writer는 이미 신규값만 쓰므로 V19의 신규값 전용 constraint와
-  호환되며, A로는 더 이상 rollback하지 않는다.
+- 릴리스 C(`#97`, [PR #170](https://github.com/FIT-BACK/backend/pull/170))는 `main`에 병합됐다.
+  V19는 B rollback window의 legacy row를 최종 catch-up하고 zero gate를 통과한 뒤
+  purpose/status constraint를 canonical 값 전용으로 교체했으며 Java legacy enum과 startup
+  reconciliation을 제거했다.
+- V19 이후에는 DB migration을 자동으로 되돌리지 않는다. 과거 B 애플리케이션 writer는 canonical
+  값을 쓰므로 애플리케이션 release rollback과는 호환되지만, schema rollback 필요성은 별도 운영
+  절차로 판단한다.
 - S3 객체 수명 주기 자동 만료는 `ACTIVE`와 미사용 상태를 구분할 수 없어 적용하지 않는다.
   24시간 미사용 `PENDING_UPLOAD`/`READY`/`REJECTED` 정리와 `DELETE_FAILED` 재시도는 DB
   상태와 도메인 참조를 기준으로 애플리케이션 작업자가 수행한다.
@@ -293,7 +304,9 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V16__seed_prototype_analysis_tags.sql`,
 `V17__reconcile_composite_unique_constraints.sql`,
 `V18__backfill_image_lifecycle_values.sql`,
-`V19__contract_image_lifecycle_values.sql`을 순서대로 적용하고 Hibernate
+`V19__contract_image_lifecycle_values.sql`,
+`V20__add_member_profile_image_id.sql`,
+`V21__create_notification_table.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
 
@@ -338,7 +351,8 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | rollback 자체 실패 | mock test | 비정상 종료 코드 반환 |
 | 활성화 실패 및 INT/TERM | mock test | 직전 release 복원 |
 | DB/JWT/HMAC/Kakao/메일 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
-| Flyway V1~V12 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환, 이미지 old/new purpose/status, 상품 provider·추천 결과·저장 계약, 회원 알림/탈퇴 cascade, 카카오 `social_uid` 계약 확인 |
+| Flyway V1~V21 MySQL 적용 | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4에 모든 migration 적용, V20 프로필 이미지 복합 FK와 기존 주요 제약조건 확인 |
+| V21 notification 세부 DDL assertion | 미구현 | migration 적용 성공은 확인하지만 notification 컬럼·FK·index를 별도로 조회하는 assertion은 아직 없음 |
 
 검증 명령:
 
@@ -395,7 +409,7 @@ ECR 및 S3 저장량, CloudFront 요청·데이터 전송, 소량의 CloudWatch 
 - [x] private S3 이미지 버킷, CloudFront OAC, trusted key group을 구성했다.
 - [x] 운영 프론트 Origin의 S3 Presigned POST 전용 CORS와 실제 업로드를 검증했다.
 - [x] 이미지 저장소 Repository Variable 세 개와 `/fitback/prod/cloudfront-private-key` SecureString을 구성했다.
-- [ ] `/fitback/prod/jwt-secret-key`, `/fitback/prod/hmac-secret-key`, Kakao OAuth, 메일, 비밀번호 재설정 URL 값을 포함한 운영 Parameter Store SecureString을 모두 생성했다.
+- [x] `/fitback/prod/jwt-secret-key`, `/fitback/prod/hmac-secret-key`, Kakao OAuth, 메일, 비밀번호 재설정 URL을 포함한 필수 SecureString은 Production CD가 EC2에서 조회해 배포에 사용했다. 값 자체는 문서·로그에서 별도 감사하지 않는다.
 - [ ] 카카오 개발자 콘솔에 운영 백엔드 콜백 URI를 등록했다.
 - [x] GitHub OIDC 역할에 SSM 최소 권한을 추가했다.
 - [x] GitHub Repository Variable `EC2_INSTANCE_ID`를 추가했다.

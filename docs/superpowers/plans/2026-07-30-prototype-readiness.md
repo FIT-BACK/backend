@@ -1,5 +1,7 @@
 # Prototype Readiness Implementation Plan
 
+> **상태 (2026-08-01): 완료·병합됨.** [Issue #164](https://github.com/FIT-BACK/backend/issues/164), 구현 [PR #165](https://github.com/FIT-BACK/backend/pull/165), runtime 후속 [PR #172](https://github.com/FIT-BACK/backend/pull/172)의 실행 기록이다. 아래 본문과 체크박스는 작성 당시 계획을 보존하며 현재 완료 여부를 나타내지 않는다. 최신 API·배포 계약은 [API_SPEC.md](../../API_SPEC.md)와 [DEPLOYMENT.md](../../DEPLOYMENT.md)를 기준으로 한다.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 운영형 S3 업로드 경로에서 명시적 프로토타입 태그 분석과 상품 추천을 끝까지 실행할 수 있게 한다.

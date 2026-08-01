@@ -1,18 +1,18 @@
-# Recommendation/Product, 분석 리포트 저장 및 이미지 ERD 계약
+# FIT-BACK Backend ERD 및 물리 데이터 계약
 
 ## 0. 문서 정보
 
 | 항목 | 값 |
 | --- | --- |
-| 기준일 | 2026-07-26 |
-| 적용 범위 | 추천 결과 생성, 상품 검색·상세, 쇼핑 API 연동, 추천 상품 저장, 분석 리포트 저장, 카테고리별 그룹핑, 기존 이미지 metadata |
-| 기준 코드 | 현재 `develop`과 Issue `#124`의 `Member`, `AnalysisReport`, `ClosetSave`, `SavedAnalysisItem`, `ReportCustomTag`, `Tag`, `Product`, `ProductTag`, `RecommendedItem`, `SavedProduct` |
+| 기준일 | 2026-08-01 |
+| 적용 범위 | 회원·프로필 이미지, 이미지 생명주기, 분석·추천·상품·저장·룩북, 알림 설정·이력·알림 목록 |
+| 기준 코드 | `develop` `9ddb450`, JPA Entity, Flyway V1~V21 |
 | 연동 참고 | Recommendation은 기존 분석 입력을 읽거나 요청의 확정 태그·매칭값을 멱등 반영 |
-| 문서 성격 | Issue `#98` 데이터 계약을 Issue `#124` 구현 상태와 동기화 |
+| 문서 성격 | 현재 애플리케이션·migration이 보장하는 계약과 의도적인 scalar 참조 경계를 기록 |
 
-이 문서는 임시 ERD의 `products`, `recommendations`, `product_saves`,
-`product_style_tags` 개념을 현재 단수형 테이블명과 JPA 모델에 맞춘다. 현재 코드와 다른 항목은
-후속 Entity 및 migration 후보이며 이 문서 수정만으로 운영 DDL을 실행하지 않는다.
+이 문서는 기존 Recommendation/Product 설계에 현재 구현된 이미지, 회원 프로필,
+알림 설정·동의 이력·알림 테이블을 포함한다. 운영 DDL의 단일 출처는
+`src/main/resources/db/migration` 아래 V1~V21이며, 이 문서는 DDL을 대체하지 않는다.
 
 ---
 
@@ -53,9 +53,11 @@ providerIdentityKey = SHA-256(
 
 - `provider_identity_key`는 64자 lowercase hex이며 application service가 생성한다.
 - `UNIQUE(source_api, provider_identity_key)`로 안정 identity 중복을 방지한다.
-- `SNAPSHOT_UUID`는 token의 random nonce를 versioned SHA-256한 `materialization_key`로 같은
-  token 재시도만 멱등 처리한다. 원문 token·nonce는 저장하지 않는다.
-- 안정 ID도 없고 snapshot 저장도 허용되지 않는 후보는 Product로 만들지 않는다.
+- `SNAPSHOT_UUID`/`materialization_key`는 V5에서 기존 row 백필과 schema 호환을 위해
+  유지한다. 현재 검색 서비스는 안정 provider identity가 있고 lookup·저장을
+  지원하는 후보에만 candidate token을 발급한다.
+- 현재 materialization 경로는 unstable `SNAPSHOT_UUID` 후보를 `PRODUCT422_2`로
+  거절하고 `PROVIDER_KEY`만 신규 Product로 만든다.
 
 ### 1.3 가격과 통화
 
@@ -89,7 +91,7 @@ providerIdentityKey = SHA-256(
 
 | enum | DB 컬럼 | 값 |
 | --- | --- | --- |
-| `ProductIdentityStrategy` | `product.identity_strategy VARCHAR(30)` | `PROVIDER_KEY`, `SNAPSHOT_UUID` |
+| `ProviderIdentityType` | `product.identity_strategy VARCHAR(30)` | `PROVIDER_KEY`, `SNAPSHOT_UUID` |
 | `ProductStorageMode` | `product.storage_mode VARCHAR(20)` | `SNAPSHOT`, `IDENTITY_ONLY` |
 | `ProductAvailability` | `product.availability VARCHAR(30)` | `AVAILABLE`, `UNAVAILABLE`, `TEMPORARILY_UNRESOLVED`, `UNKNOWN` |
 | `ProductCategory` | category 컬럼 `VARCHAR(30)` | `OUTER`, `TOP`, `BOTTOM`, `DRESS`, `SHOES`, `BAG`, `ACCESSORY`, `OTHER` |
@@ -99,6 +101,11 @@ providerIdentityKey = SHA-256(
 | `ImagePurpose` | `image.purpose VARCHAR(30)` | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
 | `ImageStatus` | `image.status VARCHAR(20)` | `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
 | `ImageVisibility` | `image.visibility VARCHAR(20)` | `PRIVATE`, `PUBLIC` |
+| `NotificationType` | `notification.notification_type VARCHAR(30)` | `ANALYSIS_COMPLETE`, `LOOKBOOK_LIKED`, `TREND_UPDATE`, `MARKETING` |
+| `NotificationTargetType` | API 응답 파생 enum, DB 미저장 | `ANALYSIS_REPORT`, `LOOKBOOK`, `TREND` |
+
+`NotificationTargetType`은 `notification_type`과 각 scalar 대상 ID에서 응답 시 파생한다.
+`notification` 테이블에 `target_type` 컬럼은 없다.
 
 카테고리는 위 순서로 노출하고 각 추천 그룹은 최대 10개이며 빈 그룹도 반환한다. 외부 공급자의
 카테고리 원문은 내부 enum 컬럼에 직접 저장하지 않고 Adapter에서 매핑한다.
@@ -115,6 +122,9 @@ erDiagram
     MEMBER ||--o{ LOOKBOOK : uploads
     MEMBER ||--o{ IMAGE : owns
     IMAGE o|--o| MEMBER : used_as_profile
+    MEMBER ||--|| MEMBER_NOTIFICATION_SETTING : configures
+    MEMBER ||--o{ MARKETING_CONSENT_HISTORY : records
+    MEMBER ||--o{ NOTIFICATION : receives
     ANALYSIS_REPORT ||--o{ RECOMMENDED_ITEM : has_current_set
     ANALYSIS_REPORT ||--o{ REPORT_CUSTOM_TAG : has_custom_input
     IMAGE o|--o{ ANALYSIS_REPORT : used_as_original
@@ -134,6 +144,43 @@ erDiagram
         VARCHAR profile_image_id FK
         VARCHAR profile_image_url
         VARCHAR login_provider
+    }
+
+    MEMBER_NOTIFICATION_SETTING {
+        BIGINT member_id PK,FK
+        BOOLEAN analysis_complete_enabled
+        BOOLEAN lookbook_liked_enabled
+        BOOLEAN trend_update_enabled
+        BOOLEAN marketing_enabled
+        DATETIME updated_at
+    }
+
+    MARKETING_CONSENT_HISTORY {
+        BIGINT marketing_consent_history_id PK
+        BIGINT member_id FK
+        BOOLEAN is_agreed
+        DATETIME created_at
+    }
+
+    NOTIFICATION {
+        BIGINT notification_id PK
+        BIGINT member_id FK
+        VARCHAR notification_type
+        BIGINT actor_member_id
+        BIGINT lookbook_id
+        BIGINT report_id
+        BIGINT trend_id
+        VARCHAR title
+        VARCHAR body
+        DATETIME read_at
+        DATETIME created_at
+    }
+
+    WITHDRAWAL_EMAIL_BLOCK {
+        BIGINT withdrawal_id PK
+        VARCHAR email_hash UK
+        DATETIME blocked_until
+        DATETIME created_at
     }
 
     IMAGE {
@@ -516,6 +563,127 @@ CK_LOOKBOOK_MATCH_SOURCE(
 )
 ```
 
+### 4.9 `member` 프로필 이미지 연결
+
+V20은 `member`에 다음 컬럼과 복합 FK를 추가한다.
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `profile_image_id` | `VARCHAR(36)` | Y | 현재 프로필 이미지 ID |
+
+```text
+FK_MEMBER_PROFILE_IMAGE_OWNER(profile_image_id, member_id)
+  -> image(image_id, owner_id)
+```
+
+- FK는 프로필 이미지와 회원이 같은 소유자임을 DB에서도 보장한다.
+- `image(image_id, owner_id)`의 `UK_IMAGE_ID_OWNER`가 복합 FK의 참조 key다.
+- JPA `Member`는 관계 Entity 대신 scalar `profileImageId`를 mapping하고, 서비스가
+  `Image` 소유권·`PROFILE` purpose·`READY` 상태를 검증해 연결한다.
+- legacy `profile_image_url`은 rollback 호환을 위해 물리 schema에 남을 수 있지만
+  현재 `Member` Entity는 읽거나 쓰지 않는다.
+- 응답의 `profileImageUrl`은 저장 컬럼이 아니라 `profile_image_id`로 조회한
+  `PRIVATE` 이미지의 10분 CloudFront Signed URL이다.
+
+### 4.10 `member_notification_setting`과 `marketing_consent_history`
+
+V7은 회원별 현재 알림 설정과 마케팅 동의 변경 이력을 분리했다.
+
+`member_notification_setting`:
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `member_id` | `BIGINT` | N | PK이자 `member.member_id` FK, 1:1 |
+| `analysis_complete_enabled` | `TINYINT(1)` | N | 기본 `1` |
+| `lookbook_liked_enabled` | `TINYINT(1)` | N | 기본 `1` |
+| `trend_update_enabled` | `TINYINT(1)` | N | 기본 `0` |
+| `marketing_enabled` | `TINYINT(1)` | N | 기본 `0` |
+| `updated_at` | `DATETIME(6)` | N | 마지막 설정 변경 시각 |
+
+```text
+PK_MEMBER_NOTIFICATION_SETTING(member_id)
+FK_MEMBER_NOTIFICATION_SETTING_MEMBER(member_id)
+  -> member(member_id) ON DELETE CASCADE
+```
+
+`marketing_consent_history`:
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `marketing_consent_history_id` | `BIGINT` | N | PK, auto increment |
+| `member_id` | `BIGINT` | N | 동의·철회 회원 FK |
+| `is_agreed` | `TINYINT(1)` | N | `1` 동의, `0` 철회 |
+| `created_at` | `DATETIME(6)` | N | 변경 이력 생성 시각 |
+
+```text
+FK_MARKETING_CONSENT_HISTORY_MEMBER(member_id)
+  -> member(member_id) ON DELETE CASCADE
+IDX_MARKETING_CONSENT_HISTORY_MEMBER_ID(member_id)
+```
+
+V7은 기존 회원에 기본 설정 row를 멱등 backfill한다. 신규 회원가 생성될
+때도 서비스가 기본 설정을 만들고, 설정 조회 시 row가 없으면 동일한 기본값을
+생성한다. `marketing_enabled`가 실제로 변경될 때만 동의 이력을 추가한다.
+
+### 4.11 `notification`
+
+V21은 회원에게 표시할 알림, 읽음 시각, 화면 이동에 필요한 scalar 대상 ID를
+저장한다.
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `notification_id` | `BIGINT` | N | PK, auto increment |
+| `member_id` | `BIGINT` | N | 알림 수신 회원 FK |
+| `notification_type` | `VARCHAR(30)` | N | `NotificationType` |
+| `actor_member_id` | `BIGINT` | Y | 알림을 촉발한 회원 ID scalar; 시스템 알림은 NULL |
+| `lookbook_id` | `BIGINT` | Y | `LOOKBOOK_LIKED` 화면 이동용 scalar ID |
+| `report_id` | `BIGINT` | Y | `ANALYSIS_COMPLETE` 화면 이동용 scalar ID |
+| `trend_id` | `BIGINT` | Y | `TREND_UPDATE` 화면 이동용 scalar ID |
+| `title` | `VARCHAR(100)` | N | 알림 제목 |
+| `body` | `VARCHAR(500)` | N | 알림 본문 |
+| `read_at` | `DATETIME(6)` | Y | 최초 읽음 시각; 미읽음은 NULL |
+| `created_at` | `DATETIME(6)` | N | 생성 시각 |
+
+```text
+FK_NOTIFICATION_MEMBER(member_id)
+  -> member(member_id) ON DELETE CASCADE
+IDX_NOTIFICATION_MEMBER_ID_NOTIFICATION_ID(member_id, notification_id)
+IDX_NOTIFICATION_MEMBER_ID_READ_AT(member_id, read_at)
+```
+
+`actor_member_id`, `lookbook_id`, `report_id`, `trend_id`는 의도적으로 JPA 관계와 DB FK가 아닌
+scalar로 저장한다. 따라서 대상 삭제가 알림 row를 자동 삭제하지 않는다.
+API `targetType`/`targetId`는 다음 규칙으로 파생한다.
+
+| `notification_type` | 응답 `targetType` | 응답 `targetId` 원천 |
+| --- | --- | --- |
+| `ANALYSIS_COMPLETE` | `ANALYSIS_REPORT` | `report_id` |
+| `LOOKBOOK_LIKED` | `LOOKBOOK` | `lookbook_id` |
+| `TREND_UPDATE` | `TREND` | `trend_id` |
+| `MARKETING` | `null` | `null` |
+
+V21 기준으로 알림 목록·단건/전체 읽음·단건 삭제 API와 저장소는
+구현되어 있다. 도메인 이벤트에서 `Notification` row를 자동 생성하는 producer는
+현재 `develop`에 없으므로, 알림 유형별 자동 발송 완료를 의미하지 않는다.
+
+### 4.12 `withdrawal_email_block`
+
+V7은 탈퇴 이메일의 원문 대신 HMAC hash로 30일 재가입 차단을 관리한다.
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `withdrawal_id` | `BIGINT` | N | PK, auto increment |
+| `email_hash` | `VARCHAR(64)` | N | HMAC hex, unique |
+| `blocked_until` | `DATETIME(6)` | N | 재가입 차단 만료 시각 |
+| `created_at` | `DATETIME(6)` | N | 생성 시각 |
+
+```text
+UK_WITHDRAWAL_EMAIL_BLOCK_EMAIL_HASH(email_hash)
+IDX_WITHDRAWAL_EMAIL_BLOCK_BLOCKED_UNTIL(blocked_until)
+```
+
+탈퇴한 `member` row와 FK를 연결하지 않아 회원 삭제 후에도 차단 기간을 유지한다.
+
 ---
 
 ## 5. 유사도 점수 영속 근거
@@ -537,6 +705,9 @@ CK_LOOKBOOK_MATCH_SOURCE(
 | `analysis_report` 물리 삭제 | recommended item, report custom tag `CASCADE` | 리포트 소유 결과·입력 |
 | `member` 삭제 | saved product `CASCADE` | 회원 개인 저장 관계 |
 | `member` 삭제 | closet save와 saved analysis item `CASCADE` | 회원 개인 리포트 저장 관계 |
+| `member` 삭제 | member notification setting, marketing consent history `CASCADE` | 회원 설정·동의 이력 |
+| `member` 삭제 | 수신한 notification `CASCADE` | 회원 개인 알림 |
+| notification target 삭제 | notification 유지 | actor/lookbook/report/trend ID는 FK 없는 scalar |
 | `closet_save` 삭제 | saved analysis item `CASCADE` | 저장 해제 시 선택 스냅샷 정리 |
 | `product` 삭제 | product tag `CASCADE` | 상품 부속 태그 |
 | `product` 삭제 | recommendation, saved product `RESTRICT` | 추천 근거와 사용자 저장 보존 |
@@ -548,9 +719,10 @@ JPA에는 대규모 `CascadeType.ALL`을 기본 적용하지 않는다. 특히 P
 
 ---
 
-## 7. Entity migration 상태
+## 7. Entity·migration 상태
 
-Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수행한다.
+현재 운영 migration 계약은 V1~V21이며, 프로덕션에서 Flyway 적용 후
+Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
 
 ### 7.1 `Product`
 
@@ -604,6 +776,16 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 - 실제 AI 공급자를 연결할 때는 모델 결과를 승인된 태그 taxonomy에 매핑하고 prototype 분석기를
   비활성화한다.
 
+### 7.7 이미지, 프로필, 알림
+
+- V18은 legacy 이미지 purpose/status를 canonical 값으로 백필한다.
+- V19는 legacy 잔여가 0건인지 확인한 후 `image.purpose`/`status` CHECK를
+  canonical 값 전용으로 교체한다.
+- V20은 `member.profile_image_id`와 이미지 소유자 복합 FK를 추가한다.
+- V21은 수신 회원 FK와 scalar 대상 ID를 가진 `notification` 테이블을 추가한다.
+- `member_notification_setting`/`marketing_consent_history`는 V7, 회원 삭제 cascade
+  보정은 V8에서 관리한다.
+
 ---
 
 ## 8. 경계와 검증 체크리스트
@@ -632,6 +814,10 @@ Recommendation/Product Entity 변경은 기능 이슈별 migration과 함께 수
 - [x] `saved_product` 복합 key로 PUT/DELETE가 멱등임
 - [x] 분석 리포트 저장 PUT/DELETE가 멱등이며 저장 목록이 명시적 저장 관계만 반환함
 - [x] 저장된 선택 상품이 추천 현재 세트 교체와 독립된 스냅샷으로 유지됨
+- [x] V20 프로필 이미지 복합 FK가 회원과 이미지 소유자 일치를 보장함
+- [x] V21 notification migration이 MySQL 8.4에 적용됨
+- [ ] V21 notification의 컬럼·FK·index를 별도 MySQL assertion으로 검증함
+- [x] 마케팅 설정이 실제로 변경될 때만 동의 이력이 추가됨
 - [ ] 추천 교체·공급자 장애·품절 후에도 저장 상품이 유지됨
 - [ ] 공급자 약관상 저장 불가 필드가 DB에 남지 않음
 - [ ] Entity 또는 DB 변경 PR에서 이 문서와 실제 migration을 함께 갱신함
@@ -652,8 +838,9 @@ FK_MEMBER_PROFILE_IMAGE_OWNER(profile_image_id, member_id)
   -> image(image_id, owner_id)
 ```
 
-`member.profile_image_url`은 배포 롤백을 위해 물리 컬럼만 임시 유지하며 신규 애플리케이션
-코드는 읽거나 쓰지 않는다. 기존 URL은 대응하는 `imageId`를 확인할 수 없으므로 백필하지 않는다.
+`member.profile_image_url`은 legacy 배포 롤백을 위해 물리 schema에 남을 수 있지만
+현재 애플리케이션 코드는 읽거나 쓰지 않는다. 기존 URL은 대응하는
+`imageId`를 확인할 수 없으므로 백필하지 않았다.
 
 | 컬럼 | 타입 | NULL | 제약/의미 |
 | --- | --- | --- | --- |
@@ -664,7 +851,7 @@ FK_MEMBER_PROFILE_IMAGE_OWNER(profile_image_id, member_id)
 | `content_type` | `VARCHAR(30)` | N | 허용된 MIME type |
 | `file_size` | `BIGINT` | N | 발급 요청 크기. 완료 검증 시 S3 실제값 재검증 |
 | `status` | `VARCHAR(20)` | N | `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED`; V19부터 `PENDING` 금지 |
-| `visibility` | `VARCHAR(20)` | N | 신규 발급은 `PRIVATE` |
+| `visibility` | `VARCHAR(20)` | N | 신규 발급은 항상 `PRIVATE`; 룩북 생성 후도 전환 없음 |
 | `presigned_expires_at` | `DATETIME(6)` | Y | 업로드 URL 만료 시각. 완료·거부·삭제 선점 시 NULL |
 | `uploaded_at` | `DATETIME(6)` | Y | S3 객체 검증 완료 또는 거부 처리 시각 |
 | `activated_at` | `DATETIME(6)` | Y | 도메인 연결로 `ACTIVE` 전환된 시각 |
@@ -675,5 +862,7 @@ FK_MEMBER_PROFILE_IMAGE_OWNER(profile_image_id, member_id)
 | `created_at` | `DATETIME(6)` | N | 생성 시각 |
 
 인덱스는 소유자별 상태 조회용 `IX_IMAGE_OWNER_STATUS(owner_id, status)`와 오래된 상태 작업
-조회용 `IX_IMAGE_STATUS_CREATED_AT(status, created_at)`를 둔다. V4 migration은 데이터 UPDATE를 수행하지 않고 check constraint만 old/new purpose와 old/new pending 상태를 모두 허용하도록 확장한다. Member 삭제 시 이미지 행이나
-S3 객체를 암묵적으로 cascade 삭제하지 않고 서비스의 명시적 정리 절차를 사용한다.
+조회용 `IX_IMAGE_STATUS_CREATED_AT(status, created_at)`를 둔다. V4는 롤링 배포 중 old/new
+purpose·status를 모두 허용했고, V18 백필 및 V19 zero gate 이후 현재 CHECK는
+canonical 값만 허용한다. Member 삭제 시 이미지 행이나 S3 객체를 암묵적으로 cascade
+삭제하지 않고 서비스의 명시적 정리·소유자 재배정 절차를 사용한다.

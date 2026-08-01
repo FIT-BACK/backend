@@ -1,5 +1,7 @@
 # UT Data and Frontend Handoff Implementation Plan
 
+> **상태 (2026-08-01): 완료·병합됨.** [Issue #195](https://github.com/FIT-BACK/backend/issues/195)와 [PR #199](https://github.com/FIT-BACK/backend/pull/199)의 실행 기록이다. 아래 본문과 체크박스는 작성 당시 계획을 보존하며 현재 완료 여부를 나타내지 않는다. 최신 프런트 연동 계약은 [FRONTEND_PROTOTYPE_API_HANDOFF.md](../../FRONTEND_PROTOTYPE_API_HANDOFF.md)를 기준으로 한다.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 운영 UT 계정 2건의 업로드·분석·추천 데이터를 생성하고 프론트가 실제 API를 연결하는 데 필요한 계약을 전달한다.

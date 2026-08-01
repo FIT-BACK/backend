@@ -1,5 +1,7 @@
 # Image Enum Release C Implementation Plan
 
+> **상태 (2026-08-01): 완료·병합됨.** [Issue #97](https://github.com/FIT-BACK/backend/issues/97)과 [PR #170](https://github.com/FIT-BACK/backend/pull/170)의 실행 기록이다. 아래 본문은 배포 당시 계획을 보존하며 현재 이미지 lifecycle 계약은 [IMAGE_STORAGE_POLICY.md](../../IMAGE_STORAGE_POLICY.md)와 구현 코드를 기준으로 한다.
+
 > **For Codex:** Execute only after Release B is successfully deployed and recorded as the immediate rollback target.
 
 **Goal:** Remove all legacy image lifecycle values and narrow the database contract to the public logical enums while preserving rollback to Release B.

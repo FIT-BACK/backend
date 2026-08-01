@@ -41,7 +41,9 @@ AI 도구는 작업 전 반드시 다음 파일을 확인한다.
 main
 develop
 feature/#{issue-number}-{feature-name}
-docs/{document-name}
+fix/#{issue-number}-{fix-name}
+chore/#{issue-number}-{task-name}
+docs/#{issue-number}-{document-name}
 ```
 
 브랜치 역할은 다음과 같다.
@@ -49,9 +51,11 @@ docs/{document-name}
 - main: 최종 제출 및 배포 기준 브랜치
 - develop: 백엔드 통합 개발 브랜치
 - feature/#{issue-number}-{feature-name}: 이슈 기반 기능 작업 브랜치
-- docs/{document-name}: 문서 작업 브랜치
+- fix/#{issue-number}-{fix-name}: 이슈 기반 버그 수정 브랜치
+- chore/#{issue-number}-{task-name}: 이슈 기반 설정·정비 작업 브랜치
+- docs/#{issue-number}-{document-name}: 이슈 기반 문서 작업 브랜치
 
-기능 작업은 반드시 develop에서 새 브랜치를 생성해 진행한다.
+모든 작업 브랜치는 반드시 `develop`에서 생성한다.
 
 예시:
 
@@ -64,10 +68,10 @@ git checkout -b feature/#12-auth
 PR 흐름은 다음을 따른다.
 
 ```text
-feature/#{issue-number}-{feature-name}
-        ↓ PR
+작업 브랜치 (`feature/`, `fix/`, `chore/`, `docs/`)
+                       ↓ PR
 develop
-        ↓ 최종 PR
+                       ↓ 최종 PR
 main
 ```
 
@@ -166,7 +170,7 @@ chore: 작업
 
 ## 6. PR 규칙
 
-PR은 기본적으로 feature 브랜치에서 develop 브랜치로 생성한다.
+PR은 작업 브랜치에서 `develop` 브랜치로 생성한다.
 
 PR 제목은 이슈 제목과 유사하게 작성한다.
 
@@ -178,33 +182,8 @@ Fix: 로그인 예외 처리 수정
 Docs: README 실행 방법 정리
 ```
 
-PR 본문은 `.github/pull_request_template.md`를 따른다.
-
-```md
-## 관련된 이슈
-
-close #
-
-## 작업 내용
-
--
-
-## 공유 사항
-
--
-
-## 체크리스트
-
-- [ ] Reviewer에 팀원들을 선택 했나요?
-- [ ] Assignees에 본인을 선택 했나요?
-- [ ] Merge 하려는 브랜치가 올바르게 설정되어 있나요?
-- [ ] 컨벤션을 지키고 있나요?
-- [ ] 로컬에서 실행했을 때 에러가 발생하지 않나요?
-- [ ] 불필요한 주석이 제거되었나요?
-- [ ] 코드 스타일이 일관적인가요?
-- [ ] Entity 또는 DB 변경 시 ERD/DDL 문서를 업데이트했나요?
-- [ ] API 변경 시 API 명세서를 업데이트했나요?
-```
+PR 본문은 저장소의 [PR 템플릿](.github/pull_request_template.md)을 그대로 기준으로 작성한다.
+템플릿에는 일반 코드/API/DB 점검뿐 아니라 배포 workflow, 운영 영향, 민감정보 점검 항목도 포함되어 있다.
 
 PR 작성 시 다음을 지킨다.
 
@@ -357,23 +336,23 @@ API URI는 다음 규칙을 따른다.
 예시:
 
 ```text
-GET /api/v1/users/me
+GET /api/v1/members/me
 POST /api/v1/auth/login
-GET /api/v1/recommendations
-POST /api/v1/analysis-requests
+POST /api/v1/analyses/{reportId}/recommendations
+POST /api/v1/analyses
 ```
 
 ## 12. API 응답 형식
 
-API 명세서가 확정되기 전까지는 다음 공통 응답 형식을 기준으로 작성한다.
+API 응답은 다음 공통 형식을 기준으로 작성한다.
 
 성공 응답:
 
 ```json
 {
   "success": true,
-  "code": "COMMON_200",
-  "message": "요청에 성공했습니다.",
+  "code": "COMMON200_1",
+  "message": "성공적으로 요청을 처리했습니다.",
   "data": {}
 }
 ```
@@ -383,13 +362,13 @@ API 명세서가 확정되기 전까지는 다음 공통 응답 형식을 기준
 ```json
 {
   "success": false,
-  "code": "USER_404",
-  "message": "사용자를 찾을 수 없습니다.",
+  "code": "COMMON404_1",
+  "message": "요청한 리소스를 찾을 수 없습니다.",
   "data": null
 }
 ```
 
-API 명세서가 확정되면 이 형식과 문서를 함께 업데이트한다.
+실패 응답의 `data`는 항상 `null`이며, 도메인 오류는 `ErrorCode`에 정의된 코드를 사용한다.
 
 ## 13. 설정 파일 및 환경변수 규칙
 
@@ -462,15 +441,11 @@ CI는 다음 명령을 수행한다.
 ./gradlew clean build
 ```
 
-현재 CI에서는 MySQL service를 띄우지 않는다.
-테스트는 H2 기반 application-test.yml을 사용한다.
-
-MySQL service CI는 다음 시점에 별도 이슈로 추가한다.
-
-- Entity와 Repository가 추가된 이후
-- MySQL 고유 제약조건 검증이 필요해진 경우
-- Flyway 또는 Liquibase가 도입된 경우
-- H2와 MySQL 차이로 인한 검증 필요성이 생긴 경우
+Gradle 테스트는 H2 기반 `application-test.yml`을 사용한다. 이와 별도로 CI는
+`bash scripts/ci/test_mysql_migrations.sh`를 실행해 임시 MySQL 8.4 컨테이너에
+Flyway `V1`~`V21` SQL을 순서대로 적용하고 주요 스키마·제약조건 계약을 검증한다.
+운영 프로필은 Flyway를 비활성화하지 않으며 `src/main/resources/application-prod.yml`의
+baseline 설정과 `ddl-auto: validate` 정책으로 마이그레이션을 수행한다.
 
 GitHub Actions 외부 액션은 full commit SHA로 고정한다.
 actions/checkout에는 다음 설정을 사용한다.
@@ -504,7 +479,7 @@ GitHub Actions 업데이트는 Dependabot PR을 통해 관리한다.
 AI 도구는 작업 완료 전 다음을 확인한다.
 
 - [ ] 이슈 범위 안에서만 작업했는가?
-- [ ] 브랜치가 feature/#{issue-number}-{feature-name} 형식인가?
+- [ ] 브랜치가 작업 종류에 맞는 `feature/`, `fix/`, `chore/`, `docs/` 형식이며 이슈 번호를 포함하는가?
 - [ ] PR 대상이 develop인가?
 - [ ] 커밋 메시지가 태그: 한국어 설명 형식인가?
 - [ ] .env 또는 민감정보를 커밋하지 않았는가?
@@ -535,6 +510,7 @@ AI 도구는 작업 완료 전 다음을 확인한다.
 - 운영 이미지는 `git-${GITHUB_SHA}` 태그로 발행한 뒤 digest 참조로 배포한다.
 - 동일 SHA를 다시 실행할 때 기존 불변 ECR 태그를 재사용하며, 조회 실패를 이미지 미존재로 간주하지 않는다.
 - 운영 DB 값은 Parameter Store SecureString에서 EC2가 직접 읽고 workflow payload, `.env`, 문서, 로그에 기록하지 않는다.
+- 운영 설정 구조는 `src/main/resources/application-prod.yml`로 추적하고, 비민감 기능 설정은 GitHub Repository Variable로 관리한다. `.env.example`은 로컬 변수 계약으로만 사용한다.
 - EC2 접근은 SSM을 사용하며 SSH 22와 key pair를 열지 않는다.
 - 배포 확인은 Nginx health, backend readiness, 외부 8080 차단, Actions 로그 민감정보 노출 여부를 포함한다.
 - 장애 경로를 mock으로 검증한 경우 실제 AWS 검증과 구분해 PR과 운영 문서에 기록한다.
