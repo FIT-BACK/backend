@@ -1,5 +1,9 @@
 # FIT-BACK Backend 운영 배포
 
+> **문서 표기:** 코드·workflow가 보장하는 절차는 **현재 계약**, 날짜가 붙은 AWS 값과 실행 결과는
+> **스냅샷/과거 증적**, 아직 구현하지 않은 항목은 **후속 항목**으로 구분한다. 스냅샷은 배포 전
+> AWS 콘솔·SSM·CloudFront에서 다시 확인한다.
+
 ## 배포 구조
 
 `main`에 변경이 병합되면 `Backend CD`가 다음 순서로 실행된다.
@@ -22,7 +26,7 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 실시간으로 보장하지 않으며, 배포 전에는 콘솔·CloudFront·SSM에서 다시 확인한다. 비밀값과 private
 RDS endpoint는 문서에 기록하지 않는다.
 
-| 항목 | 현재 값 |
+| 항목 | 2026-07-24 확인 스냅샷 |
 | --- | --- |
 | AWS Account / Region | `123209654535` / `ap-northeast-2` |
 | ECR | `fitback-backend` |
@@ -45,7 +49,7 @@ RDS endpoint는 문서에 기록하지 않는다.
 이미지 digest는 `sha256:8b550a46dc9a4fddbdca41955eb3ee195a4fbfc7ea7d96d3e0316873100fa09f`다.
 이는 배포 증적이지 이 문서를 읽는 시점의 실행 중 digest 보증은 아니다.
 
-실제 Production CD 증적:
+2026-07-24 Production CD 검증 증적:
 
 - [main push 실행 #6](https://github.com/FIT-BACK/backend/actions/runs/29426542508): image publish와 SSM deploy 성공
 - [동일 SHA 수동 실행 #7](https://github.com/FIT-BACK/backend/actions/runs/29426904664): 기존 불변 태그 재사용, image publish와 SSM deploy 성공
@@ -127,9 +131,10 @@ cloudfront-private-key=<base64-encoded-pkcs8-der>
 운영 배포 전 카카오 개발자 콘솔의 Redirect URI에는 백엔드 콜백
 `https://d1ra74et9h0ohu.cloudfront.net/api/v1/auth/callback/kakao`를 등록한다.
 
-`cloudfront-private-key`는 PEM header/footer를 포함한 전체 문자열이 아니라 PKCS8 DER bytes를
-줄바꿈 없는 Base64로 인코딩한다. 전체 PEM을 다시 Base64로 인코딩하면 RSA key 크기에 따라
-Standard Parameter의 4096자 제한을 초과할 수 있다. 실제 키 원문과 Base64 값은 문서,
+`cloudfront-private-key`의 운영 권장 형식은 PEM header/footer 없는 PKCS8 DER bytes의 줄바꿈 없는
+Base64다. 전체 PEM을 다시 Base64로 인코딩하면 RSA key 크기에 따라 Standard Parameter의 4096자
+제한을 초과할 수 있다. 런타임 parser는 Base64로 감싼 PEM 및 PKCS1 RSA key도 정규화해 읽을 수
+있지만, 신규 운영 값은 위 PKCS8 DER 형식으로 통일한다. 실제 키 원문과 Base64 값은 문서,
 저장소, GitHub payload, 로그에 기록하지 않는다. `kakao-rest-api-secret`과
 `mail-app-password`도 같은 기준으로 문서, 저장소, GitHub payload, 로그에 기록하지 않는다.
 
