@@ -9,6 +9,8 @@ public enum ErrorCode {
     FORBIDDEN(HttpStatus.FORBIDDEN, "COMMON403_1", "접근 권한이 없습니다."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "COMMON404_1", "요청한 리소스를 찾을 수 없습니다."),
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "COMMON405_1", "허용되지 않은 HTTP 메서드입니다."),
+    NOT_ACCEPTABLE(HttpStatus.NOT_ACCEPTABLE, "COMMON406_1", "요청한 응답 미디어 타입을 제공할 수 없습니다."),
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "COMMON415_1", "지원하지 않는 미디어 타입입니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON500_1", "서버 내부 오류가 발생했습니다."),
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "COMMON400_2", "요청 값이 올바르지 않습니다."),
 
@@ -61,11 +63,13 @@ public enum ErrorCode {
             "지원하지 않는 이미지 형식입니다."
     ),
     IMAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "IMAGE404_1", "이미지를 찾을 수 없습니다."),
+    IMAGE_OBJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "IMAGE404_2", "업로드된 이미지 파일을 찾을 수 없습니다."),
     IMAGE_INVALID_STATE(HttpStatus.CONFLICT, "IMAGE409_1", "현재 상태에서는 이미지를 사용할 수 없습니다."),
     IMAGE_UPLOAD_EXPIRED(HttpStatus.GONE, "IMAGE410_1", "이미지 업로드 요청이 만료되었습니다."),
     INVALID_IMAGE_CONTENT(HttpStatus.UNPROCESSABLE_ENTITY, "IMAGE422_1", "실제 이미지 내용이 올바르지 않습니다."),
     IMAGE_PRESIGN_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "IMAGE500_1", "이미지 업로드 정보를 발급할 수 없습니다."),
     IMAGE_STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "IMAGE500_2", "이미지 저장소 처리에 실패했습니다."),
+    IMAGE_STORAGE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE503_1", "이미지 저장소를 일시적으로 사용할 수 없습니다."),
 
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT404_1", "상품을 찾을 수 없습니다."),
     PRODUCT_REFERENCE_INVALID(

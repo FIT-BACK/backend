@@ -11,6 +11,7 @@ import com.fitback.backend.global.security.util.JwtUtil;
 import jakarta.servlet.DispatcherType;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,6 +28,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+import tools.jackson.databind.ObjectMapper;
 
 @Configuration
 @EnableWebSecurity
@@ -37,6 +40,7 @@ public class SecurityConfig {
     private final JwtUtil jwtUtil;
     private final CustomUserDetailsService customUserDetailsService;
     private final CorsProperties corsProperties;
+    private final ObjectMapper objectMapper;
 
     private static final String[] SWAGGER_URLS = {
             "/swagger-ui.html",
@@ -75,7 +79,8 @@ public class SecurityConfig {
             CorsConfigurationSource corsConfigurationSource,
             CustomOAuthService customOAuthService,
             OAuthSuccessHandler oAuthSuccessHandler,
-            OAuthFailureHandler oAuthFailureHandler
+            OAuthFailureHandler oAuthFailureHandler,
+            @Qualifier("handlerExceptionResolver") HandlerExceptionResolver handlerExceptionResolver
     ) throws Exception {
         return http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -98,7 +103,12 @@ public class SecurityConfig {
                         .failureHandler(oAuthFailureHandler)
                 )
                 .addFilterBefore(
-                        new JwtAuthFilter(jwtUtil, customUserDetailsService),
+                        new JwtAuthFilter(
+                                jwtUtil,
+                                customUserDetailsService,
+                                objectMapper,
+                                handlerExceptionResolver
+                        ),
                         UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exception -> exception
                         .accessDeniedHandler(customAccessDenied())

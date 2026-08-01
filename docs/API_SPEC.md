@@ -79,6 +79,8 @@ GET과 body 없는 DELETE에는 `Content-Type`을 생략할 수 있다.
 ErrorCode enum 식별자와 wire code는 구분한다. 예를 들어 Java 식별자
 `PRODUCT_PROVIDER_UNAVAILABLE`의 wire code는 `PRODUCT503_1`이다.
 실패 응답의 `data`는 오류 종류와 관계없이 항상 `null`이다.
+지원하지 않는 `Accept`는 `406 COMMON406_1`, 지원하지 않는 요청 `Content-Type`은
+`415 COMMON415_1`로 응답하며 두 경우 모두 JSON 공통 실패 응답을 사용한다.
 
 ### 1.5 금액과 시간
 
@@ -649,6 +651,8 @@ body는 없다.
 | --- | --- | ---: | --- |
 | `UNAUTHORIZED` | `COMMON401_1` | 401 | 인증이 없거나 유효하지 않음 |
 | `VALIDATION_ERROR` | `COMMON400_2` | 400 | 필드 형식·범위·필수값 위반 |
+| `NOT_ACCEPTABLE` | `COMMON406_1` | 406 | 지원하지 않는 응답 미디어 타입 요청 |
+| `UNSUPPORTED_MEDIA_TYPE` | `COMMON415_1` | 415 | 지원하지 않는 요청 미디어 타입 |
 | `ANALYSIS_REPORT_NOT_FOUND` | `ANALYSIS404_1` | 404 | 리포트가 없거나 현재 회원 소유가 아님 |
 | `ANALYSIS_NOT_READY` | `ANALYSIS409_1` | 409 | 추천 입력으로 사용할 수 없는 분석 상태 |
 | `TAG_NOT_FOUND` | `TAG404_1` | 404 | 확정 요청의 기본 태그 ID가 존재하지 않음 |
@@ -661,6 +665,9 @@ body는 없다.
 | `PRODUCT_PROVIDER_PERSISTENCE_UNSUPPORTED` | `PRODUCT503_3` | 503 | 후보를 허용된 방식으로 하나도 materialize할 수 없음 |
 | `RECOMMENDATION_INPUT_CHANGED` | `RECOMMENDATION409_1` | 409 | 외부 호출 중 분석 결과 version이 변경됨 |
 | `IMAGE_UNSUPPORTED_CONTENT_TYPE` | `IMAGE400_1` | 400 | JPEG, PNG, WebP 이외의 업로드 MIME type |
+| `IMAGE_OBJECT_NOT_FOUND` | `IMAGE404_2` | 404 | 업로드 완료 확인 시 S3 객체가 없음 |
+| `IMAGE_STORAGE_ERROR` | `IMAGE500_2` | 500 | S3 권한 또는 서버 설정 오류 |
+| `IMAGE_STORAGE_UNAVAILABLE` | `IMAGE503_1` | 503 | S3 timeout, 429, 5xx, `RequestTimeout`, `OperationAborted`, 연결 실패 |
 
 정책:
 
@@ -739,6 +746,11 @@ Controller와 Service는 Shopify 등 공급자 이름을 DTO 계약에 노출하
 - member ID는 `authMember.getMember().getId()`로 얻고 Request에 임시 member ID를 추가하지 않는다.
 - 모든 Product/Recommendation endpoint에 인증 정책을 적용한다.
 - 인증 실패 401과 리포트 존재 숨김 404를 contract test로 고정한다.
+- BCrypt에 전달되는 비밀번호는 UTF-8 기준 72바이트 이하여야 하며 초과 입력은
+  `400 COMMON400_2`로 거절한다. 회원가입과 비밀번호 변경·재설정의 새 비밀번호에 적용한다.
+- JWT 형식·서명·만료·토큰 종류 오류만 필터에서 `401 COMMON401_1`로 변환한다.
+  유효한 토큰의 회원이 존재하지 않는 경우에도 `401 COMMON401_1`로 응답한다. 회원 조회의
+  시스템 예외는 공통 예외 처리기에 위임하고 인증 오류로 변환하지 않는다.
 
 ### Analysis
 
@@ -859,6 +871,9 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 
 인증 회원이 Presigned POST 업로드를 마친 뒤 호출한다. 서버는 S3 객체의 크기, MIME type과
 파일 시그니처를 검증하고 성공하면 이미지 상태를 `READY`로 전환한다.
+S3 객체가 없으면 `404 IMAGE404_2`, S3 timeout·연결 실패·429·5xx 및 AWS 오류 코드
+`RequestTimeout`·`OperationAborted`는 `503 IMAGE503_1`,
+권한 또는 서버 설정 오류는 `500 IMAGE500_2`로 구분한다.
 
 ```json
 {
@@ -962,6 +977,12 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 ---
 
 ## 17. 분석 결과 기반 룩북 업로드
+
+### `GET /api/v1/lookbooks?cursor=&pageSize=20&tag=`
+
+룩북 목록은 Long ID cursor 기반으로 조회한다. `cursor`는 전달하는 경우 양수여야 하며,
+`pageSize` 기본값은 20이고 허용 범위는 1~20이다. 범위를 벗어난 요청은
+`400 COMMON400_2`로 응답한다.
 
 ### `POST /api/v1/lookbooks`
 

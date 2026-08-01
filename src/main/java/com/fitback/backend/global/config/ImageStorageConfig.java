@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
@@ -21,11 +22,23 @@ public class ImageStorageConfig {
     @Bean
     public S3Client imageS3Client(
             ImageStorageProperties properties,
-            AwsCredentialsProvider credentialsProvider
+            AwsCredentialsProvider credentialsProvider,
+            ClientOverrideConfiguration imageS3ClientOverrideConfiguration
     ) {
         return S3Client.builder()
                 .region(Region.of(properties.awsRegion()))
                 .credentialsProvider(credentialsProvider)
+                .overrideConfiguration(imageS3ClientOverrideConfiguration)
+                .build();
+    }
+
+    @Bean
+    public ClientOverrideConfiguration imageS3ClientOverrideConfiguration(
+            ImageStorageProperties properties
+    ) {
+        return ClientOverrideConfiguration.builder()
+                .apiCallTimeout(properties.apiCallTimeout())
+                .apiCallAttemptTimeout(properties.apiCallAttemptTimeout())
                 .build();
     }
 

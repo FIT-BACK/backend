@@ -489,7 +489,15 @@ IDLE → VALIDATING → REQUESTING_URL → UPLOADING → COMPLETING → SUCCESS
 | 410 | `IMAGE410_1` | Presigned 업로드 정보 만료 |
 | 422 | `IMAGE422_1` | MIME 또는 파일 시그니처 불일치 |
 | 500 | `IMAGE500_1` | Presigned URL 발급 실패 |
-| 500 | `IMAGE500_2` | 저장소 처리 실패 |
+| 404 | `IMAGE404_2` | 업로드 완료 확인 시 S3 객체 없음 |
+| 500 | `IMAGE500_2` | S3 권한 또는 서버 설정 오류 |
+| 503 | `IMAGE503_1` | S3 timeout, 429, 5xx, `RequestTimeout`, `OperationAborted` 또는 연결 실패 |
+
+서버의 S3 호출 제한은 기본적으로 전체 요청 5초, 시도별 2초이며
+`IMAGE_S3_API_CALL_TIMEOUT`, `IMAGE_S3_API_CALL_ATTEMPT_TIMEOUT`으로 조정한다.
+장애 로그에는 작업 종류, HTTP 상태, AWS 오류 코드, AWS request ID를 기록한다. SDK
+클라이언트 예외는 재시도 가능 여부가 아니라 네트워크·타임아웃 원인 존재 여부를 기록하며,
+object key, 예외 메시지, 서명 URL과 Presigned 필드는 기록하지 않는다.
 
 ### 16.2 S3 직접 업로드 오류
 
