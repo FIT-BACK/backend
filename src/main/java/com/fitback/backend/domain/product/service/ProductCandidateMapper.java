@@ -24,10 +24,11 @@ public class ProductCandidateMapper {
     }
 
     public ProductCategory category(ExternalProductCandidate candidate) {
-        return categoryMapper.map(
-                candidate.providerRef().provider(),
-                candidate.categoryPath()
-        ).orElse(ProductCategory.OTHER);
+        String provider = candidate.providerRef().provider();
+        return categoryMapper.map(provider, candidate.categoryPath())
+                .filter(category -> category != ProductCategory.OTHER)
+                .or(() -> categoryMapper.map(provider, candidate.name()))
+                .orElse(ProductCategory.OTHER);
     }
 
     public ProductPriceResponse price(ProductOffer offer) {
