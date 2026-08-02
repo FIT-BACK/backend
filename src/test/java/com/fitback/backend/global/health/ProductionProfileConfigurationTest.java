@@ -2,7 +2,9 @@ package com.fitback.backend.global.health;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fitback.backend.global.security.CorsProperties;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.Environment;
@@ -29,7 +31,8 @@ class ProductionProfileConfigurationTest {
                     "FRONT_REDIRECT_URI=http://localhost:3000/oauth/success",
                     "MAIL_EMAIL=test@fitback.com",
                     "MAIL_APP_PASSWORD=test-mail-app-password",
-                    "FRONT_PASSWORD_RESET_URL=https://frontend.example.com/reset-password"
+                    "FRONT_PASSWORD_RESET_URL=https://frontend.example.com/reset-password",
+                    "APP_CORS_ALLOWED_ORIGINS=https://frontend.example.com,http://localhost:5173"
             );
 
     @Test
@@ -96,8 +99,20 @@ class ProductionProfileConfigurationTest {
                     .isEqualTo("5m");
             assertThat(environment.getProperty("app.password-reset.request-cooldown"))
                     .isEqualTo("1m");
-            assertThat(environment.getProperty("app.cors.allowed-origins[0]"))
-                    .isEqualTo("https://frontend-chi-one-35.vercel.app");
+        });
+    }
+
+    @Test
+    void productionProfileMapsCorsAllowedOriginsEnvironmentVariable() {
+        contextRunner.run(context -> {
+            CorsProperties properties = Binder.get(context.getEnvironment())
+                    .bind("app.cors", CorsProperties.class)
+                    .orElseThrow(() -> new AssertionError("app.cors must be bound"));
+
+            assertThat(properties.allowedOrigins()).containsExactly(
+                    "https://frontend.example.com",
+                    "http://localhost:5173"
+            );
         });
     }
 

@@ -7,6 +7,7 @@ set -Eeuo pipefail
 : "${IMAGE_BUCKET:?IMAGE_BUCKET is required}"
 : "${IMAGE_CDN_BASE_URL:?IMAGE_CDN_BASE_URL is required}"
 : "${CLOUDFRONT_KEY_PAIR_ID:?CLOUDFRONT_KEY_PAIR_ID is required}"
+: "${APP_CORS_ALLOWED_ORIGINS:?APP_CORS_ALLOWED_ORIGINS is required}"
 
 PARAMETER_PREFIX="${PARAMETER_PREFIX:-/fitback/prod}"
 PARAMETER_PREFIX="${PARAMETER_PREFIX%/}"
@@ -185,6 +186,7 @@ write_environment() {
     printf 'IMAGE_BUCKET=%s\n' "$IMAGE_BUCKET"
     printf 'IMAGE_CDN_BASE_URL=%s\n' "$IMAGE_CDN_BASE_URL"
     printf 'CLOUDFRONT_KEY_PAIR_ID=%s\n' "$CLOUDFRONT_KEY_PAIR_ID"
+    printf 'APP_CORS_ALLOWED_ORIGINS=%s\n' "$APP_CORS_ALLOWED_ORIGINS"
     printf 'FITBACK_AI_TAG_ANALYZER=%s\n' "$FITBACK_AI_TAG_ANALYZER"
     printf 'SHOPPING_PROVIDER=%s\n' "$SHOPPING_PROVIDER"
     printf 'SHOPIFY_ENABLED=%s\n' "$SHOPIFY_ENABLED"
@@ -320,6 +322,7 @@ mail_app_password="$(get_parameter 'mail-app-password')"
 front_password_reset_url="$(get_parameter 'front-password-reset-url')"
 cloudfront_private_key_base64="$(get_parameter 'cloudfront-private-key')"
 
+require_single_line 'APP_CORS_ALLOWED_ORIGINS' "$APP_CORS_ALLOWED_ORIGINS"
 require_single_line 'db-url' "$db_url"
 require_single_line 'db-user' "$db_user"
 require_single_line 'db-password' "$db_password"

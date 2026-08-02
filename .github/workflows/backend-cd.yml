@@ -80,6 +80,7 @@ jobs:
             --env MAIL_EMAIL=validation@example.invalid \
             --env MAIL_APP_PASSWORD=validation-app-password \
             --env FRONT_PASSWORD_RESET_URL=https://frontend.example.invalid/reset-password \
+            --env APP_CORS_ALLOWED_ORIGINS=https://frontend.example.invalid \
             --env AWS_REGION=ap-northeast-2 \
             --env IMAGE_BUCKET=fitback-cd-validation-images \
             --env IMAGE_CDN_BASE_URL=https://images.example.invalid \
@@ -236,6 +237,7 @@ jobs:
       IMAGE_BUCKET: ${{ vars.IMAGE_BUCKET }}
       IMAGE_CDN_BASE_URL: ${{ vars.IMAGE_CDN_BASE_URL }}
       CLOUDFRONT_KEY_PAIR_ID: ${{ vars.CLOUDFRONT_KEY_PAIR_ID }}
+      APP_CORS_ALLOWED_ORIGINS: ${{ vars.APP_CORS_ALLOWED_ORIGINS }}
       FITBACK_AI_TAG_ANALYZER: ${{ vars.FITBACK_AI_TAG_ANALYZER || 'unavailable' }}
       SHOPPING_PROVIDER: ${{ vars.SHOPPING_PROVIDER || 'fixture' }}
       SHOPIFY_ENABLED: ${{ vars.SHOPIFY_ENABLED || 'false' }}
@@ -254,6 +256,7 @@ jobs:
             IMAGE_BUCKET
             IMAGE_CDN_BASE_URL
             CLOUDFRONT_KEY_PAIR_ID
+            APP_CORS_ALLOWED_ORIGINS
             FITBACK_AI_TAG_ANALYZER
             SHOPPING_PROVIDER
             SHOPIFY_ENABLED
@@ -362,6 +365,7 @@ jobs:
             --arg image_bucket "$IMAGE_BUCKET" \
             --arg image_cdn_base_url "$IMAGE_CDN_BASE_URL" \
             --arg cloudfront_key_pair_id "$CLOUDFRONT_KEY_PAIR_ID" \
+            --arg app_cors_allowed_origins "$APP_CORS_ALLOWED_ORIGINS" \
             --arg fitback_ai_tag_analyzer "$FITBACK_AI_TAG_ANALYZER" \
             --arg shopping_provider "$SHOPPING_PROVIDER" \
             --arg shopify_enabled "$SHOPIFY_ENABLED" \
@@ -379,6 +383,7 @@ jobs:
                   + " IMAGE_BUCKET=" + ($image_bucket | @sh)
                   + " IMAGE_CDN_BASE_URL=" + ($image_cdn_base_url | @sh)
                   + " CLOUDFRONT_KEY_PAIR_ID=" + ($cloudfront_key_pair_id | @sh)
+                  + " APP_CORS_ALLOWED_ORIGINS=" + ($app_cors_allowed_origins | @sh)
                   + " FITBACK_AI_TAG_ANALYZER=" + ($fitback_ai_tag_analyzer | @sh)
                   + " SHOPPING_PROVIDER=" + ($shopping_provider | @sh)
                   + " SHOPIFY_ENABLED=" + ($shopify_enabled | @sh)

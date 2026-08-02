@@ -19,6 +19,7 @@ special_mail_email="mail@fitback.com"
 special_mail_app_password="mail\$\$\\'password\\value#=end-for-fitback-test"
 special_front_password_reset_url="https://frontend.example.com/reset-password"
 special_cloudfront_private_key="Y2xvdWRmcm9udC1wcml2YXRlLWtleS1mb3ItdGVzdA=="
+app_cors_allowed_origins="https://frontend-chi-one-35.vercel.app,http://localhost:3000,http://localhost:5173"
 
 mkdir -p "$mock_bin"
 : > "$mock_log"
@@ -213,6 +214,7 @@ run_deploy() {
   IMAGE_BUCKET='fitback-prod-images-123209654535-ap-northeast-2' \
   IMAGE_CDN_BASE_URL='https://d1p2ierkew26r1.cloudfront.net' \
   CLOUDFRONT_KEY_PAIR_ID='K1XNJ3JDEDCVL3' \
+  APP_CORS_ALLOWED_ORIGINS="$app_cors_allowed_origins" \
   FITBACK_AI_TAG_ANALYZER='prototype' \
   SHOPPING_PROVIDER='shopify' \
   SHOPIFY_ENABLED='true' \
@@ -265,6 +267,7 @@ grep -Fxq 'AWS_REGION=ap-northeast-2' "$env_file"
 grep -Fxq 'IMAGE_BUCKET=fitback-prod-images-123209654535-ap-northeast-2' "$env_file"
 grep -Fxq 'IMAGE_CDN_BASE_URL=https://d1p2ierkew26r1.cloudfront.net' "$env_file"
 grep -Fxq 'CLOUDFRONT_KEY_PAIR_ID=K1XNJ3JDEDCVL3' "$env_file"
+grep -Fxq "APP_CORS_ALLOWED_ORIGINS=$app_cors_allowed_origins" "$env_file"
 grep -Fxq 'FITBACK_AI_TAG_ANALYZER=prototype' "$env_file"
 grep -Fxq 'SHOPPING_PROVIDER=shopify' "$env_file"
 grep -Fxq 'SHOPIFY_ENABLED=true' "$env_file"
