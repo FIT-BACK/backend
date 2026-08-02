@@ -11,6 +11,7 @@ import com.fitback.backend.domain.member.util.PasswordResetTokenUtil;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.util.LowercaseNormalizer;
+import com.fitback.backend.global.validation.BCryptPasswordPolicy;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,7 @@ public class PasswordResetService {
     //비밀번호 재설정 API 서비스 메서드
     @Transactional
     public void resetPassword(MemberRequest.PasswordResetRequest dto) {
+        BCryptPasswordPolicy.validate(dto.newPassword());
         //전달받은 토큰을 DB 조회용 해시값으로 변환
         String tokenHash;
         try {

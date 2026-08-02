@@ -19,6 +19,8 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
 
     Boolean existsByNickname(String nickname);
 
+    boolean existsByProfileImageId(String profileImageId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT member FROM Member member WHERE member.id = :memberId")
     Optional<Member> findByIdForUpdate(@Param("memberId") Long memberId);

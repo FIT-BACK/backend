@@ -20,6 +20,7 @@ import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
+import com.fitback.backend.domain.member.service.MemberProfileImageService;
 import com.fitback.backend.domain.product.entity.Product;
 import com.fitback.backend.domain.product.repository.ProductRepository;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
@@ -49,6 +50,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class LookbookService {
 
     private static final int DEFAULT_LOOKBOOK_PAGE_SIZE = 20;
+    private static final int MAX_LOOKBOOK_PAGE_SIZE = 20;
     private static final Pageable SEARCH_PAGE_REQUEST = PageRequest.of(0, 10);
 
     private final LookbookRepository lookbookRepository;
@@ -65,6 +67,7 @@ public class LookbookService {
     private final RecommendedItemRepository recommendedItemRepository;
     private final ProductRepository productRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MemberProfileImageService memberProfileImageService;
 
     // 룩북 업로드
     @Transactional
@@ -196,6 +199,7 @@ public class LookbookService {
 
         // pageSize 를 따로 입력받지 않으면 20 으로 계산
         int resolvedPageSize = pageSize == null ? DEFAULT_LOOKBOOK_PAGE_SIZE : pageSize;
+        validateLookbookPageRequest(cursor, resolvedPageSize);
 
         // 입력 받은 태그의 앞 뒤 공백 제거
         String normalizedTag = normalizeTag(tag);
@@ -267,11 +271,14 @@ public class LookbookService {
         // 로그인 회원이 룩북 작성자인지 여부 계산
         boolean isOwner = member != null
                 && Objects.equals(lookbook.getMember().getId(), member.getId());
+        String authorProfileImageUrl =
+                memberProfileImageService.resolveProfileImageUrl(lookbook.getMember());
 
         return LookbookResponse.LookbookDetail.toLookbookDetail(
                 lookbook,
                 imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
                 resolveMatchedImageUrl(lookbook),
+                authorProfileImageUrl,
                 tags,
                 isLiked,
                 isOwner
@@ -443,11 +450,18 @@ public class LookbookService {
                 lookbookIds
         );
         Set<Long> likedLookbookIds = findLikedLookbookIds(lookbookIds, member);
+        Map<Long, String> profileImageUrls =
+                memberProfileImageService.resolveProfileImageUrls(
+                        lookbooks.stream()
+                                .map(Lookbook::getMember)
+                                .toList()
+                );
         return lookbooks.stream()
                 .map(lookbook -> LookbookResponse.LookbookItem.toLookbookItem(
                         lookbook,
                         imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
                         resolveMatchedImageUrl(lookbook),
+                        profileImageUrls.get(lookbook.getMember().getId()),
                         tagNamesByLookbookId.getOrDefault(lookbook.getId(), List.of()),
                         likedLookbookIds.contains(lookbook.getId())
                 ))
@@ -697,6 +711,14 @@ public class LookbookService {
                 .map(Image::getId)
                 .distinct()
                 .toList();
+    }
+
+    private void validateLookbookPageRequest(Long cursor, int pageSize) {
+        if ((cursor != null && cursor <= 0)
+                || pageSize < 1
+                || pageSize > MAX_LOOKBOOK_PAGE_SIZE) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
     }
 
     private void publishReleasedImageReferences(List<String> imageIds) {

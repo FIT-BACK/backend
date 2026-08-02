@@ -13,6 +13,7 @@ import javax.crypto.SecretKey;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JwtUtilTest {
 
@@ -54,6 +55,7 @@ class JwtUtilTest {
         assertThat(jwtUtil.isRefreshToken(token)).isFalse();
         //토큰 subject에 이메일 포함
         assertThat(jwtUtil.getEmailFromToken(token)).isEqualTo("test@fitback.com");
+        assertThat(jwtUtil.getAccessTokenSubject(token)).isEqualTo("test@fitback.com");
     }
 
     //access 토큰 만료 시간이 설정값 기준으로 들어가는지 검증
@@ -84,6 +86,8 @@ class JwtUtilTest {
         assertThat(jwtUtil.isAccessToken(token)).isFalse();
         //refresh 토큰 subject에도 이메일 포함 (재발급 시 회원 조회에 사용)
         assertThat(jwtUtil.getEmailFromToken(token)).isEqualTo("test@fitback.com");
+        assertThatThrownBy(() -> jwtUtil.getAccessTokenSubject(token))
+                .isInstanceOf(io.jsonwebtoken.MalformedJwtException.class);
     }
 
     //refresh 토큰 만료 시간이 설정값 기준으로 들어가는지 검증

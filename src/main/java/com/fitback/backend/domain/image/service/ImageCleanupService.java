@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -74,7 +75,7 @@ public class ImageCleanupService {
         return claimedImageIds;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public List<String> claimReleasedActiveImages(Collection<String> imageIds) {
         List<String> distinctImageIds = imageIds.stream().distinct().toList();
         if (distinctImageIds.isEmpty()) {
@@ -107,7 +108,7 @@ public class ImageCleanupService {
                 .toList();
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void deleteClaimedImage(String imageId) {
         Image image = imageRepository.findById(imageId).orElse(null);
         if (image == null || image.getStatus() != ImageStatus.DELETING) {

@@ -165,7 +165,7 @@ prepare_account() {
 
   local onboarding_body
   onboarding_body="$(jq -nc --arg nickname "${nickname}" \
-    '{nickname: $nickname, profileImageUrl: null, tagIds: []}')"
+    '{nickname: $nickname, profileImageId: null, tagIds: []}')"
   local onboarding_response
   onboarding_response="$(api_call PUT "/api/v1/members/me/onboarding" \
     "${token}" "${onboarding_body}")"

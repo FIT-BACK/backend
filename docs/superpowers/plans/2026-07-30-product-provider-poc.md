@@ -1,5 +1,7 @@
 # Shopify Product Provider PoC Plan
 
+> **상태 (2026-08-01): PoC 완료·병합됨.** [Issue #92](https://github.com/FIT-BACK/backend/issues/92)와 [PR #167](https://github.com/FIT-BACK/backend/pull/167)의 실행 기록이다. 아래 본문은 당시 계획을 보존하며 현재 기본 공급자와 활성화 조건은 [SHOPIFY_PRODUCT_PROVIDER_DECISION.md](../../SHOPIFY_PRODUCT_PROVIDER_DECISION.md) 및 구현 설정을 기준으로 한다.
+>
 > **For Codex:** Execute this docs-only decision task with the smallest live dataset and repository-required verification.
 
 **Goal:** Close Issue #92 with a reproducible Shopify Global Catalog usefulness check and a conservative production adoption decision.

@@ -1,5 +1,10 @@
 # 최소 프로토타입 프론트엔드 세로 흐름
 
+> **문서 상태 (2026-08-01): 역사적·한정 시나리오.** 2026-07-30 당시 업로드→분석→추천
+> UT 흐름을 재현하기 위한 기록이며 전체 프런트 계약이 아니다. 현재 계약은
+> [FRONTEND_PROTOTYPE_API_HANDOFF.md](FRONTEND_PROTOTYPE_API_HANDOFF.md)와
+> [API_SPEC.md](API_SPEC.md)를 우선한다.
+
 ## 1. 범위
 
 이 문서는 실제 프론트엔드가 다음 흐름을 연결할 때 필요한 요청, 응답, 클라이언트 상태를
@@ -268,7 +273,9 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-상품명, 가격, 이미지, 구매 URL은 Shopify `lookup_catalog`을 통해 실시간 조회한다.
+이 기록의 Shopify 활성화 시나리오에서는 상품명, 가격, 이미지, 구매 URL을 Shopify
+`lookup_catalog`을 통해 실시간 조회한다. 현재 기본 runtime은 `fixture`이며 Shopify는
+`SHOPPING_PROVIDER=shopify`, `SHOPIFY_ENABLED=true`를 함께 설정한 경우에만 선택된다.
 `purchaseUrl`을 여는 것만으로 결제가 발생하지 않으며, 실제 결제는 외부 판매처에서 사용자가
 확정할 때 발생한다. 프론트는 외부 이동임을 버튼 또는 안내 문구로 명확히 표시한다.
 

@@ -62,7 +62,8 @@ public class MemberResponse {
     public static LoginResponse toLoginResponse(
             String accessToken,
             String refreshToken,
-            Member member
+            Member member,
+            String profileImageUrl
     ){
         return LoginResponse.builder()
                 .accessToken(accessToken)
@@ -70,7 +71,7 @@ public class MemberResponse {
                 .memberId(member.getId())
                 .email(member.getEmail())
                 .nickname(member.getNickname())
-                .profileImageUrl(member.getProfileImageUrl())
+                .profileImageUrl(profileImageUrl)
                 .loginProvider(member.getLoginProvider())
                 .build();
     }
@@ -105,12 +106,13 @@ public class MemberResponse {
     //회원정보 수정 dto 변환
     public static UpdateMemberResponse toUpdateMemberResponse(
             Member member,
-            List<MemberTag> memberTagList
+            List<MemberTag> memberTagList,
+            String profileImageUrl
     ){
         return UpdateMemberResponse.builder()
                 .memberId(member.getId())
                 .nickname(member.getNickname())
-                .profileImageUrl(member.getProfileImageUrl())
+                .profileImageUrl(profileImageUrl)
                 .tags(memberTagList.stream().map(MemberResponse::toTagInfo).toList())
                 .build();
     }
@@ -135,13 +137,14 @@ public class MemberResponse {
             Long analysisCount,
             Long uploadCount,
             Member member,
-            List<MemberTag> memberTagList
+            List<MemberTag> memberTagList,
+            String profileImageUrl
     ){
         return MyPageResponse.builder()
                 .memberId(member.getId())
                 .email(member.getEmail())
                 .nickname(member.getNickname())
-                .profileImageUrl(member.getProfileImageUrl())
+                .profileImageUrl(profileImageUrl)
                 .loginProvider(member.getLoginProvider())
                 .savedCount(savedCount).analysisCount(analysisCount).uploadCount(uploadCount)
                 .tags(memberTagList.stream().map(MemberResponse::toTagInfo).toList())
@@ -169,13 +172,14 @@ public class MemberResponse {
 
     public static OnboardingResponse toOnboardingResponse(
         Member member,
-        List<MemberTag> memberTagList
+        List<MemberTag> memberTagList,
+        String profileImageUrl
     ){
         return OnboardingResponse.builder()
                 .memberId(member.getId())
                 .email(member.getEmail())
                 .nickname(member.getNickname())
-                .profileImageUrl(member.getProfileImageUrl())
+                .profileImageUrl(profileImageUrl)
                 .loginProvider(member.getLoginProvider())
                 .tags(memberTagList.stream().map(MemberResponse::toTagInfo).toList())
                 .build();

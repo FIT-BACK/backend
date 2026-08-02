@@ -10,6 +10,9 @@ import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -167,7 +170,10 @@ public class LookbookController {
     )
     @GetMapping
     public ApiResponse<LookbookResponse.LookbookList> getLookbooks(
+            @Positive
             @RequestParam(name = "cursor", required = false) Long cursor,
+            @Min(1)
+            @Max(20)
             @RequestParam(name = "pageSize", required = false, defaultValue = "20")
             Integer pageSize,
             @RequestParam(name = "tag", required = false) String tag,

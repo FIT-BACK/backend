@@ -13,6 +13,7 @@ import com.fitback.backend.global.security.token.TempTokenPayload;
 import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
 import com.fitback.backend.global.util.LowercaseNormalizer;
+import com.fitback.backend.global.validation.BCryptPasswordPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ public class AuthService {
     private final MemberRepository memberRepository;
     private final JwtUtil jwtUtil;
     private final TempTokenStore tempTokenStore;
+    private final MemberProfileImageService memberProfileImageService;
 
     private final RejoinBlockChecker rejoinBlockChecker;
     private final NotificationSettingService notificationSettingService;
@@ -35,6 +37,7 @@ public class AuthService {
     //이메일 회원가입
     @Transactional
     public MemberResponse.SignUpResponse signUp(MemberRequest.SignUpRequest dto) {
+        BCryptPasswordPolicy.validate(dto.password());
         String email = LowercaseNormalizer.normalize(dto.email());
 
         // 이메일 중복 검사
@@ -103,7 +106,12 @@ public class AuthService {
         //발급한 RefreshToken 저장
         member.updateRefreshToken(refreshToken);
 
-        return MemberResponse.toLoginResponse(accessToken, refreshToken, member);
+        return MemberResponse.toLoginResponse(
+                accessToken,
+                refreshToken,
+                member,
+                memberProfileImageService.resolveProfileImageUrl(member)
+        );
     }
 
     @Transactional
@@ -165,4 +173,5 @@ public class AuthService {
 
         return MemberResponse.toTokenExchangeResponse(accessToken, refreshToken, payload.isNewMember());
     }
+
 }

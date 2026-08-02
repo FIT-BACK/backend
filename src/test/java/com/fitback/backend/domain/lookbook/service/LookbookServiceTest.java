@@ -35,6 +35,7 @@ import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
+import com.fitback.backend.domain.member.service.MemberProfileImageService;
 import com.fitback.backend.domain.product.entity.Product;
 import com.fitback.backend.domain.product.repository.ProductRepository;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
@@ -46,6 +47,7 @@ import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.IntStream;
@@ -54,6 +56,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -107,6 +110,9 @@ class LookbookServiceTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private MemberProfileImageService memberProfileImageService;
 
     @InjectMocks
     private LookbookService lookbookService;
@@ -558,6 +564,8 @@ class LookbookServiceTest {
                 ));
         when(lookbookLikeRepository.existsByLookbookIdAndMemberId(100L, 1L))
                 .thenReturn(true);
+        when(memberProfileImageService.resolveProfileImageUrl(member))
+                .thenReturn("https://s3.example.com/profile.jpg");
 
         LookbookResponse.LookbookDetail response = lookbookService.getLookbookDetail(100L, member);
 
@@ -750,6 +758,8 @@ class LookbookServiceTest {
                 .thenReturn(List.of(LookbookTag.create(lookbookPage.get(0), minimalTag)));
         when(lookbookLikeRepository.findLikedLookbookIds(1L, returnedLookbookIds))
                 .thenReturn(Set.of(100L));
+        when(memberProfileImageService.resolveProfileImageUrls(anyList()))
+                .thenReturn(Map.of(1L, "https://s3.example.com/profile.jpg"));
 
         LookbookResponse.LookbookList response = lookbookService.getLookbooks(
                 null,
@@ -777,6 +787,24 @@ class LookbookServiceTest {
                         pageableCaptor.capture()
                 );
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(6);
+        verify(memberProfileImageService).resolveProfileImageUrls(anyList());
+    }
+
+    @Test
+    void getLookbooksRejectsNonPositiveCursor() {
+        assertThatThrownBy(() -> lookbookService.getLookbooks(0L, 20, null, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR)
+                );
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, Integer.MAX_VALUE})
+    void getLookbooksRejectsPageSizeOutsideAllowedRange(int pageSize) {
+        assertThatThrownBy(() -> lookbookService.getLookbooks(null, pageSize, null, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR)
+                );
     }
 
     @Test
@@ -952,7 +980,7 @@ class LookbookServiceTest {
     }
 
     private Lookbook createPersistedLookbook(LocalDateTime createdAt) {
-        member.changeProfileImageUrl("https://s3.example.com/profile.jpg");
+        member.changeProfileImageId("profile-image");
         Lookbook lookbook = Lookbook.create(
                 member,
                 originalImage,
@@ -967,7 +995,7 @@ class LookbookServiceTest {
     }
 
     private Lookbook createListLookbook(Long lookbookId, LocalDateTime createdAt) {
-        member.changeProfileImageUrl("https://s3.example.com/profile.jpg");
+        member.changeProfileImageId("profile-image");
         Lookbook lookbook = Lookbook.create(
                 member,
                 readyImage(
