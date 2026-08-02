@@ -1,11 +1,15 @@
 # FIT-BACK 이미지 저장소 정책
 
-> 문서 상태: 확정 목표 정책 및 현재 구현 차이 기록
+> 문서 상태: `develop` 구현 기준 운영 계약
 >
-> 기준: 2026-07-24 승인 정책, 기존 Presigned PUT 정책 대체
+> 기준: 2026-08-02 `develop` (`7a84f9c`)
 >
 > 대상 범위: 사용자 업로드 이미지의 Presigned POST 발급, S3 저장, CloudFront 제공, 상태 관리 및 삭제 정책
-> 작성일: 2026-07-24
+>
+> 최종 수정일: 2026-08-01
+>
+> **문서 표기:** `현재`는 위 기준 커밋의 코드·migration 계약, 날짜·Release 표기는 과거 배포 이력,
+> `후속`은 아직 구현하지 않은 정책이다. AWS 인프라의 실제 상태는 배포 전 다시 확인한다.
 
 ## 1. 목적
 
@@ -18,8 +22,8 @@ FIT-BACK의 사용자 업로드 이미지를 안전하게 저장하고, 업로�
   → 백엔드에 Presigned POST 정보 요청
   → S3에 이미지 직접 업로드
   → 백엔드 업로드 완료 API 호출
-  → 분석·룩북·프로필 API에 imageId 또는 images[] 전달
-  → CloudFront를 통해 이미지 표시
+  → 분석·룩북·프로필 API에 용도별 imageId 전달
+  → API 응답의 10분짜리 CloudFront Signed URL로 이미지 표시
 ```
 
 핵심 원칙은 다음과 같다.
@@ -30,9 +34,12 @@ FIT-BACK의 사용자 업로드 이미지를 안전하게 저장하고, 업로�
 - 완료 API의 서버 검증을 통과한 이미지만 도메인 API에 연결할 수 있다.
 - 분석·룩북·프로필 등 도메인 데이터와 연결된 이미지만 `ACTIVE` 상태로 변경한다.
 - 24시간 자동 정리는 `PENDING_UPLOAD`, `READY`, `REJECTED`이면서 실제 도메인 참조가 없는 이미지만 대상으로 한다.
+- 모든 사용자 업로드 이미지는 `PRIVATE`를 유지하며, 룩북을 공개해도 `PUBLIC`으로 전환하지 않는다.
+- 이미지 조회는 로그인 여부와 관계없이 API가 응답 시점에 발급한 10분 만료 CloudFront Signed URL을 사용한다.
+- trusted key group이 적용된 이미지 CloudFront의 서명 없는 URL은 `403`이다.
 - 외부 쇼핑 API의 상품 이미지는 사용자 업로드 이미지와 분리하며 FIT-BACK S3에 복사하지 않는다.
 
-## 2. 확정 목표 정책 요약
+## 2. 현재 정책 요약
 
 | 항목 | 정책 |
 |---|---|
@@ -54,33 +61,30 @@ FIT-BACK의 사용자 업로드 이미지를 안전하게 저장하고, 업로�
 | 삭제 실패 | `DELETE_FAILED`로 전환 후 다음 스케줄에서 재시도 |
 | 복수 업로드 | 프론트에서 최대 2~3개 병렬 업로드 권장 |
 | S3 공개 여부 | 비공개 버킷, Block Public Access, CloudFront OAC 적용 |
-| 비공개 이미지 제공 | CloudFront Signed URL, MVP 기본 10분 |
+| 이미지 visibility | 모든 신규 이미지 `PRIVATE`; 룩북 생성·공개 시 `PUBLIC` 전환 없음 |
+| 이미지 제공 | CloudFront Signed URL, 10분; 서명 없는 URL은 `403` |
+| 운영 multipart 분석 | 로컬 저장을 사용하지 않고 `ANALYSIS400_3`으로 거절 |
 | 외부 상품 이미지 | 공급자 상품 참조와 CDN URL 사용, FIT-BACK S3 복사 금지 |
 
 ## 3. 현재 구현 상태와 반영 원칙
 
-이 문서는 최종 목표 정책을 정의한다. Issue #95의 expand 릴리스 A와 Issue #96의
-new-write/backfill 릴리스 B가 운영에 배포됐고, Issue #97의 릴리스 C에서 legacy 값과
-호환 코드를 제거한다. 운영 S3 CORS와 production smoke test는 별도 운영 이슈 `#83`에서
-확인한다.
+현재 코드와 DB 계약은 Issue #95~#97의 릴리스 A/B/C를 모두 반영한 상태다.
+V18은 legacy 생명주기 값을 백필했고, V19는 zero gate 후 legacy `PENDING`과 이전
+purpose 값을 제외한 canonical CHECK 제약을 적용했다. 운영 S3 CORS와 production
+smoke test의 시점별 증적은 `docs/DEPLOYMENT.md`에 기록한다.
 
-| 항목 | 공용 API 계약 | 릴리스 C 구현 | 후속 단계 |
-|---|---|---|---|
-| S3 업로드 방식 | Presigned POST | Presigned POST | 유지 |
-| 발급 API | `POST /api/v1/images/upload-requests` | 동일 | 유지 |
-| 업로드 응답 | `imageId`, `uploadUrl`, `uploadMethod=POST`, `uploadFields`, `expiresAt` | 동일, `requiredHeaders`/`imageUrl` 미포함 | 유지 |
-| API 이미지 용도 | `ANALYSIS`, `LOOKBOOK`, `PROFILE` | request DTO에서 사용 | 유지 |
-| DB purpose 저장 | API와 동일 | `ANALYSIS`, `LOOKBOOK`, `PROFILE`만 저장·조회 | 유지 |
-| API 논리 초기 상태 | `PENDING_UPLOAD` | API 명세·도메인 논리 상태로 사용 | 유지 |
-| DB status 저장 | API와 동일 | 신규 row는 `PENDING_UPLOAD`; legacy `PENDING` 제거 | 유지 |
-| V4/V18/V19 migration | expand/backfill/contract | V19 최종 catch-up과 zero gate 후 신규값 전용 constraint 적용 | 유지 |
-| Object key | `images/{purpose}/{memberId}/{yyyy}/{MM}/{imageId}.{ext}` | API purpose 기반 신규 key 사용 | 유지 |
-| 기존 S3 객체 | 기존 경로에 존재 | 이동하지 않음 | 조회 호환 유지 |
-| `retryCount`, `nextRetryAt` | 저장 유지 | DB에 저장 | 유지 |
-| 자동 삭제 조회 | 논리 미사용 이미지 정리 | `PENDING_UPLOAD`는 `createdAt`, `READY`/`REJECTED`는 `COALESCE(uploadedAt, createdAt)`, `DELETE_FAILED`는 `nextRetryAt` 기준 | 유지 |
-| multipart 분석 API | 전환 기간 유지 | 호환용으로 유지 | 후속 contract 이슈에서 정리 |
-| JSON 분석 API 요청 | 현재 단일 `{ imageId }` | 유지 | 후속 contract 이슈에서 `images[]/role/sourceType` 전환 |
-| `ACTIVE` 마지막 참조 해제 자동 삭제 | 분석·룩북·프로필 적용 | 마지막 논리 참조 해제 시 커밋 후 삭제 | 유지 |
+| 항목 | 현재 구현 | 비고 |
+|---|---|---|
+| S3 업로드 | Presigned POST | `uploadFields`를 포함한 `FormData` 직접 업로드 |
+| 발급 API | `POST /api/v1/images/upload-requests` | 응답은 `imageId`, `uploadUrl`, `uploadMethod=POST`, `uploadFields`, `expiresAt` |
+| 이미지 용도 | `ANALYSIS`, `LOOKBOOK`, `PROFILE` | API·DB에 같은 canonical 값 사용 |
+| 생명주기 | `PENDING_UPLOAD` → `READY` → `ACTIVE` | legacy `PENDING` 코드·DB 값 없음 |
+| 공개 범위 | 신규 row를 항상 `PRIVATE`로 생성 | 룩북 생성·조회가 visibility를 변경하지 않음 |
+| 조회 URL | 모든 사용자 이미지에 10분 Signed URL 발급 | `PUBLIC` 분기는 잔존하지만 production writer가 없음 |
+| Object key | `images/{purpose}/{memberId}/{yyyy}/{MM}/{imageId}.{ext}` | 신규 업로드부터 적용; 기존 객체는 이동하지 않음 |
+| 임시 이미지 정리 | 1시간 주기, 최대 50개 선점 | 상태별 시간 기준과 도메인 참조 부재를 모두 확인 |
+| `ACTIVE` 마지막 참조 해제 | 분석·룩북·프로필에 구현 | 커밋 후 참조를 다시 확인한 뒤 S3 삭제 |
+| 분석 API | JSON `{ "imageId": "..." }` 경로가 운영 계약 | multipart 경로는 local/test에서만 저장하고 prod에서 `ANALYSIS400_3` |
 
 기존 운영 데이터와 S3 객체는 강제로 이동하지 않는다. 새 object key 정책은 신규 업로드부터 적용한다.
 
@@ -94,7 +98,9 @@ new-write/backfill 릴리스 B가 운영에 배포됐고, Issue #97의 릴리스
 | 룩북 원본 또는 매칭 사진 | `LOOKBOOK` |
 | 프로필 사진 | `PROFILE` |
 
-기존처럼 룩북 내부 역할을 별도 `purpose` 값으로 분리하지 않는다. 룩북 내부 역할은 도메인 API의 `images[].role`로 구분한다.
+룩북 내부 역할을 별도 `purpose` 값으로 분리하지 않는다. 현재 룩북
+요청은 필드명 `originalImageId`와 `matchedImageId`로 역할을 구분하며, 분석 원본을
+재사용할 때는 `ANALYSIS` purpose의 `originalImageId`도 허용한다.
 
 ## 5. 이미지 생명주기 상태
 
@@ -133,7 +139,6 @@ PENDING_UPLOAD/READY/REJECTED ── 24시간 미사용 ──→ DELETING ─�
                                                                       │
                                                                       └── 재시도 시각 도달 ──→ DELETING
 
-[최종 목표·후속 기능]
 ACTIVE ── 모든 참조 해제 ──→ DELETING ── S3 삭제 성공 ──→ DELETED
                       └── S3 삭제 실패 ──→ DELETE_FAILED
 ```
@@ -281,8 +286,8 @@ POST /api/v1/images/{imageId}/complete
 | 상태 | `PENDING_UPLOAD` 상태 |
 
 검증 성공 시 `PENDING_UPLOAD → READY`로 전환한다. 검증 실패 시 `REJECTED`로 전환하고 24시간 정리 대상에 포함한다.
-신규 row는 `PENDING_UPLOAD`로 저장한다. V19가 Release B rollback window에서 생긴 legacy
-`PENDING`을 최종 catch-up한 뒤 zero gate를 통과해야 신규값 전용 constraint를 적용한다.
+신규 row는 `PENDING_UPLOAD`로 저장한다. V19는 Release B rollback window에서 생긴 legacy
+`PENDING`을 최종 catch-up하고 zero gate를 통과한 후 신규값 전용 constraint를 적용했다.
 
 ### 8.2 재발급 API
 
@@ -332,7 +337,8 @@ AND 분석·룩북·프로필 등 실제 도메인 참조가 존재하지 않음
 
 ## 10. 사용 중 이미지의 마지막 참조 해제
 
-`ACTIVE` 이미지는 분석 리포트, 룩북, 프로필 등에서 공유될 수 있다.
+`ACTIVE` 이미지의 마지막 참조 해제 정리는 현재 분석 리포트, 룩북, 프로필에
+구현되어 있다. 하나의 이미지는 여러 도메인에서 공유될 수 있다.
 
 ```text
 분석 리포트 ─┐
@@ -353,10 +359,18 @@ AND 분석·룩북·프로필 등 실제 도메인 참조가 존재하지 않음
 
 DB 트랜잭션 안에서 S3 삭제를 직접 실행하지 않는다. 삭제·교체 트랜잭션이 커밋된 뒤 분석,
 삭제되지 않은 룩북, 회원 프로필 참조를 다시 확인하고 마지막 논리 참조가 없을 때만 객체를
-삭제한다. 어느 한 도메인에서라도 같은 `imageId`를 참조하면 `ACTIVE`를 유지한다.
+삭제한다. `claimReleasedActiveImages()`는 같은 DB 트랜잭션에서 후보 `ACTIVE` row를
+비관 잠금하고 모든 참조 probe를 다시 확인한 다음 `ACTIVE → DELETING`을 선점한다. 선점에
+성공한 ID만 커밋 후 S3 삭제 후보가 된다. 어느 한 도메인에서라도 같은 `imageId`를 참조하면
+`ACTIVE`를 유지하며, `DELETING` 상태는 새 룩북 연결의 허용 상태(`READY` 또는 `ACTIVE`)가 아니다.
+
+현재 `deleteClaimedImage()`는 `DELETING` 상태만 확인하고 S3 객체를 삭제하며 도메인 참조를
+다시 조회하지 않는다. 후속 구현에서는 신규 연결과 삭제 선점이 같은 이미지 row lock 순서를
+따르도록 하고, 삭제 직전 참조 재검증과 `DELETING` 이미지 연결 거부를 함께 보장해야 한다.
 
 회원 프로필 교체는 새 `PROFILE + READY` 이미지를 `ACTIVE`로 전환하고
 `member.profile_image_id`를 변경한 뒤 이전 이미지의 참조 해제 이벤트를 발행한다.
+회원 탈퇴 시에도 프로필 참조를 먼저 해제한 후 동일한 이벤트를 발행한다.
 
 ## 11. 공개 범위와 CloudFront
 
@@ -370,65 +384,65 @@ purpose(logical): ANALYSIS | LOOKBOOK | PROFILE
 purpose(persisted): ANALYSIS | LOOKBOOK | PROFILE
 ```
 
-| 이미지 종류 | MVP 공개 범위 | 제공 방법 |
+| 이미지 종류 | 현재 visibility | 제공 방법 |
 |---|---|---|
 | 분석 원본 | `PRIVATE` | CloudFront Signed URL |
 | 프로필 이미지 | `PRIVATE` | CloudFront Signed URL |
-| 공개 룩북 | `PUBLIC` | 일반 CloudFront URL |
-| `PENDING_UPLOAD`/`READY` 이미지 | 비공개 | CloudFront 접근 차단 |
+| 공개 룩북의 원본·매칭 업로드 이미지 | `PRIVATE` | CloudFront Signed URL |
+| `PENDING_UPLOAD`/`READY` 이미지 | 비공개 | 도메인 조회 URL 미발급 |
 | 외부 상품 이미지 | 이미지 저장 정책 대상 아님 | 공급자 CDN URL |
 
-MVP에서는 비공개 CloudFront Signed URL 유효시간을 기존 구현처럼 10분으로 유지한다. CloudFront 캐시 TTL, invalidation, Signed Cookie 적용 여부는 후속 운영 정책에서 확정한다.
+현재 생성 코드는 모든 `image` row의 `visibility`를 `PRIVATE`로 저장하고, 분석·룩북·
+프로필 연결 후에도 이 값을 변경하지 않는다. `PUBLIC` enum과 일반 URL을 만드는
+코드 분기는 잔존하지만, production에서 `PUBLIC`으로 전환하는 writer는 없다.
+또한 이미지 CloudFront에 trusted key group이 적용되어 있으므로 서명 없는 일반 URL은
+`403`이다. 따라서 현재 운영 계약에서 `PUBLIC` 값을 사용하면 안 된다.
 
-룩북 이미지는 업로드 시점에는 `PRIVATE`로 시작한다. 공개 룩북 등록이 성공한 뒤 도메인 정책에 따라 `PUBLIC`으로 전환한다.
+CloudFront Signed URL의 유효시간은 10분이다. 비로그인 사용자의 공개 룩북 조회도
+백엔드가 발급한 Signed URL을 받으므로 만료 전에는 이미지를 볼 수 있다. 만료한
+URL 자체가 자동 연장되지는 않으며, 룩북 API를 새로 요청하면 응답 생성 시점을
+기준으로 새 Signed URL을 발급한다. Signed Cookie는 현재 구현하지 않았다.
 
 ## 12. 단일 및 복수 이미지 전달 계약
 
 이미지 한 장마다 하나의 `imageId`와 Presigned POST 정보를 사용한다. 복수 업로드는 프론트에서 최대 2~3개 병렬 처리를 권장하며, 실패한 이미지만 독립적으로 재시도한다.
 
-분석·룩북 API에는 임의의 외부 `imageUrl` 대신 이미지 출처와 역할을 명시한 `images[]` 배열을 전달한다.
+현재 도메인 API는 이미지 한 장마다 발급된 ID를 각 요청 필드에 직접 전달한다.
+임의의 외부 `imageUrl`을 사용자 업로드 이미지 대신 받지 않는다.
 
 ```json
 {
-  "images": [
-    {
-      "role": "ORIGINAL",
-      "sourceType": "UPLOADED",
-      "imageId": "019c1234-abcd-7000-8000-123456789abc"
-    },
-    {
-      "role": "MATCHED",
-      "sourceType": "PRODUCT",
-      "productId": 123
-    }
-  ]
+  "imageId": "019c1234-abcd-7000-8000-123456789abc"
 }
 ```
 
-직접 업로드한 매칭 이미지라면 다음과 같이 전달한다.
+위 형식은 JSON 분석 API `POST /api/v1/analyses`의 요청이다. 룩북 생성·수정은
+다음처럼 원본과 매칭 출처를 별도 필드로 구분한다.
 
 ```json
 {
-  "role": "MATCHED",
-  "sourceType": "UPLOADED",
-  "imageId": "019d1234-abcd-7000-8000-123456789abc"
+  "originalImageId": "019c1234-abcd-7000-8000-123456789abc",
+  "matchedImageId": null,
+  "matchedProductId": 123,
+  "sourceReportId": 45,
+  "tagIds": [1, 2],
+  "comment": "오늘의 코디"
 }
 ```
 
 전달 규칙은 다음과 같다.
 
-- 분석 API는 `ORIGINAL + UPLOADED + imageId` 이미지 1장을 사용한다.
-- 룩북 API는 `ORIGINAL`과 `MATCHED` 역할을 구분한다.
-- 룩북의 `MATCHED` 이미지는 직접 업로드 이미지(`UPLOADED + imageId`) 또는 상품 이미지(`PRODUCT + productId`)일 수 있다.
-- 프로필 API는 단일 `imageId`를 사용한다.
+- 분석 JSON API는 `ANALYSIS + READY`인 본인 이미지 ID 하나를 사용한다.
+- 운영의 multipart 분석 API는 `ANALYSIS400_3`으로 거절하고 Presigned POST → 완료 → JSON 경로를 요구한다.
+- 룩북 `originalImageId`는 본인 소유의 `LOOKBOOK` 또는 `ANALYSIS` 이미지이며 상태는 `READY` 또는 `ACTIVE`여야 한다.
+- 룩북의 매칭 출처는 `matchedImageId` 또는 `matchedProductId` 중 하나다.
+- `matchedImageId`는 본인 소유의 `LOOKBOOK + READY|ACTIVE` 이미지다.
+- `matchedProductId`를 사용하면 상품 이미지 URL을 룩북에 snapshot하고 FIT-BACK S3에 복사하지 않는다.
+- 프로필 API는 단일 `profileImageId`를 사용한다.
 - 회원 수정·온보딩 요청은 `profileImageId`, 조회 응답은 표시용 `profileImageUrl`을 사용한다.
 - 사용자 업로드 이미지는 `imageId`로 전달한다.
 - 쇼핑 API 상품 이미지는 내부 `productId`로 전달한다.
 - `imageUrl`은 응답과 화면 표시 용도로만 사용한다.
-- 이미지 순서에 의미가 있으면 배열 위치가 아니라 `role`로 구분한다.
-- 여러 이미지는 쉼표 문자열이 아닌 JSON 배열로 전달한다.
-
-현재 구현에는 multipart 분석 API와 단일 `{ imageId }` JSON 분석 API가 모두 있다. 전환 기간에는 두 API를 호환용으로 유지하며, 목표 신규 도메인 계약은 위 `images[]/role/sourceType` 형식을 기준으로 별도 기능 이슈에서 반영한다.
 
 ## 13. 외부 쇼핑 API 이미지
 
@@ -534,25 +548,22 @@ S3 객체 수명 주기 자동 만료는 `ACTIVE`와 미사용 이미지를 구�
 - WebP 강제 변환
 - CloudFront 캐시 TTL과 invalidation 세부 정책
 - Signed Cookie 적용 여부
-- `ACTIVE` 마지막 참조 해제 자동 삭제의 후속 도메인 연동
 - 지수 백오프와 최대 삭제 재시도 횟수
+- 마지막 참조 해제와 신규 연결이 경쟁할 때 삭제 안전성을 고정하는 동시성 통합 테스트
 
-## 19. 향후 구현 API 범위와 이미지 연계 메모
+## 19. 현재 도메인 API 연계 현황
 
-기존 구현 여부와 관계없이 앞으로의 기능 이슈와 계약 검토는 다음 API 범위를 기준으로 한다. 이 문서는 범위를 기록할 뿐 해당 API 구현 완료를 의미하지 않는다.
+현재 `develop` 기준 이미지 연계 경로는 다음과 같다.
 
-- 이미지 업로드
-- AI 태그 분석 결과 저장
-- 분석 리포트 목록, 상세, 삭제
-- 추천 결과 생성
-- 상품 검색, 상품 상세
-- 쇼핑 API 연동
-- 추천 상품 저장
-- 카테고리별 그룹핑
+- 이미지 API가 Presigned POST 발급, 재발급, 업로드 완료 검증을 담당한다.
+- 분석 JSON API가 `ANALYSIS` 이미지를 `ACTIVE`로 바꾸고 리포트에 연결한다.
+- 룩북 생성·수정은 원본과 직접 업로드한 매칭 이미지를 `ACTIVE`로 바꾸되 visibility는 `PRIVATE`를 유지한다.
+- 회원 온보딩·수정은 `PROFILE` 이미지를 `ACTIVE`로 바꾸고 `member.profile_image_id`에 연결한다.
+- 분석 삭제, 룩북 수정·삭제, 프로필 교체·회원 탈퇴는 참조 해제 이벤트를 발행한다.
+- 이벤트 listener는 트랜잭션 커밋 후 분석·룩북·프로필 참조를 다시 확인하고, 마지막 참조가 없는 `ACTIVE` 이미지만 삭제한다.
 
-`확정 태그 반영`은 별도 신규 API 범위로 잡지 않고, 사용자가 확정한 분석 결과를 입력으로 사용하는 **추천 결과 생성** 계약으로 설계한다. 이미지 업로드와 분석 관련 기존 API의 전환은 호환성을 고려해 각각의 기능 이슈에서 수행한다.
-
-추천·룩북에서 외부 상품 이미지를 사용할 때는 외부 `imageUrl`을 요청값으로 직접 받지 않고 내부 `productId`를 기준으로 백엔드가 상품 정보를 조회한다.
+상품 이미지는 외부 `imageUrl`을 룩북 요청으로 직접 받지 않고 내부
+`productId`를 기준으로 백엔드가 검증한다.
 
 ## 20. 참고 자료
 

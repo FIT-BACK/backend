@@ -1,9 +1,14 @@
 # Shopify 상품 공급자 PoC 및 채택 결정
 
+> **문서 성격 (2026-08-01): 역사적 의사결정 기록(ADR).** 아래 호출 결과와 외부 조건은
+> 2026-07-30 PoC 시점의 증거이며 현재 Shopify 응답·정책·운영 설정을 보장하지 않는다.
+> 현재 코드는 [`application.properties`](../src/main/resources/application.properties)의
+> `fixture`/`false`를 기본값으로 사용하고,
+> [`ShoppingProviderConfig.java`](../src/main/java/com/fitback/backend/external/shopping/config/ShoppingProviderConfig.java)에서
+> `SHOPPING_PROVIDER=shopify`와 `SHOPIFY_ENABLED=true`가 함께 설정된 경우 Shopify adapter를
+> 선택한다. 실행 방법은 [README.md](../README.md)를 함께 확인한다.
 > 상태: 최소 프로토타입에 한해 채택, 정식 운영 채택은 보류
->
 > 검증 일시: 2026-07-30 08:04 KST
->
 > 관련 이슈: #92
 
 ## 1. 결정

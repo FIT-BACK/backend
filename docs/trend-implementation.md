@@ -1,5 +1,11 @@
 # Trend 도메인 API 구현 내용
 
+> **문서 상태 (2026-08-01): 역사적 구현 스냅샷.** 최초 구현 시점의 파일 구성·판단·환경을
+> 보존한 기록이며 현재 전체 명세가 아니다. 현재 계약은 [API_SPEC.md](API_SPEC.md),
+> [`TrendController.java`](../src/main/java/com/fitback/backend/domain/trend/controller/TrendController.java),
+> [`TrendService.java`](../src/main/java/com/fitback/backend/domain/trend/service/TrendService.java)를
+> 기준으로 한다.
+
 `docs/trend-design.md` 설계를 기반으로 구현한 내용을 정리한 문서. 코드 전문 대신 구현 의도와 동작 방식 위주로 설명한다.
 
 ## 1. 구현 목적
