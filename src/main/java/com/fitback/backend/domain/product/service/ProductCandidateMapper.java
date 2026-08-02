@@ -26,8 +26,7 @@ public class ProductCandidateMapper {
     public ProductCategory category(ExternalProductCandidate candidate) {
         String provider = candidate.providerRef().provider();
         return categoryMapper.map(provider, candidate.categoryPath())
-                // categoryPath가 없거나 분류가 안 될 때 상품명을 2차 신호로 재시도
-                // (예: Shopify 응답에 카테고리가 비어 있어도 상품명에 "진"/"셔츠" 등이 있으면 잡아낸다)
+                .filter(category -> category != ProductCategory.OTHER)
                 .or(() -> categoryMapper.map(provider, candidate.name()))
                 .orElse(ProductCategory.OTHER);
     }

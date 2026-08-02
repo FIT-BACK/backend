@@ -37,4 +37,28 @@ class ShopifyProductCategoryMapperTest {
         assertThat(mapper.map(ShopifyGlobalCatalogAdapter.PROVIDER, "립케이지 와이드핏 진"))
                 .contains(ProductCategory.BOTTOM);
     }
+
+    @Test
+    void doesNotMatchAmbiguousKeywordsInsideUnrelatedWords() {
+        assertThat(mapper.map(ShopifyGlobalCatalogAdapter.PROVIDER, "진주 목걸이"))
+                .contains(ProductCategory.ACCESSORY);
+        assertThat(mapper.map(ShopifyGlobalCatalogAdapter.PROVIDER, "laptop sleeve"))
+                .isEmpty();
+        assertThat(mapper.map(ShopifyGlobalCatalogAdapter.PROVIDER, "address label holder"))
+                .isEmpty();
+        assertThat(mapper.map(ShopifyGlobalCatalogAdapter.PROVIDER, "wireless router case"))
+                .isEmpty();
+        assertThat(mapper.map(ShopifyGlobalCatalogAdapter.PROVIDER, "wheel cover"))
+                .isEmpty();
+        assertThat(mapper.map(ShopifyGlobalCatalogAdapter.PROVIDER, "socket organizer"))
+                .isEmpty();
+    }
+
+    @Test
+    void mapsStandaloneShortEnglishKeywords() {
+        assertThat(mapper.map(ShopifyGlobalCatalogAdapter.PROVIDER, "graphic tee"))
+                .contains(ProductCategory.TOP);
+        assertThat(mapper.map(ShopifyGlobalCatalogAdapter.PROVIDER, "baseball cap"))
+                .contains(ProductCategory.ACCESSORY);
+    }
 }
