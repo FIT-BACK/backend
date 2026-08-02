@@ -51,6 +51,7 @@ SHOPIFY_LANGUAGE=ko
 SHOPIFY_CURRENCY=KRW
 SHOPPING_CANDIDATE_TOKEN_TTL=PT10M
 SHOPPING_PROVIDER=fixture
+APP_CORS_ALLOWED_ORIGINS=https://frontend-chi-one-35.vercel.app,http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173
 KAKAO_REST_API_KEY=team_kakao_rest_api_key
 KAKAO_REST_API_SECRET=team_kakao_client_secret
 FRONT_REDIRECT_URI=http://localhost:3000/oauth/success
@@ -177,6 +178,8 @@ http://127.0.0.1:5173
 `data`에 발급합니다. 이후 인증 요청은 access token을 `Authorization: Bearer {accessToken}`
 헤더로 보내며, refresh token은 재발급 API의 JSON body로 전달합니다. credential cookie는
 허용하지 않습니다.
+운영 프로필의 Spring CORS allowlist는 comma-separated `APP_CORS_ALLOWED_ORIGINS` 환경변수로
+주입합니다. GitHub Repository Variable을 변경한 경우 새 production 배포가 필요합니다.
 배포 후에는 allowlist에 포함된 로컬 프론트엔드 Origin으로 로그인 OPTIONS preflight와 POST 응답의
 `Access-Control-Allow-Origin`을 확인합니다. Spring 애플리케이션 직접 경로는 성공하지만
 CloudFront 경유 요청만 실패하면 CloudFront의 Origin 요청 헤더 전달 및 OPTIONS 캐시 정책을

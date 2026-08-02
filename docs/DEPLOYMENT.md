@@ -79,12 +79,13 @@ RDS endpoint는 문서에 기록하지 않는다.
 | `IMAGE_BUCKET` | EC2 배포 | private 사용자 이미지 버킷 이름이다. 현재 값은 `fitback-prod-images-123209654535-ap-northeast-2`이다. |
 | `IMAGE_CDN_BASE_URL` | EC2 배포 | 서명된 이미지 조회 URL을 만들 CloudFront HTTPS origin이다. 현재 값은 `https://d1p2ierkew26r1.cloudfront.net`이다. |
 | `CLOUDFRONT_KEY_PAIR_ID` | EC2 배포 | CloudFront signed URL에 포함할 public key ID이다. 현재 값은 `K1XNJ3JDEDCVL3`이다. |
+| `APP_CORS_ALLOWED_ORIGINS` | EC2 배포 | Spring CORS allowlist다. 공백 없는 origin을 쉼표로 구분하며 현재 운영 프론트와 승인된 로컬 개발 origin을 설정한다. 변경 후 새 production 배포가 필요하다. |
 | `FITBACK_AI_TAG_ANALYZER` | 선택 | 분석기 모드다. 미설정 시 `unavailable`; 최소 프로토타입에서만 `prototype`을 사용한다. |
 | `SHOPPING_PROVIDER` | 선택 | 상품 공급자다. 미설정 시 `fixture`; Shopify 프로토타입에서는 `shopify`를 사용한다. |
 | `SHOPIFY_ENABLED` | 선택 | Shopify adapter 활성화 여부다. 미설정 시 `false`; `SHOPPING_PROVIDER=shopify`와 함께 `true`로 설정한다. |
 
 민감정보는 Repository Variable 또는 GitHub command payload에 넣지 않는다.
-배포 workflow는 위 세 feature 설정을 검증한 뒤 SSM command와 release `.env`까지 전달한다.
+배포 workflow는 CORS와 위 세 feature 설정을 검증한 뒤 SSM command와 release `.env`까지 전달한다.
 최소 프로토타입 운영 검증 시에는 `prototype/shopify/true` 조합을 명시하고, 검증 종료 후
 기본 fail-closed 조합으로 되돌릴 수 있다.
 
@@ -231,8 +232,8 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - Docker daemon이 실행 중이어야 한다.
 - ECR 이미지 platform과 EC2 architecture가 일치해야 한다. 현재 workflow는 multi-architecture 이미지를 만들지 않는다.
 - `/opt/fitback/releases`에 배포 파일과 mode `600`의 비민감 runtime `.env`를 저장하고 `/opt/fitback/current` symlink를 교체할 수 있어야 한다. DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값은 파일에 기록하지 않고 Compose 프로세스 환경으로만 전달한다.
-- 비민감 feature 설정 `FITBACK_AI_TAG_ANALYZER`, `SHOPPING_PROVIDER`,
-  `SHOPIFY_ENABLED`는 release `.env`에 기록한다. 기본값은
+- 비민감 runtime 설정 `APP_CORS_ALLOWED_ORIGINS`, `FITBACK_AI_TAG_ANALYZER`,
+  `SHOPPING_PROVIDER`, `SHOPIFY_ENABLED`는 release `.env`에 기록한다. feature 설정 기본값은
   `unavailable/fixture/false`이며, 배포형 최소 프로토타입은
   `prototype/shopify/true`를 명시한다.
 
@@ -241,6 +242,8 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - 사용자는 CloudFront 기본 도메인의 HTTPS `443`으로 API에 접근한다.
 - CloudFront는 캐시를 비활성화하고 모든 API HTTP method와 viewer 요청 값을 EC2 Nginx 원본으로 전달한다.
 - EC2 Nginx 원본은 HTTP `80`을 사용하며 source를 AWS 관리형 prefix list `com.amazonaws.global.cloudfront.origin-facing`(`pl-22a6434b`)로 제한한다.
+- Spring CORS allowlist는 GitHub Repository Variable `APP_CORS_ALLOWED_ORIGINS`에서 주입한다.
+  값을 변경하면 새 production 배포 후 허용 Origin의 OPTIONS preflight와 실제 응답 헤더를 확인한다.
 - Elastic IP의 HTTP `80`, SSH `22`, backend `8080`은 일반 인터넷에서 직접 접근할 수 없다.
 - RDS는 public access를 비활성화한다.
 - RDS security group의 MySQL `3306` source는 EC2 security group으로 제한한다.
@@ -418,6 +421,7 @@ ECR 및 S3 저장량, CloudFront 요청·데이터 전송, 소량의 CloudWatch 
 - [ ] 카카오 개발자 콘솔에 운영 백엔드 콜백 URI를 등록했다.
 - [x] GitHub OIDC 역할에 SSM 최소 권한을 추가했다.
 - [x] GitHub Repository Variable `EC2_INSTANCE_ID`를 추가했다.
+- [ ] GitHub Repository Variable `APP_CORS_ALLOWED_ORIGINS`를 추가하고 production 재배포 후 확인한다.
 - [x] `Backend CD`를 실제 실행해 SSM command와 health check를 확인했다.
 - [x] CloudFront HTTPS endpoint에서 Nginx와 backend readiness를 확인했다.
 - [ ] 다음 `main` 배포 후 CloudFront 루트에서 안내 페이지와 Swagger UI/readiness 링크를 확인한다.
