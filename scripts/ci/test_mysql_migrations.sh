@@ -1146,20 +1146,26 @@ fi
 
 docker exec -i "$container_name" mysql -uroot fitback \
   < src/main/resources/db/migration/V16__seed_prototype_analysis_tags.sql
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V22__seed_member_style_tags.sql
 
-prototype_tag_contract="$(docker exec "$container_name" mysql -uroot \
+seeded_tag_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CONCAT(
         SUM(tag_name = '미니멀' AND tag_type = 'DETAIL'), ':',
         SUM(tag_name = '와이드핏' AND tag_type = 'SILHOUETTE'), ':',
         SUM(tag_name = '베이지톤' AND tag_type = 'COLOR'), ':',
+        SUM(tag_name = '스트릿' AND tag_type = 'DETAIL'), ':',
+        SUM(tag_name = '러블리' AND tag_type = 'DETAIL'), ':',
+        SUM(tag_name = '캐주얼' AND tag_type = 'DETAIL'), ':',
+        SUM(tag_name = '포멀' AND tag_type = 'DETAIL'), ':',
         SUM(tag_name = '기존태그' AND tag_type = 'DETAIL'), ':',
         COUNT(*)
       )
       FROM fitback.tag;")"
 
-if [ "$prototype_tag_contract" != '1:1:1:1:4' ]; then
-  echo "Unexpected prototype tag contract: $prototype_tag_contract" >&2
+if [ "$seeded_tag_contract" != '1:1:1:1:1:1:1:1:8' ]; then
+  echo "Unexpected seeded tag contract: $seeded_tag_contract" >&2
   exit 1
 fi
 
