@@ -128,6 +128,17 @@ class AuthControllerIntegrationTest {
                 .andExpect(jsonPath("$.code").value("COMMON400_2"));
     }
 
+    @Test
+    void signUpRejectsPasswordOverBcryptByteLimit() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/sign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody("byte-limit@fitback.com", "가".repeat(25))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+
+        assertThat(memberRepository.existsByEmail("byte-limit@fitback.com")).isFalse();
+    }
+
     //로그인 성공 테스트 - 200, 토큰 발급
     @Test
     void loginSuccessTest() throws Exception {

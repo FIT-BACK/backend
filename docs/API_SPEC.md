@@ -5,8 +5,8 @@
 | 항목 | 값 |
 | --- | --- |
 | 최초 작성일 | 2026-07-26 |
-| 최종 검증일 | 2026-08-01 |
-| 검증 기준 | `develop` `9ddb4508089cb0ddb108d196e639c58036ebd12a` |
+| 최종 검증일 | 2026-08-02 |
+| 검증 기준 | `develop` `7a84f9cf8b0746fc294a0db8529439c9a6d4fb33` |
 | 적용 범위 | 현재 Controller가 제공하는 Auth, Member, Image, Analysis, Recommendation, Product, Lookbook, Trend, Tag, Content Search, Closet, Notification API |
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
@@ -87,6 +87,8 @@ GET과 body 없는 DELETE에는 `Content-Type`을 생략할 수 있다.
 ErrorCode enum 식별자와 wire code는 구분한다. 예를 들어 Java 식별자
 `PRODUCT_PROVIDER_UNAVAILABLE`의 wire code는 `PRODUCT503_1`이다.
 실패 응답의 `data`는 오류 종류와 관계없이 항상 `null`이다.
+지원하지 않는 `Accept`는 `406 COMMON406_1`, 지원하지 않는 요청 `Content-Type`은
+`415 COMMON415_1`로 응답하며 두 경우 모두 JSON 공통 실패 응답을 사용한다.
 
 ### 1.5 금액과 시간
 
@@ -104,7 +106,7 @@ ErrorCode enum 식별자와 wire code는 구분한다. 예를 들어 Java 식별
 | --- | --- | --- |
 | 상품 검색, 저장 상품 | 서버 발급 opaque `String` | 기본 10, 1~20 |
 | 분석 저장 목록 | `ClosetSave.saveId` 기반 `Long` | 기본 20, 1~50 |
-| 룩북 목록 | `lookbookId` 기반 `Long` | 기본 20, 현재 명시적 상·하한 validation 없음 |
+| 룩북 목록 | `lookbookId` 기반 `Long` | 기본 20, 1~20 |
 | 알림 목록 | `notificationId` 기반 `Long` | 기본 20, 1~50 |
 | 트렌드, 통합 클로젯 | `Long` | 고정 10 |
 
@@ -707,6 +709,8 @@ body는 없다.
 | `FORBIDDEN` | `COMMON403_1` | 403 | 권한 부족 |
 | `NOT_FOUND` | `COMMON404_1` | 404 | 일반 리소스 없음 |
 | `METHOD_NOT_ALLOWED` | `COMMON405_1` | 405 | 허용되지 않은 HTTP method |
+| `NOT_ACCEPTABLE` | `COMMON406_1` | 406 | 지원하지 않는 응답 미디어 타입 요청 |
+| `UNSUPPORTED_MEDIA_TYPE` | `COMMON415_1` | 415 | 지원하지 않는 요청 미디어 타입 |
 | `INTERNAL_SERVER_ERROR` | `COMMON500_1` | 500 | 처리되지 않은 서버 오류 |
 | `INVALID_ANALYSIS_IMAGE` | `ANALYSIS400_1` | 400 | 분석 multipart 이미지 형식·크기 위반 |
 | `ANALYSIS_SELECTION_INVALID` | `ANALYSIS400_2` | 400 | 저장 선택 상품이 현재 추천과 불일치 |
@@ -745,11 +749,13 @@ body는 없다.
 | `RECOMMENDATION_INPUT_CHANGED` | `RECOMMENDATION409_1` | 409 | 외부 호출 중 분석 결과 version이 변경됨 |
 | `IMAGE_UNSUPPORTED_CONTENT_TYPE` | `IMAGE400_1` | 400 | JPEG, PNG, WebP 이외의 업로드 MIME type |
 | `IMAGE_NOT_FOUND` | `IMAGE404_1` | 404 | 이미지 없음 또는 소유권 없음 |
+| `IMAGE_OBJECT_NOT_FOUND` | `IMAGE404_2` | 404 | 업로드 완료 확인 시 S3 객체가 없음 |
 | `IMAGE_INVALID_STATE` | `IMAGE409_1` | 409 | 현재 상태·목적으로 요청 수행 불가 |
 | `IMAGE_UPLOAD_EXPIRED` | `IMAGE410_1` | 410 | 업로드 요청 만료 |
 | `INVALID_IMAGE_CONTENT` | `IMAGE422_1` | 422 | 실제 object signature·내용 검증 실패 |
 | `IMAGE_PRESIGN_ERROR` | `IMAGE500_1` | 500 | Presigned POST 발급 실패 |
-| `IMAGE_STORAGE_ERROR` | `IMAGE500_2` | 500 | S3/object storage 처리 실패 |
+| `IMAGE_STORAGE_ERROR` | `IMAGE500_2` | 500 | S3 권한 또는 서버 설정 오류 |
+| `IMAGE_STORAGE_UNAVAILABLE` | `IMAGE503_1` | 503 | S3 timeout, 429, 5xx, `RequestTimeout`, `OperationAborted`, 연결 실패 |
 
 정책:
 
@@ -831,6 +837,11 @@ Shopify 등 공급자 이름을 DTO 계약에 노출하지 않는다.
 - member ID는 `authMember.getMember().getId()`로 얻고 Request에 임시 member ID를 추가하지 않는다.
 - 모든 Product/Recommendation endpoint에 인증 정책을 적용한다.
 - 인증 실패 401과 리포트 존재 숨김 404를 contract test로 고정한다.
+- BCrypt에 전달되는 비밀번호는 UTF-8 기준 72바이트 이하여야 하며 초과 입력은
+  `400 COMMON400_2`로 거절한다. 회원가입과 비밀번호 변경·재설정의 새 비밀번호에 적용한다.
+- JWT 형식·서명·만료·토큰 종류 오류만 필터에서 `401 COMMON401_1`로 변환한다.
+  유효한 토큰의 회원이 존재하지 않는 경우에도 `401 COMMON401_1`로 응답한다. 회원 조회의
+  시스템 예외는 공통 예외 처리기에 위임하고 인증 오류로 변환하지 않는다.
 
 ### Analysis
 
@@ -846,7 +857,7 @@ Shopify 등 공급자 이름을 DTO 계약에 노출하지 않는다.
 
 ## 14. 자동화 검증 현황
 
-`develop` `9ddb450`의 테스트 기준이다. 체크되지 않은 항목은 정책이 없다는 뜻이 아니라 해당
+`develop` `7a84f9c`의 테스트 기준이다. 체크되지 않은 항목은 정책이 없다는 뜻이 아니라 해당
 속성을 직접 고정하는 전용 자동화 테스트를 확인하지 못했다는 뜻이다.
 
 - [x] 요청 DTO validation과 공통 응답 envelope
@@ -966,6 +977,9 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 
 인증 회원이 Presigned POST 업로드를 마친 뒤 호출한다. 서버는 S3 객체의 크기, MIME type과
 파일 시그니처를 검증하고 성공하면 이미지 상태를 `READY`로 전환한다.
+S3 객체가 없으면 `404 IMAGE404_2`, S3 timeout·연결 실패·429·5xx 및 AWS 오류 코드
+`RequestTimeout`·`OperationAborted`는 `503 IMAGE503_1`,
+권한 또는 서버 설정 오류는 `500 IMAGE500_2`로 구분한다.
 
 ```json
 {
@@ -1070,6 +1084,12 @@ transaction commit 후 참조 release 이벤트의 대상이 된다. cleanup은 
 ---
 
 ## 17. 분석 결과 기반 룩북 업로드
+
+### `GET /api/v1/lookbooks?cursor=&pageSize=20&tag=`
+
+룩북 목록은 Long ID cursor 기반으로 조회한다. `cursor`는 전달하는 경우 양수여야 하며,
+`pageSize` 기본값은 20이고 허용 범위는 1~20이다. 범위를 벗어난 요청은
+`400 COMMON400_2`로 응답한다.
 
 ### `POST /api/v1/lookbooks`
 

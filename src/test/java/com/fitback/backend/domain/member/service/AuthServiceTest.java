@@ -139,6 +139,22 @@ class AuthServiceTest {
         verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
     }
 
+    @Test
+    void signUpRejectsPasswordOverBcryptByteLimitBeforeEncoding() {
+        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest(
+                "test@fitback.com",
+                "가".repeat(25)
+        );
+
+        assertThatThrownBy(() -> authService.signUp(request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR)
+                );
+
+        verify(passwordEncoder, never()).encode(anyString());
+        verify(memberRepository, never()).existsByEmail(anyString());
+    }
+
     //로그인 성공 테스트 - 자격 증명이 맞으면 토큰을 반환하고 refresh를 저장
     @Test
     void loginSuccessTest(){

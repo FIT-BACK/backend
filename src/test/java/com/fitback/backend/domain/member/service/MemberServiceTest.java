@@ -362,6 +362,30 @@ class MemberServiceTest {
         assertThat(member.getPassword()).isEqualTo("newEncoded");
     }
 
+    @Test
+    void changePasswordRejectsNewPasswordOverBcryptByteLimitBeforeEncoding() {
+        Member member = createTestMember(
+                1L,
+                "test@fitback.com",
+                "nick",
+                "oldEncoded",
+                LoginProvider.EMAIL
+        );
+        AuthMember authMember = new AuthMember(member);
+        MemberRequest.ChangePasswordRequest request = new MemberRequest.ChangePasswordRequest(
+                "currentPw",
+                "가".repeat(25)
+        );
+
+        assertThatThrownBy(() -> memberService.changePassword(authMember, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR)
+                );
+
+        verify(passwordEncoder, never()).encode(anyString());
+        verify(memberRepository, never()).findById(any());
+    }
+
     //비밀번호 변경 - 현재 비밀번호 불일치 시 PASSWORD_MISMATCH
     @Test
     void changePasswordMismatchTest(){

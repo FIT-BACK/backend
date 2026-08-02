@@ -220,6 +220,22 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    void resetPasswordRejectsPasswordOverBcryptByteLimitBeforeEncoding() {
+        MemberRequest.PasswordResetRequest request = new MemberRequest.PasswordResetRequest(
+                "reset-token",
+                "가".repeat(25)
+        );
+
+        assertThatThrownBy(() -> passwordResetService.resetPassword(request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR)
+                );
+
+        verify(passwordEncoder, never()).encode(any());
+        verify(passwordResetTokenUtil, never()).hash(any());
+    }
+
+    @Test
     void resetPasswordRejectsExpiredToken() {
         Member member = createMember(1L, "member@fitback.com", LoginProvider.EMAIL);
         PasswordResetToken expiredToken = PasswordResetToken.create(

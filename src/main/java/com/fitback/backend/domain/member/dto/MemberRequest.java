@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.member.dto;
 
+import com.fitback.backend.global.validation.BCryptPassword;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -17,6 +18,7 @@ public class MemberRequest {
             String email,
 
             @NotBlank(message = "비밀번호는 필수 입력값입니다.")
+            @BCryptPassword
             String password
     ) {}
 
@@ -44,6 +46,7 @@ public class MemberRequest {
 
             @NotBlank(message = "새 비밀번호는 필수 입력값입니다.")
             @Size(min = 8, max = 64, message = "새 비밀번호는 8~64자여야 합니다.")
+            @BCryptPassword
             String newPassword
     ) {}
 
@@ -69,6 +72,7 @@ public class MemberRequest {
 
             @NotBlank(message = "새 비밀번호는 필수 입력값 입니다.")
             @Size(min = 8, max = 64, message = "새 비밀번호는 8~64자여야 합니다.")
+            @BCryptPassword
             String newPassword
     ){}
 

@@ -13,6 +13,7 @@ import com.fitback.backend.global.security.token.TempTokenPayload;
 import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
 import com.fitback.backend.global.util.LowercaseNormalizer;
+import com.fitback.backend.global.validation.BCryptPasswordPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,7 @@ public class AuthService {
     //이메일 회원가입
     @Transactional
     public MemberResponse.SignUpResponse signUp(MemberRequest.SignUpRequest dto) {
+        BCryptPasswordPolicy.validate(dto.password());
         String email = LowercaseNormalizer.normalize(dto.email());
 
         // 이메일 중복 검사

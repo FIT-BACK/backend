@@ -2,7 +2,7 @@
 
 > 문서 상태: `develop` 구현 기준 운영 계약
 >
-> 기준: 2026-08-01 `develop` (`9ddb450`)
+> 기준: 2026-08-02 `develop` (`7a84f9c`)
 >
 > 대상 범위: 사용자 업로드 이미지의 Presigned POST 발급, S3 저장, CloudFront 제공, 상태 관리 및 삭제 정책
 >
@@ -364,6 +364,10 @@ DB 트랜잭션 안에서 S3 삭제를 직접 실행하지 않는다. 삭제·�
 성공한 ID만 커밋 후 S3 삭제 후보가 된다. 어느 한 도메인에서라도 같은 `imageId`를 참조하면
 `ACTIVE`를 유지하며, `DELETING` 상태는 새 룩북 연결의 허용 상태(`READY` 또는 `ACTIVE`)가 아니다.
 
+현재 `deleteClaimedImage()`는 `DELETING` 상태만 확인하고 S3 객체를 삭제하며 도메인 참조를
+다시 조회하지 않는다. 후속 구현에서는 신규 연결과 삭제 선점이 같은 이미지 row lock 순서를
+따르도록 하고, 삭제 직전 참조 재검증과 `DELETING` 이미지 연결 거부를 함께 보장해야 한다.
+
 회원 프로필 교체는 새 `PROFILE + READY` 이미지를 `ACTIVE`로 전환하고
 `member.profile_image_id`를 변경한 뒤 이전 이미지의 참조 해제 이벤트를 발행한다.
 회원 탈퇴 시에도 프로필 참조를 먼저 해제한 후 동일한 이벤트를 발행한다.
@@ -499,7 +503,15 @@ IDLE → VALIDATING → REQUESTING_URL → UPLOADING → COMPLETING → SUCCESS
 | 410 | `IMAGE410_1` | Presigned 업로드 정보 만료 |
 | 422 | `IMAGE422_1` | MIME 또는 파일 시그니처 불일치 |
 | 500 | `IMAGE500_1` | Presigned URL 발급 실패 |
-| 500 | `IMAGE500_2` | 저장소 처리 실패 |
+| 404 | `IMAGE404_2` | 업로드 완료 확인 시 S3 객체 없음 |
+| 500 | `IMAGE500_2` | S3 권한 또는 서버 설정 오류 |
+| 503 | `IMAGE503_1` | S3 timeout, 429, 5xx, `RequestTimeout`, `OperationAborted` 또는 연결 실패 |
+
+서버의 S3 호출 제한은 기본적으로 전체 요청 5초, 시도별 2초이며
+`IMAGE_S3_API_CALL_TIMEOUT`, `IMAGE_S3_API_CALL_ATTEMPT_TIMEOUT`으로 조정한다.
+장애 로그에는 작업 종류, HTTP 상태, AWS 오류 코드, AWS request ID를 기록한다. SDK
+클라이언트 예외는 재시도 가능 여부가 아니라 네트워크·타임아웃 원인 존재 여부를 기록하며,
+object key, 예외 메시지, 서명 URL과 Presigned 필드는 기록하지 않는다.
 
 ### 16.2 S3 직접 업로드 오류
 
@@ -537,6 +549,7 @@ S3 객체 수명 주기 자동 만료는 `ACTIVE`와 미사용 이미지를 구�
 - CloudFront 캐시 TTL과 invalidation 세부 정책
 - Signed Cookie 적용 여부
 - 지수 백오프와 최대 삭제 재시도 횟수
+- 마지막 참조 해제와 신규 연결이 경쟁할 때 삭제 안전성을 고정하는 동시성 통합 테스트
 
 ## 19. 현재 도메인 API 연계 현황
 
