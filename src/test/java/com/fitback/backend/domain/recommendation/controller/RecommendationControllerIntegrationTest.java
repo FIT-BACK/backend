@@ -164,6 +164,8 @@ class RecommendationControllerIntegrationTest {
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.analysisTags.length()").value(2))
+                .andExpect(jsonPath("$.data.analysisTags[0]").value("Fixture"))
+                .andExpect(jsonPath("$.data.analysisTags[1]").value("고프코어"))
                 .andExpect(jsonPath("$.data.matchPercentage").value(70))
                 .andExpect(jsonPath("$.data.scoreVersion")
                         .value("SIMILARITY_THRESHOLD_V2"));

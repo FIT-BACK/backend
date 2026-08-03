@@ -27,6 +27,7 @@ import com.fitback.backend.domain.recommendation.entity.RecommendationStatus;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot.TagInput;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationSelection;
+import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.math.BigDecimal;
@@ -195,6 +196,45 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void usesCustomTagForCandidateSearchAndScoring() {
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                1,
+                70,
+                List.of(),
+                List.of("Fixture")
+        );
+        ExternalProductCandidate candidate = candidate(1, null, true);
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "Fixture",
+                null,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(candidate), null));
+        when(candidateMapper.category(candidate)).thenReturn(ProductCategory.TOP);
+        when(materializationService.materializeForRecommendation(candidate))
+                .thenReturn(new RecommendationMaterializationResult(1L, true));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<RecommendationSelection>> selectionsCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(setWriter).replaceCurrentSet(
+                org.mockito.ArgumentMatchers.eq(input),
+                org.mockito.ArgumentMatchers.eq("SIMILARITY_V1"),
+                selectionsCaptor.capture()
+        );
+        assertThat(selectionsCaptor.getValue()).singleElement().satisfies(selection -> {
+            assertThat(selection.similarityScore()).isEqualByComparingTo("70.00");
+            assertThat(selection.reasonCodes()).containsExactly("TAG_MATCH");
+        });
+    }
+
+    @Test
     void recordsCurrentEmptySetWhenEveryCandidateIsBelowThreshold() {
         RecommendationGenerateRequest request = new RecommendationGenerateRequest(
                 List.of(10L),
@@ -206,7 +246,7 @@ class RecommendationServiceTest {
                 1L,
                 2,
                 100,
-                List.of(new TagInput(10L, "Fixture"))
+                List.of(new TagInput(10L, "Fixture", TagType.DETAIL))
         );
         when(inputCommandService.confirmAndRead(1L, 501L, request)).thenReturn(input);
         when(productCatalogPort.search(any(ProductSearchQuery.class)))
@@ -244,7 +284,7 @@ class RecommendationServiceTest {
                 1L,
                 2,
                 100,
-                List.of(new TagInput(10L, "Fixture"))
+                List.of(new TagInput(10L, "Fixture", TagType.DETAIL))
         );
         ExternalProductCandidate perfect = candidate(1, "1.00", true);
         ExternalProductCandidate below = candidate(2, "0.99", true);
@@ -267,7 +307,7 @@ class RecommendationServiceTest {
                 501L,
                 1L,
                 1,
-                List.of(new TagInput(10L, "Fixture"))
+                List.of(new TagInput(10L, "Fixture", TagType.DETAIL))
         );
     }
 
@@ -299,7 +339,7 @@ class RecommendationServiceTest {
                 "tops/shirts",
                 null,
                 null,
-                new BigDecimal(score),
+                score == null ? null : new BigDecimal(score),
                 Instant.parse("2026-07-25T00:00:00Z")
         );
     }

@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fitback.backend.domain.product.service.model.ExternalProductCandidate;
 import com.fitback.backend.domain.product.service.model.ProviderProductRef;
+import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot.TagInput;
+import com.fitback.backend.domain.tag.entity.TagType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -21,7 +23,8 @@ class RecommendationScorerTest {
         );
 
         RecommendationScorer.Score score = scorer.score(
-                List.of("minimal"),
+                List.of(new TagInput(10L, "minimal", TagType.DETAIL)),
+                List.of(),
                 candidate
         );
 
@@ -32,11 +35,13 @@ class RecommendationScorerTest {
     @Test
     void usesDeterministicTagFallbackWhenProviderScoreIsMissing() {
         RecommendationScorer.Score matched = scorer.score(
-                List.of("shirt"),
+                List.of(new TagInput(10L, "shirt", TagType.DETAIL)),
+                List.of(),
                 candidate("Minimal Shirt", null)
         );
         RecommendationScorer.Score unmatched = scorer.score(
-                List.of("dress"),
+                List.of(new TagInput(20L, "dress", TagType.SILHOUETTE)),
+                List.of(),
                 candidate("Minimal Shirt", null)
         );
 
@@ -44,6 +49,18 @@ class RecommendationScorerTest {
         assertThat(matched.reasonCodes()).containsExactly("TAG_MATCH");
         assertThat(unmatched.similarityScore()).isEqualByComparingTo("0.00");
         assertThat(unmatched.reasonCodes()).containsExactly("PROVIDER_SIMILARITY");
+    }
+
+    @Test
+    void includesCustomTagNamesInExistingMatchingPolicy() {
+        RecommendationScorer.Score score = scorer.score(
+                List.of(),
+                List.of("shirt"),
+                candidate("Minimal Shirt", null)
+        );
+
+        assertThat(score.similarityScore()).isEqualByComparingTo("70.00");
+        assertThat(score.reasonCodes()).containsExactly("TAG_MATCH");
     }
 
     private static ExternalProductCandidate candidate(String name, BigDecimal providerScore) {

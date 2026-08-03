@@ -11,6 +11,7 @@ import com.fitback.backend.domain.product.repository.ProductRepository;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot.TagInput;
+import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
@@ -47,7 +48,7 @@ class RecommendationSetWriterTest {
                 501L,
                 1L,
                 1,
-                List.of(new TagInput(10L, "Fixture"))
+                List.of(new TagInput(10L, "Fixture", TagType.DETAIL))
         );
         when(analysisReportRepository.findOwnedReportForRecommendationUpdate(501L, 1L))
                 .thenReturn(Optional.of(report));

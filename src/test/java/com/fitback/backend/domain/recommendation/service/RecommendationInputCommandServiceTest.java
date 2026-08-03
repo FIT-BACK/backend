@@ -46,7 +46,12 @@ class RecommendationInputCommandServiceTest {
                 1L,
                 2,
                 70,
-                List.of(new RecommendationInputSnapshot.TagInput(10L, "미니멀"))
+                List.of(new RecommendationInputSnapshot.TagInput(
+                        10L,
+                        "미니멀",
+                        TagType.DETAIL
+                )),
+                List.of("출근룩")
         );
         when(analysisReportRepository.findOwnedReportForRecommendationUpdate(501L, 1L))
                 .thenReturn(Optional.of(report));

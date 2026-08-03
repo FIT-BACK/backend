@@ -147,7 +147,7 @@ public class RecommendationService {
         return candidates.stream()
                 .map(candidate -> new ScoredCandidate(
                         candidate,
-                        scorer.score(input.tagNames(), candidate)
+                        scorer.score(input.tags(), input.customTagNames(), candidate)
                 ))
                 .filter(candidate -> !applyThreshold
                         || candidate.score().similarityScore().compareTo(threshold) >= 0)
