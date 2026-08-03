@@ -19,6 +19,10 @@ public interface AnalysisReportRepository extends JpaRepository<AnalysisReport, 
 
     long countByMemberIdAndDeletedAtIsNull(Long memberId);
 
+    // 마이페이지 "분석" 카운트용 — 추천까지 생성된(끝까지 진행한) 리포트만 완료로 집계한다.
+    // 업로드만 하고 중간에 이탈한 분석까지 세면 실제로 안 끝난 분석도 완료로 보여서 오해를 준다.
+    long countByMemberIdAndDeletedAtIsNullAndRecommendationGeneratedAtIsNotNull(Long memberId);
+
     @Modifying(flushAutomatically = true)
     @Query("delete from AnalysisReport report where report.member.id = :memberId")
     void deleteAllByMemberId(@Param("memberId") Long memberId);
