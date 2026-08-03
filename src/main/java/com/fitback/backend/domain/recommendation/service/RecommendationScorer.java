@@ -1,12 +1,14 @@
 package com.fitback.backend.domain.recommendation.service;
 
 import com.fitback.backend.domain.product.service.model.ExternalProductCandidate;
+import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot.TagInput;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -17,8 +19,15 @@ public class RecommendationScorer {
     private static final BigDecimal TAG_MATCH_SCORE = new BigDecimal("70");
     private static final BigDecimal HIGH_SIMILARITY_THRESHOLD = new BigDecimal("80");
 
-    public Score score(List<String> analysisTags, ExternalProductCandidate candidate) {
-        boolean tagMatched = analysisTags.stream()
+    public Score score(
+            List<TagInput> tags,
+            List<String> customTagNames,
+            ExternalProductCandidate candidate
+    ) {
+        boolean tagMatched = Stream.concat(
+                        tags.stream().map(TagInput::name),
+                        customTagNames.stream()
+                )
                 .map(tag -> tag.toLowerCase(Locale.ROOT))
                 .anyMatch(tag -> searchableText(candidate).contains(tag));
         BigDecimal similarityScore = normalize(candidate.providerScore(), tagMatched);
