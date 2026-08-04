@@ -165,6 +165,35 @@ class AuthControllerIntegrationTest {
                 .andExpect(jsonPath("$.code").value("AUTH401_1"));
     }
 
+    // 동일 이메일의 1~4회 실패는 401, 다섯 번째 실패부터 429 잠금 응답
+    @Test
+    void loginFifthFailureLocksEmailTest() throws Exception {
+        signUp("login-lock@fitback.com", "password123");
+        String wrongCredentials = jsonBody("Login-Lock@FITBACK.COM", "wrongPw");
+
+        for (int attempt = 1; attempt < 5; attempt++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(wrongCredentials))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("AUTH401_1"));
+        }
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(wrongCredentials))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("AUTH429_1"));
+
+        // 잠금 중에는 올바른 비밀번호를 보내도 잠금 만료 전까지 동일하게 차단
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody("login-lock@fitback.com", "password123")))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("AUTH429_1"));
+    }
+
     //비밀번호 재설정 링크 요청 성공 - 인증 없이 토큰 저장 및 메일 발송
     @Test
     void passwordResetLinkRequestSuccessTest() throws Exception {

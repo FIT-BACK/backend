@@ -146,12 +146,15 @@ class SecurityCorsIntegrationTest {
             "http://127.0.0.1:5173"
     })
     void includesCorsHeaderOnActualLoginResponse(String origin) throws Exception {
+        // Origin별로 다른 이메일을 사용해 로그인 잠금 정책이 CORS 검증에 영향을 주지 않도록 분리
+        String email = "unknown-" + Integer.toUnsignedString(origin.hashCode())
+                + "@fitback.com";
         mockMvc.perform(post("/api/v1/auth/login")
                         .header(HttpHeaders.ORIGIN, origin)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "email",
-                                "unknown@fitback.com",
+                                 "email",
+                                email,
                                 "password",
                                 "password123"
                         ))))

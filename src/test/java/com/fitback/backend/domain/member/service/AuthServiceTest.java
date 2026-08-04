@@ -48,6 +48,8 @@ class AuthServiceTest {
     private TempTokenStore tempTokenStore;
     @Mock
     private MemberProfileImageService memberProfileImageService;
+    @Mock
+    private LoginAttemptService loginAttemptService;
 
     //authService 실제 객체 생성 후 mock 객체 주입
     @InjectMocks
@@ -99,6 +101,7 @@ class AuthServiceTest {
         assertThat(savedMember.getLoginProvider()).isEqualTo(LoginProvider.EMAIL);
         assertThat(savedMember.getRole()).isEqualTo(MemberRole.USER);
         verify(notificationSettingService).createDefaultSetting(savedMember);
+        verify(loginAttemptService).clear("test@fitback.com");
     }
 
     //회원가입 실패 - 이미 존재하는 이메일이면 EMAIL_ALREADY_EXISTS
@@ -183,6 +186,8 @@ class AuthServiceTest {
         assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/profile");
         //발급한 refresh 토큰이 회원에 저장되었는지 검증
         assertThat(member.getRefreshToken()).isEqualTo("refresh-token");
+        verify(loginAttemptService).assertLoginAllowed("test@fitback.com");
+        verify(loginAttemptService).clear("test@fitback.com");
     }
 
     //로그인 실패 테스트 - 이메일이 없으면 INVALID_CREDENTIALS
@@ -192,6 +197,7 @@ class AuthServiceTest {
 
         //이메일로 회원 조회 시 빈 Optional 반환
         when(memberRepository.findByEmail("none@fitback.com")).thenReturn(Optional.empty());
+        when(loginAttemptService.recordFailure("none@fitback.com")).thenReturn(false);
 
         //예외 타입과 ErrorCode가 INVALID_CREDENTIALS인지 검증
         assertThatThrownBy(() -> authService.login(request))
@@ -202,6 +208,11 @@ class AuthServiceTest {
         //인증 실패 시 토큰 생성 미호출 검증
         verify(jwtUtil, never()).createAccessToken(any());
         verify(jwtUtil, never()).createRefreshToken(any());
+        // 미가입 이메일도 실제 회원과 같은 BCrypt 비교와 실패 누적 절차를 수행
+        verify(passwordEncoder).matches(eq("password123"), argThat(hash ->
+                hash != null && hash.startsWith("$2a$10$")
+        ));
+        verify(loginAttemptService).recordFailure("none@fitback.com");
     }
 
     //로그인 실패 - 비밀번호가 틀리면 INVALID_CREDENTIALS
@@ -213,6 +224,7 @@ class AuthServiceTest {
         when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
         //비밀번호 불일치하도록 설정
         when(passwordEncoder.matches(request.password(), "encodedPw")).thenReturn(false);
+        when(loginAttemptService.recordFailure("test@fitback.com")).thenReturn(false);
 
         //예외 타입과 ErrorCode가 INVALID_CREDENTIALS인지 검증
         assertThatThrownBy(() -> authService.login(request))
@@ -223,6 +235,50 @@ class AuthServiceTest {
         //인증 실패 시 토큰 생성 미호출 검증
         verify(jwtUtil, never()).createAccessToken(any());
         verify(jwtUtil, never()).createRefreshToken(any());
+        verify(loginAttemptService).recordFailure("test@fitback.com");
+    }
+
+    // 이미 잠긴 이메일은 회원 조회와 BCrypt 비교 전에 즉시 차단
+    @Test
+    void loginLockedEmailTest() {
+        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest(
+                "Locked@FITBACK.COM",
+                "password123"
+        );
+        doThrow(new BusinessException(ErrorCode.LOGIN_ATTEMPT_LOCKED))
+                .when(loginAttemptService)
+                .assertLoginAllowed("locked@fitback.com");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.LOGIN_ATTEMPT_LOCKED)
+                );
+
+        verify(memberRepository, never()).findByEmail(anyString());
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+    }
+
+    // 다섯 번째 인증 실패 요청부터 기존 401 대신 로그인 잠금 429 오류 반환
+    @Test
+    void loginFifthFailureReturnsLockedErrorTest() {
+        MemberRequest.LoginRequest request = new MemberRequest.LoginRequest(
+                "Test@FITBACK.COM",
+                "wrongPw"
+        );
+        Member member = createTestMember(1L, "test@fitback.com", "encodedPw");
+        when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
+        when(passwordEncoder.matches("wrongPw", "encodedPw")).thenReturn(false);
+        when(loginAttemptService.recordFailure("test@fitback.com")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.LOGIN_ATTEMPT_LOCKED)
+                );
+
+        verify(loginAttemptService).recordFailure("test@fitback.com");
+        verify(jwtUtil, never()).createAccessToken(any());
     }
 
     //토큰 재발급 성공 테스트 - 저장된 refresh 토큰과 일치하면 새 access, refresh 토큰
