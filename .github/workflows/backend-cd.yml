@@ -300,8 +300,10 @@ jobs:
           fi
 
           if [ "$FITBACK_AI_TAG_ANALYZER" != 'unavailable' ] \
-              && [ "$FITBACK_AI_TAG_ANALYZER" != 'prototype' ]; then
-            echo "FITBACK_AI_TAG_ANALYZER must be unavailable or prototype." >&2
+              && [ "$FITBACK_AI_TAG_ANALYZER" != 'prototype' ] \
+              && [ "$FITBACK_AI_TAG_ANALYZER" != 'openai' ] \
+              && [ "$FITBACK_AI_TAG_ANALYZER" != 'bedrock' ]; then
+            echo "FITBACK_AI_TAG_ANALYZER must be unavailable, prototype, openai, or bedrock." >&2
             exit 1
           fi
 

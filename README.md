@@ -79,6 +79,9 @@ SHOPIFY_ENABLED=true
 `prototype` 분석기는 실제 이미지 의미를 판별하는 AI가 아니라 S3 업로드부터 분석·추천까지의
 계약을 검증하기 위한 결정적 fallback입니다. 운영 기본값 `unavailable`은 실제 AI 공급자가
 연결되기 전 데모 태그가 운영 데이터에 섞이지 않도록 fail-closed로 유지합니다.
+실제 분석기는 `FITBACK_AI_TAG_ANALYZER=openai` 또는 `bedrock`으로 선택할 수 있으며,
+두 공급자의 동일 조건 비교 절차는 [AI 태그 모델 블라인드 평가](docs/AI_TAG_BLIND_EVALUATION.md)를
+따릅니다.
 Shopify를 사용할 때는 상품 식별자만 저장하며 표시 정보와 구매 URL은 `lookup_catalog`으로
 실시간 조회합니다.
 

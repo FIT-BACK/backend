@@ -65,8 +65,10 @@ if [[ ! "$HEALTH_INTERVAL_SECONDS" =~ ^[0-9]+$ ]]; then
 fi
 
 if [ "$FITBACK_AI_TAG_ANALYZER" != 'unavailable' ] \
-    && [ "$FITBACK_AI_TAG_ANALYZER" != 'prototype' ]; then
-  echo 'FITBACK_AI_TAG_ANALYZER must be unavailable or prototype.' >&2
+    && [ "$FITBACK_AI_TAG_ANALYZER" != 'prototype' ] \
+    && [ "$FITBACK_AI_TAG_ANALYZER" != 'openai' ] \
+    && [ "$FITBACK_AI_TAG_ANALYZER" != 'bedrock' ]; then
+  echo 'FITBACK_AI_TAG_ANALYZER must be unavailable, prototype, openai, or bedrock.' >&2
   exit 1
 fi
 
@@ -212,6 +214,7 @@ compose_in() {
   MAIL_APP_PASSWORD="$mail_app_password" \
   FRONT_PASSWORD_RESET_URL="$front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$cloudfront_private_key_base64" \
+  OPENAI_API_KEY="$openai_api_key" \
     docker compose \
     --project-directory "$release_dir" \
     --env-file "$release_dir/.env" \
@@ -321,6 +324,10 @@ mail_email="$(get_parameter 'mail-email')"
 mail_app_password="$(get_parameter 'mail-app-password')"
 front_password_reset_url="$(get_parameter 'front-password-reset-url')"
 cloudfront_private_key_base64="$(get_parameter 'cloudfront-private-key')"
+openai_api_key=''
+if [ "$FITBACK_AI_TAG_ANALYZER" = 'openai' ]; then
+  openai_api_key="$(get_parameter 'openai-api-key')"
+fi
 
 require_single_line 'APP_CORS_ALLOWED_ORIGINS' "$APP_CORS_ALLOWED_ORIGINS"
 require_single_line 'db-url' "$db_url"
@@ -335,6 +342,9 @@ require_single_line 'mail-email' "$mail_email"
 require_single_line 'mail-app-password' "$mail_app_password"
 require_single_line 'front-password-reset-url' "$front_password_reset_url"
 require_single_line 'cloudfront-private-key' "$cloudfront_private_key_base64"
+if [ "$FITBACK_AI_TAG_ANALYZER" = 'openai' ]; then
+  require_single_line 'openai-api-key' "$openai_api_key"
+fi
 
 if [[ ! "$front_redirect_uri" =~ ^https://[^[:space:]]+$ ]]; then
   echo 'front-redirect-uri must be an HTTPS URL.' >&2

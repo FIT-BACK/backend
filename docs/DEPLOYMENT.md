@@ -80,7 +80,7 @@ RDS endpoint는 문서에 기록하지 않는다.
 | `IMAGE_CDN_BASE_URL` | EC2 배포 | 서명된 이미지 조회 URL을 만들 CloudFront HTTPS origin이다. 현재 값은 `https://d1p2ierkew26r1.cloudfront.net`이다. |
 | `CLOUDFRONT_KEY_PAIR_ID` | EC2 배포 | CloudFront signed URL에 포함할 public key ID이다. 현재 값은 `K1XNJ3JDEDCVL3`이다. |
 | `APP_CORS_ALLOWED_ORIGINS` | EC2 배포 | Spring CORS allowlist다. 공백 없는 origin을 쉼표로 구분하며 현재 운영 프론트와 승인된 로컬 개발 origin을 설정한다. 변경 후 새 production 배포가 필요하다. |
-| `FITBACK_AI_TAG_ANALYZER` | 선택 | 분석기 모드다. 미설정 시 `unavailable`; 최소 프로토타입에서만 `prototype`을 사용한다. |
+| `FITBACK_AI_TAG_ANALYZER` | 선택 | 분석기 모드다. `unavailable`, `prototype`, `openai`, `bedrock` 중 하나이며 기본값은 `unavailable`이다. |
 | `SHOPPING_PROVIDER` | 선택 | 상품 공급자다. 미설정 시 `fixture`; Shopify 프로토타입에서는 `shopify`를 사용한다. |
 | `SHOPIFY_ENABLED` | 선택 | Shopify adapter 활성화 여부다. 미설정 시 `false`; `SHOPPING_PROVIDER=shopify`와 함께 `true`로 설정한다. |
 
@@ -106,6 +106,7 @@ RDS endpoint는 문서에 기록하지 않는다.
 /fitback/prod/mail-app-password
 /fitback/prod/front-password-reset-url
 /fitback/prod/cloudfront-private-key
+/fitback/prod/openai-api-key  # FITBACK_AI_TAG_ANALYZER=openai일 때만 필요
 ```
 
 예시 형식은 다음과 같다. 실제 값은 문서나 저장소에 기록하지 않는다.
@@ -123,6 +124,7 @@ mail-email=<gmail-smtp-account>
 mail-app-password=<google-app-password>
 front-password-reset-url=https://<frontend-origin>/<password-reset-path>
 cloudfront-private-key=<base64-encoded-pkcs8-der>
+openai-api-key=<openai-project-api-key>
 ```
 
 `front-redirect-uri`는 카카오 로그인 성공/실패 후 임시 토큰 또는 에러 코드를 붙여 이동할 프론트 HTTPS URL이다.

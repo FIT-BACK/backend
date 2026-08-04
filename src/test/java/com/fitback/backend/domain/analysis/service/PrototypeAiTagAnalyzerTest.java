@@ -27,7 +27,7 @@ class PrototypeAiTagAnalyzerTest {
 
     @Test
     void returnsCanonicalPrototypeTagsInStableOrder() {
-        Tag minimal = Tag.create("미니멀", TagType.DETAIL);
+        Tag minimal = Tag.create("미니멀", TagType.STYLE);
         Tag wideFit = Tag.create("와이드핏", TagType.SILHOUETTE);
         Tag beigeTone = Tag.create("베이지톤", TagType.COLOR);
         when(tagRepository.findAllByTagNameIn(List.of("미니멀", "와이드핏", "베이지톤")))

@@ -1,0 +1,14 @@
+[
+  {"type": "SILHOUETTE", "name": "와이드핏"},
+  {"type": "COLOR", "name": "베이지톤"},
+  {"type": "STYLE", "name": "미니멀"},
+  {"type": "STYLE", "name": "스트릿"},
+  {"type": "STYLE", "name": "러블리"},
+  {"type": "STYLE", "name": "캐주얼"},
+  {"type": "STYLE", "name": "포멀"},
+  {"type": "MATERIAL", "name": "코튼"},
+  {"type": "MATERIAL", "name": "데님"},
+  {"type": "MATERIAL", "name": "니트"},
+  {"type": "MATERIAL", "name": "레더"},
+  {"type": "MATERIAL", "name": "린넨"}
+]
