@@ -82,6 +82,21 @@ SHOPIFY_ENABLED=true
 실제 분석기는 `FITBACK_AI_TAG_ANALYZER=openai` 또는 `bedrock`으로 선택할 수 있으며,
 두 공급자의 동일 조건 비교 절차는 [AI 태그 모델 블라인드 평가](docs/AI_TAG_BLIND_EVALUATION.md)를
 따릅니다.
+
+```env
+# OpenAI
+FITBACK_AI_TAG_ANALYZER=openai
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5.6-luna
+
+# 또는 Bedrock — 로컬은 AWS_PROFILE, 운영은 EC2 instance role 사용
+FITBACK_AI_TAG_ANALYZER=bedrock
+BEDROCK_REGION=ap-northeast-2
+BEDROCK_MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
+AWS_PROFILE=your-sso-profile
+```
+
+실제 값은 저장소에 커밋하지 않는다. 전체 변수 목록은 `.env.example`을 기준으로 한다.
 Shopify를 사용할 때는 상품 식별자만 저장하며 표시 정보와 구매 URL은 `lookup_catalog`으로
 실시간 조회합니다.
 

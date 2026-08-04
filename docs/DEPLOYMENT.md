@@ -316,9 +316,13 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V18__backfill_image_lifecycle_values.sql`,
 `V19__contract_image_lifecycle_values.sql`,
 `V20__add_member_profile_image_id.sql`,
-`V21__create_notification_table.sql`을 순서대로 적용하고 Hibernate
+`V21__create_notification_table.sql`,
+`V22__seed_member_style_tags.sql`,
+`V23__classify_style_tags.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
+V23은 `미니멀`, `스트릿`, `러블리`, `캐주얼`, `포멀`의 타입을 `DETAIL`에서
+`STYLE`로 재분류한다.
 
 ## 배포 및 Rollback 동작
 

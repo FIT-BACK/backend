@@ -10,13 +10,15 @@ import java.util.stream.Collectors;
 
 public final class AiTagRequestFactory {
 
+    static final int MAX_TAGS_PER_OUTPUT = 8;
+
     public AiTagModelRequest create(List<Tag> catalog) {
+        if (catalog.isEmpty()) {
+            throw new IllegalArgumentException("tag catalog must not be empty");
+        }
         List<Tag> ordered = catalog.stream()
                 .sorted(Comparator.comparing(Tag::getTagType).thenComparing(Tag::getTagName))
                 .toList();
-        if (ordered.isEmpty()) {
-            throw new IllegalArgumentException("tag catalog must not be empty");
-        }
 
         Map<TagType, List<String>> namesByType = ordered.stream()
                 .collect(Collectors.groupingBy(
@@ -33,12 +35,12 @@ public final class AiTagRequestFactory {
                 person-worn outfit or a product-only fashion image.
 
                 canonicalTags:
-                - Select 1 to 8 tags only from the exact canonical catalog below.
+                - Select 1 to %d tags only from the exact canonical catalog below.
                 - Do not invent, translate, or normalize canonical tag names.
                 - Return every canonical tag with its matching type.
 
                 suggestedTags:
-                - Suggest 0 to 8 precise tags that are visibly supported but missing from the
+                - Suggest 0 to %d precise tags that are visibly supported but missing from the
                   canonical catalog.
                 - Write each suggested name as a concise Korean noun phrase.
                 - Do not copy an exact canonical tag into suggestedTags.
@@ -49,19 +51,28 @@ public final class AiTagRequestFactory {
 
                 Canonical catalog:
                 %s
-                """.formatted(catalogText).trim();
+                """.formatted(
+                        MAX_TAGS_PER_OUTPUT,
+                        MAX_TAGS_PER_OUTPUT,
+                        catalogText
+                ).trim();
 
-        List<String> canonicalTypes = namesByType.keySet().stream().map(Enum::name).toList();
         List<String> allTypes = List.of(TagType.values()).stream().map(Enum::name).toList();
-        List<String> names = ordered.stream().map(Tag::getTagName).distinct().toList();
         Map<String, Object> canonicalItem = new LinkedHashMap<>();
-        canonicalItem.put("type", "object");
-        canonicalItem.put("additionalProperties", false);
-        canonicalItem.put("properties", Map.of(
-                "type", Map.of("type", "string", "enum", canonicalTypes),
-                "name", Map.of("type", "string", "enum", names)
-        ));
-        canonicalItem.put("required", List.of("type", "name"));
+        canonicalItem.put("anyOf", namesByType.entrySet().stream()
+                .map(entry -> Map.of(
+                        "type", "object",
+                        "additionalProperties", false,
+                        "properties", Map.of(
+                                "type", Map.of(
+                                        "type", "string",
+                                        "enum", List.of(entry.getKey().name())
+                                ),
+                                "name", Map.of("type", "string", "enum", entry.getValue())
+                        ),
+                        "required", List.of("type", "name")
+                ))
+                .toList());
 
         Map<String, Object> suggestionItem = new LinkedHashMap<>();
         suggestionItem.put("type", "object");
@@ -81,13 +92,13 @@ public final class AiTagRequestFactory {
                 "canonicalTags", Map.of(
                         "type", "array",
                         "minItems", 1,
-                        "maxItems", 8,
+                        "maxItems", MAX_TAGS_PER_OUTPUT,
                         "items", canonicalItem
                 ),
                 "suggestedTags", Map.of(
                         "type", "array",
                         "minItems", 0,
-                        "maxItems", 8,
+                        "maxItems", MAX_TAGS_PER_OUTPUT,
                         "items", suggestionItem
                 )
         ));

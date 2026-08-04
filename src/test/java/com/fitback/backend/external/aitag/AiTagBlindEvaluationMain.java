@@ -150,16 +150,20 @@ public final class AiTagBlindEvaluationMain {
     ) {
         try {
             AiTagModelResult result = provider.client().analyze(image, request);
-            return Map.of(
-                    "canonicalTags", result.canonicalTags(),
-                    "suggestedTags", result.suggestedTags(),
-                    "inputTokens", nullToZero(result.inputTokens()),
-                    "outputTokens", nullToZero(result.outputTokens()),
-                    "elapsedMillis", result.elapsedMillis()
-            );
+            return successfulEvaluation(result);
         } catch (RuntimeException exception) {
             return Map.of("error", "ANALYSIS_FAILED");
         }
+    }
+
+    static Map<String, Object> successfulEvaluation(AiTagModelResult result) {
+        Map<String, Object> evaluation = new LinkedHashMap<>();
+        evaluation.put("canonicalTags", result.canonicalTags());
+        evaluation.put("suggestedTags", result.suggestedTags());
+        evaluation.put("inputTokens", result.inputTokens());
+        evaluation.put("outputTokens", result.outputTokens());
+        evaluation.put("elapsedMillis", result.elapsedMillis());
+        return evaluation;
     }
 
     private static List<Tag> readCatalog(Path path) throws Exception {
@@ -210,10 +214,6 @@ public final class AiTagBlindEvaluationMain {
     private static String env(String name, String defaultValue) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? defaultValue : value.trim();
-    }
-
-    private static int nullToZero(Integer value) {
-        return value == null ? 0 : value;
     }
 
     private record ProviderRun(String provider, String model, AiTagModelClient client) {

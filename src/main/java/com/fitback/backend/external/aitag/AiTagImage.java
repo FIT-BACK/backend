@@ -1,6 +1,7 @@
 package com.fitback.backend.external.aitag;
 
 import java.util.Arrays;
+import java.util.Locale;
 
 public record AiTagImage(byte[] bytes, String contentType) {
 
@@ -12,7 +13,7 @@ public record AiTagImage(byte[] bytes, String contentType) {
             throw new IllegalArgumentException("image content type must not be blank");
         }
         bytes = Arrays.copyOf(bytes, bytes.length);
-        contentType = contentType.trim().toLowerCase();
+        contentType = contentType.trim().toLowerCase(Locale.ROOT);
     }
 
     @Override

@@ -62,7 +62,7 @@ public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
                 .map(prediction -> new TagKey(prediction.type(), prediction.name()))
                 .toList();
         if (predictedKeys.isEmpty()
-                || predictedKeys.size() > 8
+                || predictedKeys.size() > AiTagRequestFactory.MAX_TAGS_PER_OUTPUT
                 || new LinkedHashSet<>(predictedKeys).size() != predictedKeys.size()
                 || predictedKeys.stream().anyMatch(key -> !canonicalTags.containsKey(key))) {
             throw notReady();

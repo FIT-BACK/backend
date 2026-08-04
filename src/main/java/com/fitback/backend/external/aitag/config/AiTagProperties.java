@@ -23,6 +23,9 @@ public record AiTagProperties(
             endpoint = endpoint == null
                     ? URI.create("https://api.openai.com/v1/responses")
                     : endpoint;
+            if (!"https".equalsIgnoreCase(endpoint.getScheme())) {
+                throw new IllegalArgumentException("fitback.ai.openai.endpoint must use https");
+            }
             apiKey = apiKey == null ? "" : apiKey.trim();
             model = textOrDefault(model, "gpt-5.6-luna");
             timeout = positiveOrDefault(timeout, Duration.ofSeconds(30), "openai.timeout");
