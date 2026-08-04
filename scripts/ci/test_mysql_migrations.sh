@@ -49,8 +49,9 @@ seed_baseline_schema() {
     "INSERT INTO recommended_item (report_id, product_id, \`rank\`, category, similarity_score, is_value_match, created_at) VALUES (7001, 1, 1, 'TOP', 90, TRUE, NOW());" \
     'CREATE TABLE tag (tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, tag_name VARCHAR(50) NOT NULL, tag_type VARCHAR(30) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, CONSTRAINT UK_TAG_NAME UNIQUE (tag_name));' \
     "INSERT INTO tag (tag_name, tag_type, created_at) VALUES ('기존태그', 'DETAIL', NOW());" \
+    'CREATE TABLE product_tag (product_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, product_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL, CONSTRAINT UK_PRODUCT_TAG_PRODUCT_ID_TAG_ID UNIQUE (product_id, tag_id), CONSTRAINT FK_PRODUCT_TAG_PRODUCT_TEST FOREIGN KEY (product_id) REFERENCES product (product_id), CONSTRAINT FK_PRODUCT_TAG_TAG_TEST FOREIGN KEY (tag_id) REFERENCES tag (tag_id));' \
     'CREATE TABLE member_tag (member_tag_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_MEMBER_TAG_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
-    'CREATE TABLE report_tag (report_tag_id BIGINT NOT NULL PRIMARY KEY, report_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_REPORT_TAG_REPORT_OLD FOREIGN KEY (report_id) REFERENCES analysis_report (report_id));' \
+    "CREATE TABLE report_tag (report_tag_id BIGINT NOT NULL PRIMARY KEY, report_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, source VARCHAR(20) NOT NULL DEFAULT 'AI', is_confirmed BOOLEAN NOT NULL DEFAULT FALSE, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), CONSTRAINT FK_REPORT_TAG_REPORT_OLD FOREIGN KEY (report_id) REFERENCES analysis_report (report_id), CONSTRAINT FK_REPORT_TAG_TAG_TEST FOREIGN KEY (tag_id) REFERENCES tag (tag_id));" \
     'CREATE TABLE closet_save (closet_save_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, target_type VARCHAR(30) NOT NULL, target_id BIGINT NOT NULL, CONSTRAINT FK_CLOSET_SAVE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     'CREATE TABLE lookbook_like (lookbook_like_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, lookbook_id BIGINT NOT NULL, CONSTRAINT FK_LOOKBOOK_LIKE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     'CREATE TABLE lookbook_tag (lookbook_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, lookbook_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL);' \
@@ -1245,15 +1246,31 @@ done
 
 docker exec -i "$container_name" mysql -uroot fitback \
   < src/main/resources/db/migration/V16__seed_prototype_analysis_tags.sql
+docker exec "$container_name" mysql -uroot fitback \
+  -e "INSERT INTO product_tag (product_id, tag_id, created_at)
+      SELECT 1, tag_id, NOW()
+      FROM tag
+      WHERE tag_name IN ('베이지', '베이지톤');
+      INSERT INTO report_tag (report_tag_id, report_id, tag_id, source, is_confirmed)
+      SELECT 9101, 7001, tag_id, 'AI', FALSE
+      FROM tag
+      WHERE tag_name = '베이지';
+      INSERT INTO report_tag (report_tag_id, report_id, tag_id, source, is_confirmed)
+      SELECT 9102, 7001, tag_id, 'USER', TRUE
+      FROM tag
+      WHERE tag_name = '베이지톤';"
 docker exec -i "$container_name" mysql -uroot fitback \
   < src/main/resources/db/migration/V22__seed_member_style_tags.sql
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V24__seed_tag_master_taxonomy.sql
 
 seeded_tag_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CONCAT(
         SUM(tag_name = '미니멀' AND tag_type = 'STYLE'), ':',
         SUM(tag_name = '와이드핏' AND tag_type = 'SILHOUETTE'), ':',
-        SUM(tag_name = '베이지톤' AND tag_type = 'COLOR'), ':',
+        SUM(tag_name = '베이지' AND tag_type = 'COLOR'), ':',
+        SUM(tag_name = '베이지톤'), ':',
         SUM(tag_name = '스트릿' AND tag_type = 'STYLE'), ':',
         SUM(tag_name = '러블리' AND tag_type = 'STYLE'), ':',
         SUM(tag_name = '캐주얼' AND tag_type = 'STYLE'), ':',
@@ -1263,8 +1280,120 @@ seeded_tag_contract="$(docker exec "$container_name" mysql -uroot \
       )
       FROM fitback.tag;")"
 
-if [ "$seeded_tag_contract" != '1:1:1:1:1:1:1:1:8' ]; then
+if [ "$seeded_tag_contract" != '1:1:1:0:1:1:1:1:1:44' ]; then
   echo "Unexpected seeded tag contract: $seeded_tag_contract" >&2
+  exit 1
+fi
+
+beige_reference_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(t.tag_name, ':', COUNT(*))
+      FROM fitback.product_tag product_tag
+      JOIN fitback.tag t ON t.tag_id = product_tag.tag_id
+      WHERE product_tag.product_id = 1
+      GROUP BY t.tag_name;")"
+
+if [ "$beige_reference_contract" != '베이지:1' ]; then
+  echo "Unexpected beige reference migration: $beige_reference_contract" >&2
+  exit 1
+fi
+
+beige_report_reference_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(t.tag_name, ':', report_tag.source, ':', report_tag.is_confirmed, ':', COUNT(*))
+      FROM fitback.report_tag report_tag
+      JOIN fitback.tag t ON t.tag_id = report_tag.tag_id
+      WHERE report_tag.report_id = 7001
+      GROUP BY t.tag_name, report_tag.source, report_tag.is_confirmed;")"
+
+if [ "$beige_report_reference_contract" != '베이지:USER:1:1' ]; then
+  echo "Unexpected beige report reference migration: $beige_report_reference_contract" >&2
+  exit 1
+fi
+
+tag_taxonomy_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        COUNT(DISTINCT CASE WHEN t.tag_type = 'STYLE' THEN t.tag_id END), ':',
+        COUNT(DISTINCT CASE WHEN t.tag_type = 'SILHOUETTE' THEN t.tag_id END), ':',
+        COUNT(DISTINCT CASE WHEN t.tag_type = 'MATERIAL' THEN t.tag_id END), ':',
+        COUNT(DISTINCT CASE WHEN t.tag_type = 'DETAIL' THEN t.tag_id END), ':',
+        COUNT(DISTINCT CASE WHEN t.tag_type = 'COLOR' THEN t.tag_id END), ':',
+        COUNT(DISTINCT t.tag_id), ':',
+        COUNT(*)
+      )
+      FROM fitback.tag t
+      JOIN fitback.tag_target_clothing target ON target.tag_id = t.tag_id;")"
+
+if [ "$tag_taxonomy_contract" != '5:12:8:10:8:43:70' ]; then
+  echo "Unexpected tag taxonomy contract: $tag_taxonomy_contract" >&2
+  exit 1
+fi
+
+actual_tag_taxonomy="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        t.tag_name, '|', t.tag_type, '|',
+        GROUP_CONCAT(
+          target.target_clothing
+          ORDER BY FIELD(target.target_clothing, 'TOP', 'PANTS', 'SKIRT', 'DRESS', 'OUTER', 'ALL')
+        )
+      )
+      FROM fitback.tag t
+      JOIN fitback.tag_target_clothing target ON target.tag_id = t.tag_id
+      GROUP BY t.tag_id, t.tag_name, t.tag_type;" \
+  | LC_ALL=C sort)"
+
+expected_tag_taxonomy="$(printf '%s\n' \
+  '미니멀|STYLE|ALL' \
+  '스트릿|STYLE|ALL' \
+  '러블리|STYLE|ALL' \
+  '캐주얼|STYLE|ALL' \
+  '포멀|STYLE|ALL' \
+  '와이드핏|SILHOUETTE|PANTS' \
+  '슬림핏|SILHOUETTE|TOP,PANTS,SKIRT,DRESS,OUTER' \
+  '오버사이즈|SILHOUETTE|TOP,DRESS,OUTER' \
+  '레귤러핏|SILHOUETTE|TOP,PANTS,SKIRT,DRESS,OUTER' \
+  'A라인|SILHOUETTE|SKIRT,DRESS,OUTER' \
+  'H라인|SILHOUETTE|SKIRT,DRESS' \
+  '크롭|SILHOUETTE|TOP,DRESS,OUTER' \
+  '로우라이즈|SILHOUETTE|PANTS,SKIRT' \
+  '하이라이즈|SILHOUETTE|PANTS,SKIRT' \
+  '숏기장|SILHOUETTE|PANTS,SKIRT' \
+  '미디기장|SILHOUETTE|PANTS,SKIRT' \
+  '롱기장|SILHOUETTE|PANTS,SKIRT' \
+  '데님|MATERIAL|ALL' \
+  '니트|MATERIAL|ALL' \
+  '코튼|MATERIAL|ALL' \
+  '린넨|MATERIAL|ALL' \
+  '가죽|MATERIAL|ALL' \
+  '트위드|MATERIAL|ALL' \
+  '시폰|MATERIAL|ALL' \
+  '우븐/시어|MATERIAL|ALL' \
+  '브이넥|DETAIL|TOP,DRESS,OUTER' \
+  '터틀넥|DETAIL|TOP,DRESS,OUTER' \
+  '라운드넥|DETAIL|TOP,DRESS,OUTER' \
+  '러플/프릴|DETAIL|ALL' \
+  '지퍼|DETAIL|ALL' \
+  '벨트|DETAIL|ALL' \
+  '포켓|DETAIL|ALL' \
+  '슬릿|DETAIL|ALL' \
+  '단추|DETAIL|ALL' \
+  '턱|DETAIL|PANTS,SKIRT' \
+  '화이트|COLOR|ALL' \
+  '블랙|COLOR|ALL' \
+  '베이지|COLOR|ALL' \
+  '네이비|COLOR|ALL' \
+  '그레이|COLOR|ALL' \
+  '브라운|COLOR|ALL' \
+  '카키|COLOR|ALL' \
+  '파스텔/메탈릭|COLOR|ALL' \
+  | LC_ALL=C sort)"
+
+if [ "$actual_tag_taxonomy" != "$expected_tag_taxonomy" ]; then
+  echo 'Unexpected tag taxonomy mapping:' >&2
+  diff -u <(printf '%s\n' "$expected_tag_taxonomy") \
+    <(printf '%s\n' "$actual_tag_taxonomy") >&2 || true
   exit 1
 fi
 
