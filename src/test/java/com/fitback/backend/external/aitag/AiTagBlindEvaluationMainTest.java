@@ -28,6 +28,9 @@ class AiTagBlindEvaluationMainTest {
 
         Map<String, Object> evaluation = AiTagBlindEvaluationMain.successfulEvaluation(result);
 
+        assertThat(evaluation)
+                .containsKey("garments")
+                .doesNotContainKeys("canonicalTags", "suggestedTags");
         assertThat(evaluation).containsKeys("inputTokens", "outputTokens");
         assertThat(evaluation.get("inputTokens")).isNull();
         assertThat(evaluation.get("outputTokens")).isNull();

@@ -162,8 +162,7 @@ public final class AiTagBlindEvaluationMain {
 
     static Map<String, Object> successfulEvaluation(AiTagModelResult result) {
         Map<String, Object> evaluation = new LinkedHashMap<>();
-        evaluation.put("canonicalTags", result.canonicalTags());
-        evaluation.put("suggestedTags", result.suggestedTags());
+        evaluation.put("garments", result.garments());
         evaluation.put("inputTokens", result.inputTokens());
         evaluation.put("outputTokens", result.outputTokens());
         evaluation.put("elapsedMillis", result.elapsedMillis());
