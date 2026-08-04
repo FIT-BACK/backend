@@ -1152,13 +1152,13 @@ docker exec -i "$container_name" mysql -uroot fitback \
 seeded_tag_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CONCAT(
-        SUM(tag_name = '미니멀' AND tag_type = 'DETAIL'), ':',
+        SUM(tag_name = '미니멀' AND tag_type = 'STYLE'), ':',
         SUM(tag_name = '와이드핏' AND tag_type = 'SILHOUETTE'), ':',
         SUM(tag_name = '베이지톤' AND tag_type = 'COLOR'), ':',
-        SUM(tag_name = '스트릿' AND tag_type = 'DETAIL'), ':',
-        SUM(tag_name = '러블리' AND tag_type = 'DETAIL'), ':',
-        SUM(tag_name = '캐주얼' AND tag_type = 'DETAIL'), ':',
-        SUM(tag_name = '포멀' AND tag_type = 'DETAIL'), ':',
+        SUM(tag_name = '스트릿' AND tag_type = 'STYLE'), ':',
+        SUM(tag_name = '러블리' AND tag_type = 'STYLE'), ':',
+        SUM(tag_name = '캐주얼' AND tag_type = 'STYLE'), ':',
+        SUM(tag_name = '포멀' AND tag_type = 'STYLE'), ':',
         SUM(tag_name = '기존태그' AND tag_type = 'DETAIL'), ':',
         COUNT(*)
       )
