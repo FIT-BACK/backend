@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 class AiTagRequestFactoryTest {
 
     @Test
-    void createsClosedCanonicalAndFreeFormSuggestionSchema() {
+    void createsGarmentScopedCanonicalAndFreeFormSuggestionSchema() {
         AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
                 Tag.create("와이드핏", TagType.SILHOUETTE),
                 Tag.create("베이지", TagType.COLOR),
@@ -21,8 +21,11 @@ class AiTagRequestFactoryTest {
                 Tag.create("데님", TagType.MATERIAL)
         ));
 
-        Map<String, Object> properties = map(request.jsonSchema().get("properties"));
-        Map<String, Object> canonicalTags = map(properties.get("canonicalTags"));
+        Map<String, Object> rootProperties = map(request.jsonSchema().get("properties"));
+        Map<String, Object> garments = map(rootProperties.get("garments"));
+        Map<String, Object> garmentItem = map(garments.get("items"));
+        Map<String, Object> garmentProperties = map(garmentItem.get("properties"));
+        Map<String, Object> canonicalTags = map(garmentProperties.get("canonicalTags"));
         List<Map<String, Object>> canonicalOptions = maps(
                 map(canonicalTags.get("items")).get("anyOf")
         );
@@ -31,11 +34,17 @@ class AiTagRequestFactoryTest {
                         option -> strings(objectProperty(option, "type").get("enum")).getFirst(),
                         option -> strings(objectProperty(option, "name").get("enum"))
                 ));
-        Map<String, Object> suggestedTags = map(properties.get("suggestedTags"));
+        Map<String, Object> suggestedTags = map(garmentProperties.get("suggestedTags"));
         Map<String, Object> suggestionName = itemProperty(suggestedTags, "name");
 
-        assertThat(request.jsonSchema().get("required"))
-                .isEqualTo(List.of("canonicalTags", "suggestedTags"));
+        assertThat(request.jsonSchema().get("required")).isEqualTo(List.of("garments"));
+        assertThat(garments)
+                .containsEntry("minItems", 1)
+                .containsEntry("maxItems", 3);
+        assertThat(garmentItem.get("required"))
+                .isEqualTo(List.of("piece", "canonicalTags", "suggestedTags"));
+        assertThat(strings(map(garmentProperties.get("piece")).get("enum")))
+                .containsExactly("TOP", "BOTTOM", "SHOES");
         assertThat(canonicalNamesByType)
                 .containsEntry("SILHOUETTE", List.of("와이드핏"))
                 .containsEntry("COLOR", List.of("베이지"))
@@ -49,6 +58,9 @@ class AiTagRequestFactoryTest {
                 .containsEntry("maxItems", 8);
         assertThat(request.prompt()).contains(
                 "product-only fashion image",
+                "TOP, BOTTOM, and SHOES",
+                "SILHOUETTE, COLOR",
+                "DETAIL, STYLE, and MATERIAL",
                 "Korean",
                 "Do not copy an exact canonical tag into suggestedTags",
                 "visible evidence"

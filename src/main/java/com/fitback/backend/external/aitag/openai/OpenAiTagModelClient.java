@@ -72,8 +72,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             return new AiTagModelResult(
                     "openai",
                     properties.model(),
-                    output.canonicalTags(),
-                    output.suggestedTags(),
+                    output.garments(),
                     nullableInt(root.path("usage").path("input_tokens")),
                     nullableInt(root.path("usage").path("output_tokens")),
                     elapsedMillis(startedAt)

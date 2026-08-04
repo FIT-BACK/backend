@@ -23,12 +23,18 @@ class OpenAiTagModelClientTest {
     void sendsImageWithStrictSchemaAndParsesCanonicalTags() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         String outputText = objectMapper.writeValueAsString(Map.of(
-                "canonicalTags", List.of(Map.of("type", "MATERIAL", "name", "데님")),
-                "suggestedTags", List.of(Map.of(
-                        "type", "COLOR",
-                        "name", "인디고 블루",
-                        "confidence", 0.94,
-                        "evidence", "짙은 청색 표면"
+                "garments", List.of(Map.of(
+                        "piece", "BOTTOM",
+                        "canonicalTags", List.of(Map.of(
+                                "type", "MATERIAL",
+                                "name", "데님"
+                        )),
+                        "suggestedTags", List.of(Map.of(
+                                "type", "COLOR",
+                                "name", "인디고 블루",
+                                "confidence", 0.94,
+                                "evidence", "하의의 짙은 청색 표면"
+                        ))
                 ))
         ));
         String responseBody = objectMapper.writeValueAsString(Map.of(
@@ -70,6 +76,10 @@ class OpenAiTagModelClientTest {
                 "data:image/jpeg;base64,AQID",
                 "json_schema"
         );
+        assertThat(result.garments()).singleElement().satisfies(garment ->
+                assertThat(garment.piece()).isEqualTo(
+                        com.fitback.backend.external.aitag.GarmentPiece.BOTTOM
+                ));
         assertThat(result.canonicalTags()).singleElement().satisfies(prediction -> {
             assertThat(prediction.type()).isEqualTo(TagType.MATERIAL);
             assertThat(prediction.name()).isEqualTo("데님");

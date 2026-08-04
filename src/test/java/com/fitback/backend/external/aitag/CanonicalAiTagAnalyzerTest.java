@@ -36,15 +36,18 @@ class CanonicalAiTagAnalyzerTest {
         AiTagModelClient client = (ignoredImage, request) -> new AiTagModelResult(
                 "test",
                 "test-model",
-                List.of(
-                        new AiTagPrediction(TagType.STYLE, "캐주얼"),
-                        new AiTagPrediction(TagType.MATERIAL, "데님")
-                ),
-                List.of(new AiTagSuggestion(
-                        TagType.COLOR,
-                        "인디고 블루",
-                        0.93,
-                        "짙은 청색 표면"
+                List.of(new AiTagGarment(
+                        GarmentPiece.BOTTOM,
+                        List.of(
+                                new AiTagPrediction(TagType.STYLE, "캐주얼"),
+                                new AiTagPrediction(TagType.MATERIAL, "데님")
+                        ),
+                        List.of(new AiTagSuggestion(
+                                TagType.COLOR,
+                                "인디고 블루",
+                                0.93,
+                                "하의의 짙은 청색 표면"
+                        ))
                 )),
                 1,
                 1,
@@ -62,7 +65,11 @@ class CanonicalAiTagAnalyzerTest {
         AiTagModelClient client = (ignoredImage, request) -> new AiTagModelResult(
                 "test",
                 "test-model",
-                List.of(new AiTagPrediction(TagType.DETAIL, "데님")),
+                List.of(new AiTagGarment(
+                        GarmentPiece.BOTTOM,
+                        List.of(new AiTagPrediction(TagType.DETAIL, "데님")),
+                        List.of()
+                )),
                 null,
                 null,
                 1
@@ -80,6 +87,33 @@ class CanonicalAiTagAnalyzerTest {
 
         assertThat(request.prompt()).contains("STYLE: 캐주얼", "MATERIAL: 데님");
         assertThat(request.jsonSchema().toString()).contains("STYLE", "MATERIAL", "데님");
+    }
+
+    @Test
+    void deduplicatesTheSameCanonicalTagAcrossGarmentsAtPersistenceBoundary() {
+        AiTagModelClient client = (ignoredImage, request) -> new AiTagModelResult(
+                "test",
+                "test-model",
+                List.of(
+                        new AiTagGarment(
+                                GarmentPiece.TOP,
+                                List.of(new AiTagPrediction(TagType.STYLE, "캐주얼")),
+                                List.of()
+                        ),
+                        new AiTagGarment(
+                                GarmentPiece.BOTTOM,
+                                List.of(new AiTagPrediction(TagType.STYLE, "캐주얼")),
+                                List.of()
+                        )
+                ),
+                null,
+                null,
+                1
+        );
+
+        assertThat(analyzer(client).analyze(image))
+                .extracting(Tag::getTagName)
+                .containsExactly("캐주얼");
     }
 
     private CanonicalAiTagAnalyzer analyzer(AiTagModelClient client) {

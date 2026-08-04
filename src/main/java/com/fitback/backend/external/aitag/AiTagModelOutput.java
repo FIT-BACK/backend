@@ -2,13 +2,9 @@ package com.fitback.backend.external.aitag;
 
 import java.util.List;
 
-public record AiTagModelOutput(
-        List<AiTagPrediction> canonicalTags,
-        List<AiTagSuggestion> suggestedTags
-) {
+public record AiTagModelOutput(List<AiTagGarment> garments) {
 
     public AiTagModelOutput {
-        canonicalTags = List.copyOf(canonicalTags);
-        suggestedTags = List.copyOf(suggestedTags);
+        garments = AiTagResults.validateGarments(garments);
     }
 }
