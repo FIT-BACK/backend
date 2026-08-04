@@ -23,27 +23,31 @@ import tools.jackson.databind.ObjectMapper;
 
 public final class OpenAiTagModelClient implements AiTagModelClient {
 
+    private static final String ENDPOINT = "https://api.openai.com/v1/responses";
+
     private final AiTagProperties.OpenAi properties;
+    private final Duration requestTimeout;
     private final ObjectMapper objectMapper;
     private final AiTagResponseParser responseParser;
     private final Transport transport;
 
     public OpenAiTagModelClient(
             AiTagProperties.OpenAi properties,
+            Duration requestTimeout,
             ObjectMapper objectMapper
     ) {
-        this(properties, objectMapper, new JdkTransport(properties.timeout()));
+        this(properties, requestTimeout, objectMapper, new JdkTransport(requestTimeout));
     }
 
     OpenAiTagModelClient(
             AiTagProperties.OpenAi properties,
+            Duration requestTimeout,
             ObjectMapper objectMapper,
             Transport transport
     ) {
-        if (properties.apiKey().isBlank()) {
-            throw new IllegalArgumentException("fitback.ai.openai.api-key must not be blank");
-        }
+        properties.validateForUse();
         this.properties = properties;
+        this.requestTimeout = requestTimeout;
         this.objectMapper = objectMapper;
         this.responseParser = new AiTagResponseParser(objectMapper);
         this.transport = transport;
@@ -54,9 +58,9 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         long startedAt = System.nanoTime();
         try {
             TransportResponse response = transport.post(
-                    properties.endpoint().toString(),
+                    ENDPOINT,
                     properties.apiKey(),
-                    properties.timeout(),
+                    requestTimeout,
                     objectMapper.writeValueAsString(payload(image, request))
             );
             if (response.statusCode() >= 400) {

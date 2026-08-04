@@ -10,7 +10,6 @@ import com.fitback.backend.external.aitag.AiTagModelResult;
 import com.fitback.backend.external.aitag.config.AiTagProperties;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
-import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -47,13 +46,12 @@ class OpenAiTagModelClientTest {
             return new OpenAiTagModelClient.TransportResponse(200, responseBody);
         };
         AiTagProperties.OpenAi properties = new AiTagProperties.OpenAi(
-                URI.create("https://example.test/v1/responses"),
                 "test-key",
-                "test-model",
-                Duration.ofSeconds(1)
+                "test-model"
         );
         OpenAiTagModelClient client = new OpenAiTagModelClient(
                 properties,
+                Duration.ofSeconds(1),
                 objectMapper,
                 transport
         );
@@ -113,14 +111,17 @@ class OpenAiTagModelClientTest {
 
     private static OpenAiTagModelClient clientReturning(int statusCode, String responseBody) {
         AiTagProperties.OpenAi properties = new AiTagProperties.OpenAi(
-                URI.create("https://example.test/v1/responses"),
                 "test-key",
-                "test-model",
-                Duration.ofSeconds(1)
+                "test-model"
         );
         OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) ->
                 new OpenAiTagModelClient.TransportResponse(statusCode, responseBody);
-        return new OpenAiTagModelClient(properties, new ObjectMapper(), transport);
+        return new OpenAiTagModelClient(
+                properties,
+                Duration.ofSeconds(1),
+                new ObjectMapper(),
+                transport
+        );
     }
 
     private static void assertAnalysisNotReady(OpenAiTagModelClient client) {

@@ -5,7 +5,6 @@ import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.external.aitag.bedrock.BedrockAiTagModelClient;
 import com.fitback.backend.external.aitag.config.AiTagProperties;
 import com.fitback.backend.external.aitag.openai.OpenAiTagModelClient;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -38,29 +37,30 @@ public final class AiTagBlindEvaluationMain {
                 "AI_TAG_BLIND_OUTPUT_DIR",
                 "build/ai-tag-blind"
         ));
-        String openAiApiKey = requiredEnv("OPENAI_API_KEY");
+        String openAiApiKey = requiredEnv("FITBACK_AI_OPENAI_API_KEY");
 
         List<Tag> catalog = readCatalog(catalogPath);
         AiTagModelRequest request = new AiTagRequestFactory().create(catalog);
-        AiTagProperties.OpenAi openAi = new AiTagProperties.OpenAi(
-                URI.create(env("OPENAI_ENDPOINT", "https://api.openai.com/v1/responses")),
-                openAiApiKey,
-                env("OPENAI_MODEL", "gpt-5.6-luna"),
-                Duration.ofSeconds(30)
-        );
-        AiTagProperties.Bedrock bedrock = new AiTagProperties.Bedrock(
-                env("BEDROCK_REGION", env("AWS_REGION", "ap-northeast-2")),
-                env(
-                        "BEDROCK_MODEL_ID",
-                        "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+        AiTagProperties properties = new AiTagProperties(
+                "unavailable",
+                Duration.parse(env("FITBACK_AI_REQUEST_TIMEOUT", "PT30S")),
+                new AiTagProperties.OpenAi(
+                        openAiApiKey,
+                        requiredEnv("FITBACK_AI_OPENAI_MODEL")
                 ),
-                Duration.ofSeconds(30),
-                Duration.ofSeconds(25)
+                new AiTagProperties.Bedrock(
+                        requiredEnv("AWS_REGION"),
+                        requiredEnv("FITBACK_AI_BEDROCK_MODEL_ID")
+                )
         );
+        AiTagProperties.OpenAi openAi = properties.openai();
+        AiTagProperties.Bedrock bedrock = properties.bedrock();
+        openAi.validateForUse();
+        bedrock.validateForUse();
 
         ClientOverrideConfiguration override = ClientOverrideConfiguration.builder()
-                .apiCallTimeout(bedrock.apiCallTimeout())
-                .apiCallAttemptTimeout(bedrock.apiCallAttemptTimeout())
+                .apiCallTimeout(properties.requestTimeout())
+                .apiCallAttemptTimeout(properties.requestTimeout())
                 .build();
         try (BedrockRuntimeClient bedrockClient = BedrockRuntimeClient.builder()
                 .region(Region.of(bedrock.region()))
@@ -71,7 +71,11 @@ public final class AiTagBlindEvaluationMain {
                     new ProviderRun(
                             "openai",
                             openAi.model(),
-                            new OpenAiTagModelClient(openAi, OBJECT_MAPPER)
+                            new OpenAiTagModelClient(
+                                    openAi,
+                                    properties.requestTimeout(),
+                                    OBJECT_MAPPER
+                            )
                     ),
                     new ProviderRun(
                             "bedrock",

@@ -1,65 +1,55 @@
 package com.fitback.backend.external.aitag.config;
 
-import java.net.URI;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "fitback.ai")
 public record AiTagProperties(
         String tagAnalyzer,
+        Duration requestTimeout,
         OpenAi openai,
         Bedrock bedrock
 ) {
 
+    private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(30);
+
     public AiTagProperties {
         tagAnalyzer = textOrDefault(tagAnalyzer, "unavailable");
-        openai = openai == null ? new OpenAi(null, null, null, null) : openai;
-        bedrock = bedrock == null ? new Bedrock(null, null, null, null) : bedrock;
+        requestTimeout = requestTimeout == null ? DEFAULT_REQUEST_TIMEOUT : requestTimeout;
+        if (requestTimeout.isZero()
+                || requestTimeout.isNegative()
+                || requestTimeout.getNano() != 0) {
+            throw new IllegalArgumentException(
+                    "fitback.ai.request-timeout must be a positive whole-second duration"
+            );
+        }
+        openai = openai == null ? new OpenAi(null, null) : openai;
+        bedrock = bedrock == null ? new Bedrock(null, null) : bedrock;
     }
 
-    public record OpenAi(URI endpoint, String apiKey, String model, Duration timeout) {
+    public record OpenAi(String apiKey, String model) {
 
         public OpenAi {
-            endpoint = endpoint == null
-                    ? URI.create("https://api.openai.com/v1/responses")
-                    : endpoint;
-            if (!"https".equalsIgnoreCase(endpoint.getScheme())) {
-                throw new IllegalArgumentException("fitback.ai.openai.endpoint must use https");
-            }
-            apiKey = apiKey == null ? "" : apiKey.trim();
-            model = textOrDefault(model, "gpt-5.6-luna");
-            timeout = positiveOrDefault(timeout, Duration.ofSeconds(30), "openai.timeout");
+            apiKey = textOrEmpty(apiKey);
+            model = textOrEmpty(model);
+        }
+
+        public void validateForUse() {
+            requireText(apiKey, "fitback.ai.openai.api-key");
+            requireText(model, "fitback.ai.openai.model");
         }
     }
 
-    public record Bedrock(
-            String region,
-            String modelId,
-            Duration apiCallTimeout,
-            Duration apiCallAttemptTimeout
-    ) {
+    public record Bedrock(String region, String modelId) {
 
         public Bedrock {
-            region = textOrDefault(region, "ap-northeast-2");
-            modelId = textOrDefault(
-                    modelId,
-                    "global.anthropic.claude-haiku-4-5-20251001-v1:0"
-            );
-            apiCallTimeout = positiveOrDefault(
-                    apiCallTimeout,
-                    Duration.ofSeconds(30),
-                    "bedrock.api-call-timeout"
-            );
-            apiCallAttemptTimeout = positiveOrDefault(
-                    apiCallAttemptTimeout,
-                    Duration.ofSeconds(25),
-                    "bedrock.api-call-attempt-timeout"
-            );
-            if (apiCallAttemptTimeout.compareTo(apiCallTimeout) > 0) {
-                throw new IllegalArgumentException(
-                        "fitback.ai.bedrock.api-call-attempt-timeout must not exceed api-call-timeout"
-                );
-            }
+            region = textOrEmpty(region);
+            modelId = textOrEmpty(modelId);
+        }
+
+        public void validateForUse() {
+            requireText(region, "fitback.ai.bedrock.region");
+            requireText(modelId, "fitback.ai.bedrock.model-id");
         }
     }
 
@@ -67,15 +57,13 @@ public record AiTagProperties(
         return value == null || value.isBlank() ? defaultValue : value.trim();
     }
 
-    private static Duration positiveOrDefault(
-            Duration value,
-            Duration defaultValue,
-            String property
-    ) {
-        Duration resolved = value == null ? defaultValue : value;
-        if (resolved.isZero() || resolved.isNegative()) {
-            throw new IllegalArgumentException("fitback.ai." + property + " must be positive");
+    private static String textOrEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private static void requireText(String value, String property) {
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(property + " must not be blank");
         }
-        return resolved;
     }
 }
