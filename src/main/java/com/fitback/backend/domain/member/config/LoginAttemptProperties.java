@@ -4,6 +4,7 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 // 로그인 실패 누적·초기화·잠금·물리 삭제 정책 설정
+// 정책값 변경 위치: application-{profile}.yml의 app.login-attempt
 @ConfigurationProperties(prefix = "app.login-attempt")
 public record LoginAttemptProperties(
         int maxFailures,

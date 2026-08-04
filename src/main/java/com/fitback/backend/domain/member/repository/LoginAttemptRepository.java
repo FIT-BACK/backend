@@ -19,6 +19,11 @@ public interface LoginAttemptRepository extends JpaRepository<LoginAttempt, Long
     @Query("SELECT attempt FROM LoginAttempt attempt WHERE attempt.emailHash = :emailHash")
     Optional<LoginAttempt> findByEmailHashForUpdate(@Param("emailHash") String emailHash);
 
+    // 로그인·회원가입·비밀번호 재설정 성공 시 실패 기록 제거
+    @Modifying
+    @Query("DELETE FROM LoginAttempt attempt WHERE attempt.emailHash = :emailHash")
+    int deleteByEmailHash(@Param("emailHash") String emailHash);
+
     // 현재 잠금 중이 아닌 오래된 실패 기록 물리 삭제
     @Modifying
     @Query("""
