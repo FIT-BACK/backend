@@ -1,6 +1,7 @@
 package com.fitback.backend.domain.member.entity;
 
 import com.fitback.backend.global.entity.BaseCreateTimeEntity;
+import com.fitback.backend.global.util.HmacUtil;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -44,7 +45,7 @@ public class WithdrawalEmailBlock extends BaseCreateTimeEntity {
     private LocalDateTime blockedUntil;
 
     private WithdrawalEmailBlock(String emailHash, LocalDateTime blockedUntil) {
-        this.emailHash = emailHash;
+        this.emailHash = HmacUtil.validateHashHex(emailHash);
         this.blockedUntil = blockedUntil;
     }
 
