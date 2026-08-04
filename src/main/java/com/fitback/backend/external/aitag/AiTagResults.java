@@ -14,8 +14,10 @@ final class AiTagResults {
             throw new IllegalArgumentException("garments must contain between 1 and 3 items");
         }
         EnumSet<GarmentPiece> pieces = EnumSet.noneOf(GarmentPiece.class);
-        if (result.stream().map(AiTagGarment::piece).anyMatch(piece -> !pieces.add(piece))) {
-            throw new IllegalArgumentException("garment pieces must be unique");
+        for (AiTagGarment garment : result) {
+            if (!pieces.add(garment.piece())) {
+                throw new IllegalArgumentException("garment pieces must be unique");
+            }
         }
         return result;
     }

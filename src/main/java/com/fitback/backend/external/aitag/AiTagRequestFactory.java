@@ -2,6 +2,7 @@ package com.fitback.backend.external.aitag;
 
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -98,7 +99,7 @@ public final class AiTagRequestFactory {
         garmentItem.put("properties", Map.of(
                 "piece", Map.of(
                         "type", "string",
-                        "enum", List.of(GarmentPiece.values()).stream()
+                        "enum", Arrays.stream(GarmentPiece.values())
                                 .map(Enum::name)
                                 .toList()
                 ),
