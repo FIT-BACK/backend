@@ -1145,6 +1145,105 @@ if [ "$password_reset_constraints" != "$expected_password_reset_constraints" ]; 
 fi
 
 docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V24__create_login_attempt_table.sql
+
+validate_login_attempt_contract() {
+  local database="$1"
+  local login_attempt_columns
+  local login_attempt_constraints
+  local login_attempt_index
+  local login_attempt_foreign_key_count
+
+  login_attempt_columns="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+          COLUMN_NAME, ':',
+          IS_NULLABLE, ':',
+          DATA_TYPE, ':',
+          COALESCE(CHARACTER_MAXIMUM_LENGTH, DATETIME_PRECISION, 0), ':',
+          COALESCE(COLLATION_NAME, '-'), ':',
+          IF(EXTRA = '', '-', EXTRA)
+        )
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'login_attempt'
+        ORDER BY ORDINAL_POSITION;")"
+
+  if [ "$login_attempt_columns" != "$(printf '%s\n' \
+    'login_attempt_id:NO:bigint:0:-:auto_increment' \
+    'email_hash:NO:char:64:ascii_bin:-' \
+    'failed_count:NO:int:0:-:-' \
+    'last_failed_at:NO:datetime:6:-:-' \
+    'locked_until:YES:datetime:6:-:-')" ]; then
+    echo "Unexpected login attempt columns in $database:" >&2
+    printf '%s\n' "$login_attempt_columns" >&2
+    exit 1
+  fi
+
+  login_attempt_constraints="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+          tc.CONSTRAINT_TYPE, ':',
+          tc.CONSTRAINT_NAME, ':',
+          GROUP_CONCAT(k.COLUMN_NAME ORDER BY k.ORDINAL_POSITION)
+        )
+        FROM information_schema.TABLE_CONSTRAINTS tc
+        JOIN information_schema.KEY_COLUMN_USAGE k
+          ON k.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+         AND k.TABLE_NAME = tc.TABLE_NAME
+         AND k.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+        WHERE tc.TABLE_SCHEMA = '$database'
+          AND tc.TABLE_NAME = 'login_attempt'
+          AND tc.CONSTRAINT_TYPE IN ('PRIMARY KEY', 'UNIQUE')
+        GROUP BY tc.CONSTRAINT_TYPE, tc.CONSTRAINT_NAME
+        ORDER BY tc.CONSTRAINT_TYPE, tc.CONSTRAINT_NAME;")"
+
+  if [ "$login_attempt_constraints" != "$(printf '%s\n' \
+    'PRIMARY KEY:PRIMARY:login_attempt_id' \
+    'UNIQUE:UK_LOGIN_ATTEMPT_EMAIL_HASH:email_hash')" ]; then
+    echo "Unexpected login attempt constraints in $database:" >&2
+    printf '%s\n' "$login_attempt_constraints" >&2
+    exit 1
+  fi
+
+  login_attempt_index="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+          INDEX_NAME, ':',
+          NON_UNIQUE, ':',
+          GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX)
+        )
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'login_attempt'
+          AND INDEX_NAME = 'IDX_LOGIN_ATTEMPT_LAST_FAILED_AT'
+        GROUP BY INDEX_NAME, NON_UNIQUE;")"
+
+  if [ "$login_attempt_index" != \
+    'IDX_LOGIN_ATTEMPT_LAST_FAILED_AT:1:last_failed_at' ]; then
+    echo "Unexpected login attempt index in $database: $login_attempt_index" >&2
+    exit 1
+  fi
+
+  login_attempt_foreign_key_count="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*)
+        FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'login_attempt'
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY';")"
+
+  if [ "$login_attempt_foreign_key_count" != '0' ]; then
+    echo "Unexpected login attempt foreign key in $database." >&2
+    exit 1
+  fi
+}
+
+for database in fitback fitback_existing_refresh_token; do
+  validate_login_attempt_contract "$database"
+done
+
+docker exec -i "$container_name" mysql -uroot fitback \
   < src/main/resources/db/migration/V16__seed_prototype_analysis_tags.sql
 docker exec -i "$container_name" mysql -uroot fitback \
   < src/main/resources/db/migration/V22__seed_member_style_tags.sql
