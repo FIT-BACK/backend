@@ -726,6 +726,7 @@ body는 없다.
 | `CLOSET_TARGET_UNSUPPORTED` | `CLOSET422_1` | 422 | 지원하지 않는 저장 대상 |
 | `EMAIL_ALREADY_EXISTS` | `AUTH409_1` | 409 | 가입된 이메일 |
 | `INVALID_CREDENTIALS` | `AUTH401_1` | 401 | 이메일 또는 비밀번호 불일치 |
+| `LOGIN_ATTEMPT_LOCKED` | `AUTH429_1` | 429 | 로그인 시도 횟수 초과로 일시 잠금 |
 | `INVALID_REFRESH_TOKEN` | `AUTH401_2` | 401 | refresh token 오류 |
 | `INVALID_TEMP_TOKEN` | `AUTH401_3` | 401 | Kakao 임시 token 오류 |
 | `INVALID_PASSWORD_RESET_TOKEN` | `AUTH401_4` | 401 | 비밀번호 재설정 token 오류·만료 |
