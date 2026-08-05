@@ -1262,7 +1262,9 @@ docker exec "$container_name" mysql -uroot fitback \
 docker exec -i "$container_name" mysql -uroot fitback \
   < src/main/resources/db/migration/V22__seed_member_style_tags.sql
 docker exec -i "$container_name" mysql -uroot fitback \
-  < src/main/resources/db/migration/V24__seed_tag_master_taxonomy.sql
+  < src/main/resources/db/migration/V23__classify_style_tags.sql
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V25__seed_tag_master_taxonomy.sql
 
 seeded_tag_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \

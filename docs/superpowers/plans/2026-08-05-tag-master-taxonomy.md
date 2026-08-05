@@ -4,7 +4,7 @@
 
 **Goal:** Store and expose the approved 43-tag taxonomy with its clothing applicability contract.
 
-**Architecture:** Keep `tag` as the canonical tag aggregate and map its multi-valued clothing applicability through an enum element collection backed by `tag_target_clothing`. Flyway V24 seeds the complete catalog idempotently, preserves existing tag identifiers, and renames the legacy prototype color `베이지톤` to `베이지`; the public tag API returns the canonical type and ordered applicability list.
+**Architecture:** Keep `tag` as the canonical tag aggregate and map its multi-valued clothing applicability through an enum element collection backed by `tag_target_clothing`. Flyway V25 seeds the complete catalog idempotently, preserves existing tag identifiers, and renames the legacy prototype color `베이지톤` to `베이지`; the public tag API returns the canonical type and ordered applicability list.
 
 **Tech Stack:** Java 21, Spring Boot 4.1, Spring Data JPA, Flyway, MySQL 8.4, H2, JUnit 5, AssertJ
 
@@ -68,7 +68,7 @@ Expected: `BUILD SUCCESSFUL`.
 ### Task 2: Seed the final catalog and validate the MySQL contract
 
 **Files:**
-- Create: `src/main/resources/db/migration/V24__seed_tag_master_taxonomy.sql`
+- Create: `src/main/resources/db/migration/V25__seed_tag_master_taxonomy.sql`
 - Modify: `scripts/ci/test_mysql_migrations.sh`
 - Modify: `src/main/java/com/fitback/backend/domain/analysis/service/PrototypeAiTagAnalyzer.java`
 - Test: `src/test/java/com/fitback/backend/domain/analysis/service/PrototypeAiTagAnalyzerTest.java`
@@ -88,11 +88,11 @@ when(tagRepository.findAllByTagNameIn(List.of("미니멀", "와이드핏", "베�
 
 Run: `bash scripts/ci/test_mysql_migrations.sh`
 
-Expected: failure because V24 and `tag_target_clothing` do not exist.
+Expected: failure because V25 and `tag_target_clothing` do not exist.
 
-- [x] **Step 3: Add V24**
+- [x] **Step 3: Add V25**
 
-V24 creates `tag_target_clothing` with primary key `(tag_id, target_clothing)`, index `IX_TAG_TARGET_CLOTHING_TARGET`, and cascading FK `FK_TAG_TARGET_CLOTHING_TAG`. It renames `베이지톤` to `베이지` when only the legacy name exists; when both names exist it merges duplicate references, moves remaining references to `베이지`, and removes the legacy row. It upserts every approved name/type without replacing canonical IDs, deletes/rebuilds mappings only for the 43 canonical names, and inserts one `ALL` row for universally applicable tags or the exact category rows for scoped tags.
+V25 creates `tag_target_clothing` with primary key `(tag_id, target_clothing)`, index `IX_TAG_TARGET_CLOTHING_TARGET`, and cascading FK `FK_TAG_TARGET_CLOTHING_TAG`. It renames `베이지톤` to `베이지` when only the legacy name exists; when both names exist it merges duplicate references, moves remaining references to `베이지`, and removes the legacy row. It upserts every approved name/type without replacing canonical IDs, deletes/rebuilds mappings only for the 43 canonical names, and inserts one `ALL` row for universally applicable tags or the exact category rows for scoped tags.
 
 - [x] **Step 4: Run the full MySQL migration gate**
 
@@ -118,7 +118,7 @@ Expected: `MySQL migration tests passed.`
 {"tagId": 1, "tagName": "와이드핏", "tagType": "SILHOUETTE", "targetClothing": ["PANTS"]}
 ```
 
-- [x] **Step 2: Document `tag_target_clothing`, its constraints, the 43-tag counts, and V24**
+- [x] **Step 2: Document `tag_target_clothing`, its constraints, the 43-tag counts, and V25**
 
 - [x] **Step 3: Check documentation and source diffs**
 
