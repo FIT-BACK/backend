@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
-import com.fitback.backend.domain.member.repository.LoginAttemptRepository;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.repository.PasswordResetTokenRepository;
+import com.fitback.backend.domain.member.service.LoginAttemptService;
 import com.fitback.backend.domain.member.service.PasswordResetMailSender;
 import com.fitback.backend.domain.notification.entity.MemberNotificationSetting;
 import com.fitback.backend.domain.notification.repository.MemberNotificationSettingRepository;
@@ -57,7 +57,7 @@ class AuthControllerIntegrationTest {
     private PasswordResetTokenRepository passwordResetTokenRepository;
 
     @Autowired
-    private LoginAttemptRepository loginAttemptRepository;
+    private LoginAttemptService loginAttemptService;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -68,10 +68,14 @@ class AuthControllerIntegrationTest {
     @MockitoBean
     private PasswordResetMailSender passwordResetMailSender;
 
+    private String loginAttemptEmail;
+
     // 테스트 트랜잭션 롤백 후 REQUIRES_NEW로 커밋된 로그인 실패 기록 제거
     @AfterTransaction
     void clearLoginAttempts() {
-        loginAttemptRepository.deleteAllInBatch();
+        if (loginAttemptEmail != null) {
+            loginAttemptService.clear(loginAttemptEmail);
+        }
     }
 
     //JSON 생성/파싱용, 컨텍스트에 빈이 없어 직접 생성
@@ -167,11 +171,12 @@ class AuthControllerIntegrationTest {
     //로그인 실패 테스트 - 비밀번호 불일치 시 401
     @Test
     void loginWrongPasswordTest() throws Exception {
-        signUp("login2@fitback.com", "password123");
+        loginAttemptEmail = "login2@fitback.com";
+        signUp(loginAttemptEmail, "password123");
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonBody("login2@fitback.com", "wrongPw")))
+                        .content(jsonBody(loginAttemptEmail, "wrongPw")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH401_1"));
     }
@@ -179,7 +184,8 @@ class AuthControllerIntegrationTest {
     // 동일 이메일의 1~4회 실패는 401, 다섯 번째 실패부터 429 잠금 응답
     @Test
     void loginFifthFailureLocksEmailTest() throws Exception {
-        signUp("login-lock@fitback.com", "password123");
+        loginAttemptEmail = "login-lock@fitback.com";
+        signUp(loginAttemptEmail, "password123");
         String wrongCredentials = jsonBody("Login-Lock@FITBACK.COM", "wrongPw");
 
         for (int attempt = 1; attempt < 5; attempt++) {

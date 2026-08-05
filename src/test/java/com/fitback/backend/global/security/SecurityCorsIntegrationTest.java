@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fitback.backend.domain.member.repository.LoginAttemptRepository;
+import com.fitback.backend.domain.member.service.LoginAttemptService;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -29,12 +29,16 @@ class SecurityCorsIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private LoginAttemptRepository loginAttemptRepository;
+    private LoginAttemptService loginAttemptService;
+
+    private String loginAttemptEmail;
 
     // 트랜잭션이 없는 CORS 테스트가 남긴 로그인 실패 기록 제거
     @AfterEach
     void clearLoginAttempts() {
-        loginAttemptRepository.deleteAllInBatch();
+        if (loginAttemptEmail != null) {
+            loginAttemptService.clear(loginAttemptEmail);
+        }
     }
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -158,14 +162,14 @@ class SecurityCorsIntegrationTest {
     })
     void includesCorsHeaderOnActualLoginResponse(String origin) throws Exception {
         // Origin별로 다른 이메일을 사용해 로그인 잠금 정책이 CORS 검증에 영향을 주지 않도록 분리
-        String email = "unknown-" + Integer.toUnsignedString(origin.hashCode())
+        loginAttemptEmail = "unknown-" + Integer.toUnsignedString(origin.hashCode())
                 + "@fitback.com";
         mockMvc.perform(post("/api/v1/auth/login")
                         .header(HttpHeaders.ORIGIN, origin)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                  "email",
-                                email,
+                                loginAttemptEmail,
                                 "password",
                                 "password123"
                         ))))

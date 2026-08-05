@@ -7,8 +7,8 @@ import com.fitback.backend.domain.image.entity.ImageVisibility;
 import com.fitback.backend.domain.image.repository.ImageRepository;
 import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
 import com.fitback.backend.domain.member.entity.Member;
-import com.fitback.backend.domain.member.repository.LoginAttemptRepository;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.member.service.LoginAttemptService;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
@@ -52,15 +52,19 @@ class MemberControllerIntegrationTest {
     private MemberRepository memberRepository;
 
     @Autowired
-    private LoginAttemptRepository loginAttemptRepository;
+    private LoginAttemptService loginAttemptService;
 
     @Autowired
     private TagRepository tagRepository;
 
+    private String loginAttemptEmail;
+
     // 테스트 트랜잭션 롤백 후 REQUIRES_NEW로 커밋된 로그인 실패 기록 제거
     @AfterTransaction
     void clearLoginAttempts() {
-        loginAttemptRepository.deleteAllInBatch();
+        if (loginAttemptEmail != null) {
+            loginAttemptService.clear(loginAttemptEmail);
+        }
     }
 
     @Autowired
@@ -433,7 +437,8 @@ class MemberControllerIntegrationTest {
     //비밀번호 변경 성공 - 기존 비밀번호 로그인 실패, 새 비밀번호 로그인 성공
     @Test
     void changePasswordSuccessTest() throws Exception {
-        String token = signUpAndGetAccessToken("changepw@fitback.com", "password123");
+        loginAttemptEmail = "changepw@fitback.com";
+        String token = signUpAndGetAccessToken(loginAttemptEmail, "password123");
 
         mockMvc.perform(patch("/api/v1/members/me/password")
                         .header("Authorization", bearer(token))
@@ -445,14 +450,14 @@ class MemberControllerIntegrationTest {
         //기존 비밀번호 로그인은 실패
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("email", "changepw@fitback.com", "password", "password123"))))
+                        .content(json(Map.of("email", loginAttemptEmail, "password", "password123"))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH401_1"));
 
         //새 비밀번호 로그인은 성공
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("email", "changepw@fitback.com", "password", "newPassword456"))))
+                        .content(json(Map.of("email", loginAttemptEmail, "password", "newPassword456"))))
                 .andExpect(status().isOk());
     }
 
