@@ -87,6 +87,12 @@ app:
     sender-email: test@example.com
     token-ttl: 5m
     request-cooldown: 1m
+  login-attempt:
+    max-failures: 5
+    failure-reset-duration: 1m
+    lock-duration: 1m
+    retention-duration: 24h
+    cleanup-interval: 1h
 
 management:
   health:

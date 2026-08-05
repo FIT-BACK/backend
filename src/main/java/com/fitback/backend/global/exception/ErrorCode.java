@@ -42,6 +42,12 @@ public enum ErrorCode {
 
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "AUTH409_1", "이미 사용 중인 이메일입니다."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "AUTH401_1", "이메일 또는 비밀번호가 올바르지 않습니다."),
+    // 로그인 5회차 실패와 잠금 기간 중 요청에 사용
+    LOGIN_ATTEMPT_LOCKED(
+            HttpStatus.TOO_MANY_REQUESTS,
+            "AUTH429_1",
+            "로그인 시도 횟수를 초과했습니다. 잠시 후 다시 시도해주세요."
+    ),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH401_2", "유효하지 않은 리프레시 토큰입니다."),
     SOCIAL_EMAIL_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH400_1", "카카오 이메일 제공 동의가 필요합니다."),
     SOCIAL_ID_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH400_2", "카카오 회원 식별값을 확인할 수 없습니다."),

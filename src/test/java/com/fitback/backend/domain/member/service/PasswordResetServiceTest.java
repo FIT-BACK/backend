@@ -57,6 +57,8 @@ class PasswordResetServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
+    private LoginAttemptService loginAttemptService;
+    @Mock
     private PlatformTransactionManager transactionManager;
     @Mock
     private TransactionStatus transactionStatus;
@@ -81,6 +83,7 @@ class PasswordResetServiceTest {
                 passwordResetMailSender,
                 properties,
                 passwordEncoder,
+                loginAttemptService,
                 new TransactionTemplate(transactionManager),
                 FIXED_CLOCK
         );
@@ -217,6 +220,7 @@ class PasswordResetServiceTest {
         assertThat(member.getPassword()).isEqualTo("encoded-new-password");
         assertThat(member.getRefreshToken()).isNull();
         verify(passwordResetTokenRepository).delete(storedToken);
+        verify(loginAttemptService).clear("member@fitback.com");
     }
 
     @Test
@@ -262,6 +266,7 @@ class PasswordResetServiceTest {
 
         verify(passwordEncoder, never()).encode(any());
         verify(passwordResetTokenRepository, never()).delete(any());
+        verify(loginAttemptService, never()).clear(any());
     }
 
     @Test

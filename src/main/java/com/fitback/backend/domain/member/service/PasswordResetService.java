@@ -30,6 +30,7 @@ public class PasswordResetService {
     private final PasswordResetMailSender passwordResetMailSender;
     private final PasswordResetProperties properties;
     private final PasswordEncoder passwordEncoder;
+    private final LoginAttemptService loginAttemptService;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
@@ -79,6 +80,8 @@ public class PasswordResetService {
 
         //사용 완료된 일회용 토큰 삭제
         passwordResetTokenRepository.delete(storedToken);
+        // 비밀번호 재설정 성공 시 사용자가 즉시 로그인할 수 있도록 잠금 기록 제거
+        loginAttemptService.clear(member.getEmail());
     }
 
     private ResetMailTarget issueResetToken(String email) {
