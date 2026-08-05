@@ -16,7 +16,7 @@ class AiTagRequestFactoryTest {
     void createsClosedCanonicalAndFreeFormSuggestionSchema() {
         AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
                 Tag.create("와이드핏", TagType.SILHOUETTE),
-                Tag.create("베이지톤", TagType.COLOR),
+                Tag.create("베이지", TagType.COLOR),
                 Tag.create("캐주얼", TagType.STYLE),
                 Tag.create("데님", TagType.MATERIAL)
         ));
@@ -38,7 +38,7 @@ class AiTagRequestFactoryTest {
                 .isEqualTo(List.of("canonicalTags", "suggestedTags"));
         assertThat(canonicalNamesByType)
                 .containsEntry("SILHOUETTE", List.of("와이드핏"))
-                .containsEntry("COLOR", List.of("베이지톤"))
+                .containsEntry("COLOR", List.of("베이지"))
                 .containsEntry("STYLE", List.of("캐주얼"))
                 .containsEntry("MATERIAL", List.of("데님"));
         assertThat(suggestionName)

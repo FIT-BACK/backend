@@ -5,6 +5,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.tag.dto.TagResponse;
+import com.fitback.backend.domain.tag.entity.TagTargetClothing;
+import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.service.TagService;
 import com.fitback.backend.global.response.ApiResponse;
 import java.util.List;
@@ -28,6 +30,8 @@ class TagControllerTest {
         TagResponse.TagItem item = TagResponse.TagItem.builder()
                 .tagId(12L)
                 .tagName("와이드핏")
+                .tagType(TagType.SILHOUETTE)
+                .targetClothing(List.of(TagTargetClothing.PANTS))
                 .build();
         TagResponse.TagList serviceResponse = TagResponse.TagList.builder()
                 .items(List.of(item))
