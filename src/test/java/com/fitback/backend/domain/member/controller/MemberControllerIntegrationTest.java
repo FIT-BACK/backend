@@ -7,6 +7,7 @@ import com.fitback.backend.domain.image.entity.ImageVisibility;
 import com.fitback.backend.domain.image.repository.ImageRepository;
 import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.member.repository.LoginAttemptRepository;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
@@ -18,6 +19,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.transaction.AfterTransaction;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,7 +52,16 @@ class MemberControllerIntegrationTest {
     private MemberRepository memberRepository;
 
     @Autowired
+    private LoginAttemptRepository loginAttemptRepository;
+
+    @Autowired
     private TagRepository tagRepository;
+
+    // 테스트 트랜잭션 롤백 후 REQUIRES_NEW로 커밋된 로그인 실패 기록 제거
+    @AfterTransaction
+    void clearLoginAttempts() {
+        loginAttemptRepository.deleteAllInBatch();
+    }
 
     @Autowired
     private ImageRepository imageRepository;

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.member.repository.LoginAttemptRepository;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.repository.PasswordResetTokenRepository;
 import com.fitback.backend.domain.member.service.PasswordResetMailSender;
@@ -20,6 +21,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.transaction.AfterTransaction;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +57,9 @@ class AuthControllerIntegrationTest {
     private PasswordResetTokenRepository passwordResetTokenRepository;
 
     @Autowired
+    private LoginAttemptRepository loginAttemptRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Autowired
@@ -62,6 +67,12 @@ class AuthControllerIntegrationTest {
 
     @MockitoBean
     private PasswordResetMailSender passwordResetMailSender;
+
+    // 테스트 트랜잭션 롤백 후 REQUIRES_NEW로 커밋된 로그인 실패 기록 제거
+    @AfterTransaction
+    void clearLoginAttempts() {
+        loginAttemptRepository.deleteAllInBatch();
+    }
 
     //JSON 생성/파싱용, 컨텍스트에 빈이 없어 직접 생성
     private final ObjectMapper objectMapper = new ObjectMapper();

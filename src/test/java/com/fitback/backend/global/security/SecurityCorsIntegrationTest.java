@@ -7,7 +7,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fitback.backend.domain.member.repository.LoginAttemptRepository;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +27,15 @@ class SecurityCorsIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private LoginAttemptRepository loginAttemptRepository;
+
+    // 트랜잭션이 없는 CORS 테스트가 남긴 로그인 실패 기록 제거
+    @AfterEach
+    void clearLoginAttempts() {
+        loginAttemptRepository.deleteAllInBatch();
+    }
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
