@@ -68,6 +68,7 @@ class LookbookResponseTest {
     @Test
     void lookbookDetailSerializesAccordingToApiSpecification() throws Exception {
         LookbookResponse.LookbookDetail response = LookbookResponse.LookbookDetail.builder()
+                .saveId(15L)
                 .originalImageUrl("https://original.jpg")
                 .matchedImageUrl("https://matched.jpg")
                 .authorNickname("mini_style")
@@ -93,6 +94,7 @@ class LookbookResponseTest {
         String json = objectMapper.writeValueAsString(response);
 
         assertThat(json)
+                .contains("\"saveId\":15")
                 .contains("\"originalImageUrl\":\"https://original.jpg\"")
                 .contains("\"matchedImageUrl\":\"https://matched.jpg\"")
                 .contains("\"authorNickname\":\"mini_style\"")

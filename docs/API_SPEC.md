@@ -1159,6 +1159,10 @@ URL을 받아야 한다.
 비로그인 조회를 허용한다. 원본·매칭 이미지, 작성자·프로필 이미지, 작성 시각, 구매 링크,
 코멘트, 태그, 좋아요 수를 반환한다. 익명 요청의 `isLiked`, `isOwner`는 `false`다.
 
+로그인 회원이 해당 룩북을 마이 클로젯에 저장한 경우 `saveId`에 저장 취소(`DELETE
+/api/v1/closet-saves/{saveId}`)에 사용할 `ClosetSave` ID를 반환한다. 저장하지 않았거나
+익명 요청인 경우 `saveId`는 `null`이다.
+
 ### 오류
 
 | 조건 | HTTP | code |

@@ -3,6 +3,9 @@ package com.fitback.backend.domain.lookbook.service;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.analysis.service.AnalysisReportSaveService;
+import com.fitback.backend.domain.closet.entity.ClosetSave;
+import com.fitback.backend.domain.closet.entity.ClosetTargetType;
+import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImageStatus;
 import com.fitback.backend.domain.image.event.ImageReferencesReleasedEvent;
@@ -57,6 +60,7 @@ public class LookbookService {
     private final LookbookImageRepository lookbookImageRepository;
     private final LookbookTagRepository lookbookTagRepository;
     private final LookbookLikeRepository lookbookLikeRepository;
+    private final ClosetSaveRepository closetSaveRepository;
     private final TagRepository tagRepository;
     private final LookbookLikeCommandService lookbookLikeCommandService;
     private final LookbookReportCommandService lookbookReportCommandService;
@@ -274,8 +278,18 @@ public class LookbookService {
         String authorProfileImageUrl =
                 memberProfileImageService.resolveProfileImageUrl(lookbook.getMember());
 
+        // 로그인 상태면 해당 룩북을 마이 클로젯에 저장했는지 saveId로 계산
+        Long saveId = member == null
+                ? null
+                : closetSaveRepository
+                        .findByMemberIdAndTargetTypeAndTargetId(
+                                member.getId(), ClosetTargetType.LOOKBOOK, lookbookId)
+                        .map(ClosetSave::getId)
+                        .orElse(null);
+
         return LookbookResponse.LookbookDetail.toLookbookDetail(
                 lookbook,
+                saveId,
                 imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
                 resolveMatchedImageUrl(lookbook),
                 authorProfileImageUrl,

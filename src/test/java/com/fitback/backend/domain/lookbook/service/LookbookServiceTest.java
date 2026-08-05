@@ -15,6 +15,9 @@ import static org.mockito.Mockito.when;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.analysis.service.AnalysisReportSaveService;
+import com.fitback.backend.domain.closet.entity.ClosetSave;
+import com.fitback.backend.domain.closet.entity.ClosetTargetType;
+import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.image.entity.ImagePurpose;
 import com.fitback.backend.domain.image.entity.ImageStatus;
@@ -80,6 +83,9 @@ class LookbookServiceTest {
 
     @Mock
     private LookbookLikeRepository lookbookLikeRepository;
+
+    @Mock
+    private ClosetSaveRepository closetSaveRepository;
 
     @Mock
     private TagRepository tagRepository;
@@ -566,9 +572,15 @@ class LookbookServiceTest {
                 .thenReturn(true);
         when(memberProfileImageService.resolveProfileImageUrl(member))
                 .thenReturn("https://s3.example.com/profile.jpg");
+        ClosetSave closetSave = ClosetSave.create(member, ClosetTargetType.LOOKBOOK, 100L);
+        ReflectionTestUtils.setField(closetSave, "id", 15L);
+        when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
+                1L, ClosetTargetType.LOOKBOOK, 100L))
+                .thenReturn(Optional.of(closetSave));
 
         LookbookResponse.LookbookDetail response = lookbookService.getLookbookDetail(100L, member);
 
+        assertThat(response.saveId()).isEqualTo(15L);
         assertThat(response.originalImageUrl()).isEqualTo("https://s3.example.com/original.jpg");
         assertThat(response.matchedImageUrl()).isEqualTo("https://s3.example.com/matched.jpg");
         assertThat(response.authorNickname()).isEqualTo("fitback");
@@ -599,7 +611,10 @@ class LookbookServiceTest {
 
         assertThat(response.isLiked()).isFalse();
         assertThat(response.isOwner()).isFalse();
+        assertThat(response.saveId()).isNull();
         verify(lookbookLikeRepository, never()).existsByLookbookIdAndMemberId(any(), any());
+        verify(closetSaveRepository, never())
+                .findByMemberIdAndTargetTypeAndTargetId(any(), any(), any());
     }
 
     @Test
@@ -622,6 +637,21 @@ class LookbookServiceTest {
         );
 
         assertThat(response.isOwner()).isFalse();
+    }
+
+    @Test
+    void getLookbookDetailReturnsNullSaveIdWhenNotSavedByMember() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 16, 12, 0));
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
+                .thenReturn(List.of());
+        when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
+                1L, ClosetTargetType.LOOKBOOK, 100L))
+                .thenReturn(Optional.empty());
+
+        LookbookResponse.LookbookDetail response = lookbookService.getLookbookDetail(100L, member);
+
+        assertThat(response.saveId()).isNull();
     }
 
     @Test
