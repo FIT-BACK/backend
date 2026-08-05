@@ -8,7 +8,6 @@ import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.io.IOException;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -58,12 +57,14 @@ public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
                 Function.identity()
         ));
         AiTagModelResult result = modelClient.analyze(image, requestFactory.create(catalog));
-        List<TagKey> predictedKeys = result.canonicalTags().stream()
+        List<TagKey> predictedKeys = result.garments().stream()
+                .flatMap(garment -> garment.canonicalTags().stream())
                 .map(prediction -> new TagKey(prediction.type(), prediction.name()))
+                .distinct()
                 .toList();
         if (predictedKeys.isEmpty()
-                || predictedKeys.size() > AiTagRequestFactory.MAX_TAGS_PER_OUTPUT
-                || new LinkedHashSet<>(predictedKeys).size() != predictedKeys.size()
+                || predictedKeys.size()
+                > AiTagRequestFactory.MAX_GARMENTS * AiTagRequestFactory.MAX_TAGS_PER_GARMENT
                 || predictedKeys.stream().anyMatch(key -> !canonicalTags.containsKey(key))) {
             throw notReady();
         }

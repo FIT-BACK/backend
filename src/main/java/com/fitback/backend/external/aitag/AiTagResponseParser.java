@@ -17,35 +17,53 @@ public final class AiTagResponseParser {
     public AiTagModelOutput parse(String json) {
         try {
             JsonNode root = objectMapper.readTree(json);
-            JsonNode canonicalTags = root.path("canonicalTags");
-            JsonNode suggestedTags = root.path("suggestedTags");
-            if (!canonicalTags.isArray()) {
-                throw new IllegalArgumentException("canonicalTags must be an array");
+            JsonNode garments = root.path("garments");
+            if (!garments.isArray()) {
+                throw new IllegalArgumentException("garments must be an array");
             }
-            if (!suggestedTags.isArray()) {
-                throw new IllegalArgumentException("suggestedTags must be an array");
-            }
-            List<AiTagPrediction> predictions = new ArrayList<>();
-            for (JsonNode tag : canonicalTags) {
-                predictions.add(new AiTagPrediction(
-                        TagType.valueOf(tag.path("type").asText()),
-                        tag.path("name").asText()
+            List<AiTagGarment> results = new ArrayList<>();
+            for (JsonNode garment : garments) {
+                results.add(new AiTagGarment(
+                        GarmentPiece.valueOf(garment.path("piece").asText()),
+                        predictions(garment.path("canonicalTags")),
+                        suggestions(garment.path("suggestedTags"))
                 ));
             }
-            List<AiTagSuggestion> suggestions = new ArrayList<>();
-            for (JsonNode tag : suggestedTags) {
-                suggestions.add(new AiTagSuggestion(
-                        TagType.valueOf(tag.path("type").asText()),
-                        tag.path("name").asText(),
-                        tag.path("confidence").asDouble(),
-                        tag.path("evidence").asText()
-                ));
-            }
-            return new AiTagModelOutput(predictions, suggestions);
+            return new AiTagModelOutput(results);
         } catch (RuntimeException exception) {
             throw exception;
         } catch (Exception exception) {
             throw new IllegalArgumentException("invalid AI tag response", exception);
         }
+    }
+
+    private List<AiTagPrediction> predictions(JsonNode tags) {
+        if (!tags.isArray()) {
+            throw new IllegalArgumentException("canonicalTags must be an array");
+        }
+        List<AiTagPrediction> predictions = new ArrayList<>();
+        for (JsonNode tag : tags) {
+            predictions.add(new AiTagPrediction(
+                        TagType.valueOf(tag.path("type").asText()),
+                        tag.path("name").asText()
+            ));
+        }
+        return predictions;
+    }
+
+    private List<AiTagSuggestion> suggestions(JsonNode tags) {
+        if (!tags.isArray()) {
+            throw new IllegalArgumentException("suggestedTags must be an array");
+        }
+        List<AiTagSuggestion> suggestions = new ArrayList<>();
+        for (JsonNode tag : tags) {
+            suggestions.add(new AiTagSuggestion(
+                        TagType.valueOf(tag.path("type").asText()),
+                        tag.path("name").asText(),
+                        tag.path("confidence").asDouble(),
+                        tag.path("evidence").asText()
+            ));
+        }
+        return suggestions;
     }
 }

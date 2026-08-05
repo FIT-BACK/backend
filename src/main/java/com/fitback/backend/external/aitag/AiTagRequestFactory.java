@@ -2,6 +2,7 @@ package com.fitback.backend.external.aitag;
 
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,7 +11,8 @@ import java.util.stream.Collectors;
 
 public final class AiTagRequestFactory {
 
-    static final int MAX_TAGS_PER_OUTPUT = 8;
+    static final int MAX_GARMENTS = GarmentPiece.values().length;
+    static final int MAX_TAGS_PER_GARMENT = 8;
 
     public AiTagModelRequest create(List<Tag> catalog) {
         if (catalog.isEmpty()) {
@@ -32,10 +34,15 @@ public final class AiTagRequestFactory {
 
         String prompt = """
                 Analyze the visible fashion item or outfit in the image. The image may show a
-                person-worn outfit or a product-only fashion image.
+                person-worn outfit or a product-only fashion image. Return one garment object for
+                each visible TOP, BOTTOM, and SHOES piece. Do not merge tags from different pieces.
+
+                For every garment, inspect all five dimensions independently: SILHOUETTE, COLOR,
+                DETAIL, STYLE, and MATERIAL. A dimension may have no result when it is not visibly
+                supported.
 
                 canonicalTags:
-                - Select 1 to %d tags only from the exact canonical catalog below.
+                - Select 0 to %d tags only from the exact canonical catalog below.
                 - Do not invent, translate, or normalize canonical tag names.
                 - Return every canonical tag with its matching type.
 
@@ -52,8 +59,8 @@ public final class AiTagRequestFactory {
                 Canonical catalog:
                 %s
                 """.formatted(
-                        MAX_TAGS_PER_OUTPUT,
-                        MAX_TAGS_PER_OUTPUT,
+                        MAX_TAGS_PER_GARMENT,
+                        MAX_TAGS_PER_GARMENT,
                         catalogText
                 ).trim();
 
@@ -85,24 +92,43 @@ public final class AiTagRequestFactory {
         ));
         suggestionItem.put("required", List.of("type", "name", "confidence", "evidence"));
 
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("type", "object");
-        schema.put("additionalProperties", false);
-        schema.put("properties", Map.of(
+        Map<String, Object> garmentItem = new LinkedHashMap<>();
+        garmentItem.put("type", "object");
+        garmentItem.put("additionalProperties", false);
+        garmentItem.put("properties", Map.of(
+                "piece", Map.of(
+                        "type", "string",
+                        "enum", Arrays.stream(GarmentPiece.values())
+                                .map(Enum::name)
+                                .toList()
+                ),
                 "canonicalTags", Map.of(
                         "type", "array",
-                        "minItems", 1,
-                        "maxItems", MAX_TAGS_PER_OUTPUT,
+                        "minItems", 0,
+                        "maxItems", MAX_TAGS_PER_GARMENT,
                         "items", canonicalItem
                 ),
                 "suggestedTags", Map.of(
                         "type", "array",
                         "minItems", 0,
-                        "maxItems", MAX_TAGS_PER_OUTPUT,
+                        "maxItems", MAX_TAGS_PER_GARMENT,
                         "items", suggestionItem
                 )
         ));
-        schema.put("required", List.of("canonicalTags", "suggestedTags"));
+        garmentItem.put("required", List.of("piece", "canonicalTags", "suggestedTags"));
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("additionalProperties", false);
+        schema.put("properties", Map.of(
+                "garments", Map.of(
+                        "type", "array",
+                        "minItems", 1,
+                        "maxItems", MAX_GARMENTS,
+                        "items", garmentItem
+                )
+        ));
+        schema.put("required", List.of("garments"));
         return new AiTagModelRequest(prompt, schema);
     }
 }

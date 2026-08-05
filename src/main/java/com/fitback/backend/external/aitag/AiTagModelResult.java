@@ -5,34 +5,25 @@ import java.util.List;
 public record AiTagModelResult(
         String provider,
         String model,
-        List<AiTagPrediction> canonicalTags,
-        List<AiTagSuggestion> suggestedTags,
+        List<AiTagGarment> garments,
         Integer inputTokens,
         Integer outputTokens,
         long elapsedMillis
 ) {
 
     public AiTagModelResult {
-        canonicalTags = List.copyOf(canonicalTags);
-        suggestedTags = List.copyOf(suggestedTags);
+        garments = AiTagResults.validateGarments(garments);
     }
 
-    public AiTagModelResult(
-            String provider,
-            String model,
-            List<AiTagPrediction> canonicalTags,
-            Integer inputTokens,
-            Integer outputTokens,
-            long elapsedMillis
-    ) {
-        this(
-                provider,
-                model,
-                canonicalTags,
-                List.of(),
-                inputTokens,
-                outputTokens,
-                elapsedMillis
-        );
+    public List<AiTagPrediction> canonicalTags() {
+        return garments.stream()
+                .flatMap(garment -> garment.canonicalTags().stream())
+                .toList();
+    }
+
+    public List<AiTagSuggestion> suggestedTags() {
+        return garments.stream()
+                .flatMap(garment -> garment.suggestedTags().stream())
+                .toList();
     }
 }

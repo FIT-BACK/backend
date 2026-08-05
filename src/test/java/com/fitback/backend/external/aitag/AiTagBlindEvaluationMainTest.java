@@ -13,8 +13,14 @@ class AiTagBlindEvaluationMainTest {
         AiTagModelResult result = new AiTagModelResult(
                 "provider",
                 "model",
-                List.of(),
-                List.of(),
+                List.of(new AiTagGarment(
+                        GarmentPiece.TOP,
+                        List.of(new AiTagPrediction(
+                                com.fitback.backend.domain.tag.entity.TagType.STYLE,
+                                "캐주얼"
+                        )),
+                        List.of()
+                )),
                 null,
                 null,
                 10
@@ -22,6 +28,10 @@ class AiTagBlindEvaluationMainTest {
 
         Map<String, Object> evaluation = AiTagBlindEvaluationMain.successfulEvaluation(result);
 
+        assertThat(evaluation)
+                .containsKey("garments")
+                .doesNotContainKeys("canonicalTags", "suggestedTags");
+        assertThat(evaluation.get("garments")).isEqualTo(result.garments());
         assertThat(evaluation).containsKeys("inputTokens", "outputTokens");
         assertThat(evaluation.get("inputTokens")).isNull();
         assertThat(evaluation.get("outputTokens")).isNull();

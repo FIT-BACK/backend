@@ -26,6 +26,10 @@ class ProductionProfileConfigurationTest {
                     "IMAGE_CDN_BASE_URL=https://images.example.com",
                     "CLOUDFRONT_KEY_PAIR_ID=TESTKEY",
                     "CLOUDFRONT_PRIVATE_KEY_BASE64=dGVzdC1rZXk=",
+                    "FITBACK_AI_REQUEST_TIMEOUT=PT45S",
+                    "FITBACK_AI_OPENAI_API_KEY=test-openai-key",
+                    "FITBACK_AI_OPENAI_MODEL=test-openai-model",
+                    "FITBACK_AI_BEDROCK_MODEL_ID=test-bedrock-model",
                     "KAKAO_REST_API_KEY=test-kakao-client-id",
                     "KAKAO_REST_API_SECRET=test-kakao-client-secret",
                     "FRONT_REDIRECT_URI=http://localhost:3000/oauth/success",
@@ -113,6 +117,24 @@ class ProductionProfileConfigurationTest {
                     "https://frontend.example.com",
                     "http://localhost:5173"
             );
+        });
+    }
+
+    @Test
+    void productionProfileMapsAiProviderEnvironmentContract() {
+        contextRunner.run(context -> {
+            Environment environment = context.getEnvironment();
+
+            assertThat(environment.getProperty("fitback.ai.request-timeout"))
+                    .isEqualTo("PT45S");
+            assertThat(environment.getProperty("fitback.ai.openai.api-key"))
+                    .isEqualTo("test-openai-key");
+            assertThat(environment.getProperty("fitback.ai.openai.model"))
+                    .isEqualTo("test-openai-model");
+            assertThat(environment.getProperty("fitback.ai.bedrock.model-id"))
+                    .isEqualTo("test-bedrock-model");
+            assertThat(environment.getProperty("fitback.ai.bedrock.region"))
+                    .isEqualTo("ap-northeast-2");
         });
     }
 

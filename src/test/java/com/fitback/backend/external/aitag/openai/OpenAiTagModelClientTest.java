@@ -10,7 +10,6 @@ import com.fitback.backend.external.aitag.AiTagModelResult;
 import com.fitback.backend.external.aitag.config.AiTagProperties;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
-import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -24,12 +23,18 @@ class OpenAiTagModelClientTest {
     void sendsImageWithStrictSchemaAndParsesCanonicalTags() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         String outputText = objectMapper.writeValueAsString(Map.of(
-                "canonicalTags", List.of(Map.of("type", "MATERIAL", "name", "데님")),
-                "suggestedTags", List.of(Map.of(
-                        "type", "COLOR",
-                        "name", "인디고 블루",
-                        "confidence", 0.94,
-                        "evidence", "짙은 청색 표면"
+                "garments", List.of(Map.of(
+                        "piece", "BOTTOM",
+                        "canonicalTags", List.of(Map.of(
+                                "type", "MATERIAL",
+                                "name", "데님"
+                        )),
+                        "suggestedTags", List.of(Map.of(
+                                "type", "COLOR",
+                                "name", "인디고 블루",
+                                "confidence", 0.94,
+                                "evidence", "하의의 짙은 청색 표면"
+                        ))
                 ))
         ));
         String responseBody = objectMapper.writeValueAsString(Map.of(
@@ -47,13 +52,12 @@ class OpenAiTagModelClientTest {
             return new OpenAiTagModelClient.TransportResponse(200, responseBody);
         };
         AiTagProperties.OpenAi properties = new AiTagProperties.OpenAi(
-                URI.create("https://example.test/v1/responses"),
                 "test-key",
-                "test-model",
-                Duration.ofSeconds(1)
+                "test-model"
         );
         OpenAiTagModelClient client = new OpenAiTagModelClient(
                 properties,
+                Duration.ofSeconds(1),
                 objectMapper,
                 transport
         );
@@ -72,6 +76,10 @@ class OpenAiTagModelClientTest {
                 "data:image/jpeg;base64,AQID",
                 "json_schema"
         );
+        assertThat(result.garments()).singleElement().satisfies(garment ->
+                assertThat(garment.piece()).isEqualTo(
+                        com.fitback.backend.external.aitag.GarmentPiece.BOTTOM
+                ));
         assertThat(result.canonicalTags()).singleElement().satisfies(prediction -> {
             assertThat(prediction.type()).isEqualTo(TagType.MATERIAL);
             assertThat(prediction.name()).isEqualTo("데님");
@@ -113,14 +121,17 @@ class OpenAiTagModelClientTest {
 
     private static OpenAiTagModelClient clientReturning(int statusCode, String responseBody) {
         AiTagProperties.OpenAi properties = new AiTagProperties.OpenAi(
-                URI.create("https://example.test/v1/responses"),
                 "test-key",
-                "test-model",
-                Duration.ofSeconds(1)
+                "test-model"
         );
         OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) ->
                 new OpenAiTagModelClient.TransportResponse(statusCode, responseBody);
-        return new OpenAiTagModelClient(properties, new ObjectMapper(), transport);
+        return new OpenAiTagModelClient(
+                properties,
+                Duration.ofSeconds(1),
+                new ObjectMapper(),
+                transport
+        );
     }
 
     private static void assertAnalysisNotReady(OpenAiTagModelClient client) {

@@ -36,7 +36,12 @@ public class AiTagProviderConfig {
             AiTagProperties properties,
             ObjectMapper objectMapper
     ) {
-        return new OpenAiTagModelClient(properties.openai(), objectMapper);
+        properties.openai().validateForUse();
+        return new OpenAiTagModelClient(
+                properties.openai(),
+                properties.requestTimeout(),
+                objectMapper
+        );
     }
 
     @Bean
@@ -49,9 +54,10 @@ public class AiTagProviderConfig {
             AwsCredentialsProvider credentialsProvider
     ) {
         AiTagProperties.Bedrock bedrock = properties.bedrock();
+        bedrock.validateForUse();
         ClientOverrideConfiguration override = ClientOverrideConfiguration.builder()
-                .apiCallTimeout(bedrock.apiCallTimeout())
-                .apiCallAttemptTimeout(bedrock.apiCallAttemptTimeout())
+                .apiCallTimeout(properties.requestTimeout())
+                .apiCallAttemptTimeout(properties.requestTimeout())
                 .build();
         return BedrockRuntimeClient.builder()
                 .region(Region.of(bedrock.region()))
