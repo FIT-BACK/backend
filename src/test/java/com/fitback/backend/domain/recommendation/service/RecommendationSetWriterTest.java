@@ -63,7 +63,7 @@ class RecommendationSetWriterTest {
 
         assertThatThrownBy(() -> writer.replaceCurrentSet(
                 input,
-                "SIMILARITY_V1",
+                "TAG_MATCH_RATIO_V1",
                 List.of()
         ))
                 .isInstanceOf(BusinessException.class)

@@ -95,7 +95,7 @@ providerIdentityKey = SHA-256(
 | `ProductStorageMode` | `product.storage_mode VARCHAR(20)` | `SNAPSHOT`, `IDENTITY_ONLY` |
 | `ProductAvailability` | `product.availability VARCHAR(30)` | `AVAILABLE`, `UNAVAILABLE`, `TEMPORARILY_UNRESOLVED`, `UNKNOWN` |
 | `ProductCategory` | category 컬럼 `VARCHAR(30)` | `OUTER`, `TOP`, `BOTTOM`, `DRESS`, `SHOES`, `BAG`, `ACCESSORY`, `OTHER` |
-| `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(30)` | `SIMILARITY_V1`, `SIMILARITY_THRESHOLD_V2` |
+| `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(30)` | `TAG_MATCH_RATIO_V1`, `TAG_MATCH_RATIO_THRESHOLD_V1` (신규 생성), `SIMILARITY_V1`, `SIMILARITY_THRESHOLD_V2` (레거시) |
 | `ProductTagSource` | `product_tag.source VARCHAR(20)` | `PROVIDER`, `AI`, `RULE`, `MANUAL` |
 | `ImageUploadPurpose` | API request enum | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
 | `ImagePurpose` | `image.purpose VARCHAR(30)` | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
@@ -380,8 +380,8 @@ CK_PRODUCT_PRICE_VALUE(
 | `category` | `VARCHAR(30)` | N | 생성 시점 내부 category |
 | `similarity_score` | `DECIMAL(5,2)` | N | 0~100 정규화 점수 |
 | `final_score` | `DECIMAL(5,2)` | N | 이번 범위에서는 similarity와 동일 |
-| `score_version` | `VARCHAR(30)` | N | `SIMILARITY_V1` 또는 `SIMILARITY_THRESHOLD_V2` |
-| `reason_codes` | `VARCHAR(500)` | N | 정렬된 내부 code 목록 |
+| `score_version` | `VARCHAR(30)` | N | 신규 `TAG_MATCH_RATIO_V1`/`TAG_MATCH_RATIO_THRESHOLD_V1`, 레거시 `SIMILARITY_V1`/`SIMILARITY_THRESHOLD_V2` |
+| `reason_codes` | `VARCHAR(500)` | N | 정렬된 내부 code 목록. 해당 code가 없으면 빈 문자열 |
 | `created_at` | `DATETIME(6)` | N | 생성 시각 |
 
 ```text

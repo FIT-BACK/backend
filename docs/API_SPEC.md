@@ -157,12 +157,12 @@ OTHER
 - `finalScore`는 이번 범위에서 `similarityScore`와 같다.
 - 상품 가격은 검색·상세·찜 화면 표시용이며 추천 점수나 가성비 문구에 사용하지 않는다.
 - 공급자 raw score를 그대로 내부 점수로 저장하지 않는다.
-- `SIMILARITY_V1`은 Adapter가 제공한 0~1 score를 0~100으로 변환하고 소수 둘째 자리에서
-  `HALF_UP`으로 저장한다.
-- score가 없으면 상품명·브랜드·카테고리에 분석 태그가 포함된 후보는 70점, 일치하지 않는
-  후보는 0점으로 계산한다.
-- 80점 이상은 `HIGH_SIMILARITY`, 분석 태그 문자열이 일치하면 `TAG_MATCH`, 그 외에는
-  `PROVIDER_SIMILARITY` reason code를 사용하며 code 목록은 정렬해 저장한다.
+- `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 타입 분석 태그 중 상품명·브랜드·카테고리에
+  포함된 태그의 비율을 0~100 점수로 계산하고 소수 둘째 자리에서 `HALF_UP`으로 저장한다.
+- `STYLE` 타입과 직접 입력 태그는 점수 계산의 분자와 분모에서 제외한다.
+- 점수 계산 대상 태그가 없으면 100점으로 계산한다. 공급자 raw score는 점수에 사용하지 않는다.
+- 80점 이상은 `HIGH_SIMILARITY`, 계산 대상 태그가 하나 이상 일치하면 `TAG_MATCH`를 사용한다.
+  계산 대상 태그가 있지만 일치 태그가 없으면 reason code는 빈 목록이며, code 목록은 정렬해 저장한다.
 
 ### 2.4 동점 정렬
 
@@ -492,7 +492,7 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
     "reportId": 501,
     "analysisTags": ["미니멀", "와이드핏", "베이지톤"],
     "matchPercentage": 70,
-    "scoreVersion": "SIMILARITY_THRESHOLD_V2",
+    "scoreVersion": "TAG_MATCH_RATIO_THRESHOLD_V1",
     "recommendationStatus": "CURRENT",
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
@@ -512,9 +512,9 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
               "observedAt": "2026-07-18T03:00:00Z"
             },
             "purchaseUrl": "https://mall.example/products/100",
-            "similarityScore": 82.00,
-            "finalScore": 82.00,
-            "reasonCodes": ["HIGH_SIMILARITY"],
+            "similarityScore": 100.00,
+            "finalScore": 100.00,
+            "reasonCodes": ["HIGH_SIMILARITY", "TAG_MATCH"],
             "availability": "AVAILABLE",
             "isSaved": false
           }
@@ -548,8 +548,8 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
 - 새 세트 저장에 성공하기 전 기존 세트를 삭제하지 않는다.
 - 입력 revision, 태그 key 또는 매칭값이 달라지면 `RECOMMENDATION409_1`을 반환하고 기존 세트를 유지한다.
 - body 요청은 `matchPercentage` 미만 후보를 materialization 전에 제외하고
-  `SIMILARITY_THRESHOLD_V2`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
-- body 없는 하위 호환 요청은 임계값 필터 없이 `SIMILARITY_V1`을 유지한다.
+  `TAG_MATCH_RATIO_THRESHOLD_V1`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
+- body 없는 하위 호환 요청은 임계값 필터 없이 `TAG_MATCH_RATIO_V1`로 저장한다.
 - 외부 공급자가 모두 실패하면 대표 실패 원인에 따라 malformed response는 `PRODUCT502_1`,
   timeout/auth/unavailable은 `PRODUCT503_1`, quota는 `PRODUCT503_2`이며 기존 세트를 유지한다.
 - materialize할 수 없는 후보는 현재 세트에서 제외하고 warning을 남긴다.
@@ -578,7 +578,7 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
     "reportId": 501,
     "tags": ["미니멀", "와이드핏", "베이지톤"],
     "recommendationStatus": "CURRENT",
-    "scoreVersion": "SIMILARITY_V1",
+    "scoreVersion": "TAG_MATCH_RATIO_V1",
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
       {"category": "TOP", "items": []},

@@ -135,6 +135,9 @@ public class RecommendedItem extends BaseCreateTimeEntity {
     }
 
     public List<String> getReasonCodeList() {
+        if (reasonCodes.isEmpty()) {
+            return List.of();
+        }
         return List.of(reasonCodes.split(","));
     }
 
@@ -176,7 +179,7 @@ public class RecommendedItem extends BaseCreateTimeEntity {
                 .distinct()
                 .sorted()
                 .collect(java.util.stream.Collectors.joining(","));
-        if (serialized.isEmpty() || serialized.length() > MAX_REASON_CODES_LENGTH) {
+        if (serialized.length() > MAX_REASON_CODES_LENGTH) {
             throw new IllegalArgumentException("reasonCodes length is invalid");
         }
         return serialized;
