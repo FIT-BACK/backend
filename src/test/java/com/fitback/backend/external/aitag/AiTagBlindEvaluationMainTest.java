@@ -31,6 +31,7 @@ class AiTagBlindEvaluationMainTest {
         assertThat(evaluation)
                 .containsKey("garments")
                 .doesNotContainKeys("canonicalTags", "suggestedTags");
+        assertThat(evaluation.get("garments")).isEqualTo(result.garments());
         assertThat(evaluation).containsKeys("inputTokens", "outputTokens");
         assertThat(evaluation.get("inputTokens")).isNull();
         assertThat(evaluation.get("outputTokens")).isNull();

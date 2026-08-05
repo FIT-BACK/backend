@@ -246,7 +246,7 @@ not add `SHOES` to `TagTargetClothing`; there is no approved mapping for that co
 - [ ] **Step 3: Use only mapped master tags**
 
 `CanonicalAiTagAnalyzer` reads the catalog through `TagRepository.findAllByOrderByIdAsc()`, whose
-#225 query joins `targetClothing`, so unmapped legacy tags do not enter the model schema.
+The `#225` query joins `targetClothing`, so unmapped legacy tags do not enter the model schema.
 
 - [ ] **Step 4: Run the existing migration gate**
 
