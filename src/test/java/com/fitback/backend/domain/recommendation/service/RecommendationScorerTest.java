@@ -16,59 +16,109 @@ class RecommendationScorerTest {
     private final RecommendationScorer scorer = new RecommendationScorer();
 
     @Test
-    void normalizesProviderScoreAndSortsReasonCodes() {
-        ExternalProductCandidate candidate = candidate(
-                "Minimal Linen Shirt",
-                new BigDecimal("0.91234")
-        );
-
+    void returnsOneHundredWhenAllAttributeTagsMatch() {
         RecommendationScorer.Score score = scorer.score(
-                List.of(new TagInput(10L, "minimal", TagType.DETAIL)),
-                List.of(),
-                candidate
+                List.of(
+                        tag(10L, "minimal", TagType.SILHOUETTE),
+                        tag(20L, "linen", TagType.MATERIAL),
+                        tag(30L, "button", TagType.DETAIL),
+                        tag(40L, "navy", TagType.COLOR)
+                ),
+                candidate("Minimal Shirt", "Navy Brand", "linen/button", null)
         );
 
-        assertThat(score.similarityScore()).isEqualByComparingTo("91.23");
+        assertThat(score.similarityScore()).isEqualByComparingTo("100.00");
         assertThat(score.reasonCodes()).containsExactly("HIGH_SIMILARITY", "TAG_MATCH");
     }
 
     @Test
-    void usesDeterministicTagFallbackWhenProviderScoreIsMissing() {
-        RecommendationScorer.Score matched = scorer.score(
-                List.of(new TagInput(10L, "shirt", TagType.DETAIL)),
-                List.of(),
-                candidate("Minimal Shirt", null)
+    void calculatesPartialMatchRatioAndRoundsHalfUp() {
+        RecommendationScorer.Score halfMatched = scorer.score(
+                List.of(
+                        tag(10L, "minimal", TagType.SILHOUETTE),
+                        tag(20L, "linen", TagType.MATERIAL),
+                        tag(30L, "button", TagType.DETAIL),
+                        tag(40L, "navy", TagType.COLOR)
+                ),
+                candidate("Minimal Shirt", null, "linen", null)
         );
-        RecommendationScorer.Score unmatched = scorer.score(
-                List.of(new TagInput(20L, "dress", TagType.SILHOUETTE)),
-                List.of(),
-                candidate("Minimal Shirt", null)
+        RecommendationScorer.Score twoOfThreeMatched = scorer.score(
+                List.of(
+                        tag(10L, "minimal", TagType.SILHOUETTE),
+                        tag(20L, "linen", TagType.MATERIAL),
+                        tag(30L, "button", TagType.DETAIL)
+                ),
+                candidate("Minimal Shirt", null, "linen", null)
         );
 
-        assertThat(matched.similarityScore()).isEqualByComparingTo("70.00");
-        assertThat(matched.reasonCodes()).containsExactly("TAG_MATCH");
-        assertThat(unmatched.similarityScore()).isEqualByComparingTo("0.00");
-        assertThat(unmatched.reasonCodes()).containsExactly("PROVIDER_SIMILARITY");
+        assertThat(halfMatched.similarityScore()).isEqualByComparingTo("50.00");
+        assertThat(halfMatched.reasonCodes()).containsExactly("TAG_MATCH");
+        assertThat(twoOfThreeMatched.similarityScore()).isEqualByComparingTo("66.67");
+        assertThat(twoOfThreeMatched.reasonCodes()).containsExactly("TAG_MATCH");
     }
 
     @Test
-    void includesCustomTagNamesInExistingMatchingPolicy() {
+    void returnsZeroAndEmptyReasonsWhenNoAttributeTagsMatch() {
         RecommendationScorer.Score score = scorer.score(
-                List.of(),
-                List.of("shirt"),
-                candidate("Minimal Shirt", null)
+                List.of(
+                        tag(10L, "wide", TagType.SILHOUETTE),
+                        tag(20L, "wool", TagType.MATERIAL),
+                        tag(30L, "zipper", TagType.DETAIL),
+                        tag(40L, "red", TagType.COLOR)
+                ),
+                candidate("Minimal Shirt", "Fixture", "tops/shirts", null)
         );
 
-        assertThat(score.similarityScore()).isEqualByComparingTo("70.00");
+        assertThat(score.similarityScore()).isEqualByComparingTo("0.00");
+        assertThat(score.reasonCodes()).isEmpty();
+    }
+
+    @Test
+    void returnsOneHundredWhenThereAreNoAttributeTags() {
+        RecommendationScorer.Score score = scorer.score(
+                List.of(tag(10L, "minimal", TagType.STYLE)),
+                candidate("Unrelated Product", null, null, null)
+        );
+
+        assertThat(score.similarityScore()).isEqualByComparingTo("100.00");
+        assertThat(score.reasonCodes()).containsExactly("HIGH_SIMILARITY");
+    }
+
+    @Test
+    void excludesStyleAndIgnoresProviderScore() {
+        RecommendationScorer.Score score = scorer.score(
+                List.of(
+                        tag(10L, "minimal", TagType.STYLE),
+                        tag(20L, "linen", TagType.MATERIAL),
+                        tag(30L, "button", TagType.DETAIL)
+                ),
+                candidate(
+                        "Minimal Shirt",
+                        null,
+                        "linen",
+                        new BigDecimal("0.01")
+                )
+        );
+
+        assertThat(score.similarityScore()).isEqualByComparingTo("50.00");
         assertThat(score.reasonCodes()).containsExactly("TAG_MATCH");
     }
 
-    private static ExternalProductCandidate candidate(String name, BigDecimal providerScore) {
+    private static TagInput tag(Long id, String name, TagType tagType) {
+        return new TagInput(id, name, tagType);
+    }
+
+    private static ExternalProductCandidate candidate(
+            String name,
+            String brand,
+            String categoryPath,
+            BigDecimal providerScore
+    ) {
         return new ExternalProductCandidate(
                 ProviderProductRef.stable("fixture", name, null, "store"),
                 name,
-                null,
-                "tops/shirts",
+                brand,
+                categoryPath,
                 null,
                 null,
                 providerScore,

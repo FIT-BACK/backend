@@ -119,7 +119,7 @@ class RecommendationServiceTest {
                 ArgumentCaptor.forClass(List.class);
         verify(setWriter).replaceCurrentSet(
                 org.mockito.ArgumentMatchers.eq(input),
-                org.mockito.ArgumentMatchers.eq("SIMILARITY_V1"),
+                org.mockito.ArgumentMatchers.eq("TAG_MATCH_RATIO_V1"),
                 selectionsCaptor.capture()
         );
         assertThat(selectionsCaptor.getValue())
@@ -128,16 +128,16 @@ class RecommendationServiceTest {
                         RecommendationSelection::rankNo
                 )
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(2L, 1),
-                        org.assertj.core.groups.Tuple.tuple(3L, 2),
-                        org.assertj.core.groups.Tuple.tuple(4L, 3),
-                        org.assertj.core.groups.Tuple.tuple(5L, 4),
-                        org.assertj.core.groups.Tuple.tuple(6L, 5),
-                        org.assertj.core.groups.Tuple.tuple(7L, 6),
-                        org.assertj.core.groups.Tuple.tuple(8L, 7),
-                        org.assertj.core.groups.Tuple.tuple(9L, 8),
-                        org.assertj.core.groups.Tuple.tuple(10L, 9),
-                        org.assertj.core.groups.Tuple.tuple(11L, 10)
+                        org.assertj.core.groups.Tuple.tuple(1L, 1),
+                        org.assertj.core.groups.Tuple.tuple(10L, 2),
+                        org.assertj.core.groups.Tuple.tuple(11L, 3),
+                        org.assertj.core.groups.Tuple.tuple(2L, 4),
+                        org.assertj.core.groups.Tuple.tuple(3L, 5),
+                        org.assertj.core.groups.Tuple.tuple(4L, 6),
+                        org.assertj.core.groups.Tuple.tuple(5L, 7),
+                        org.assertj.core.groups.Tuple.tuple(6L, 8),
+                        org.assertj.core.groups.Tuple.tuple(7L, 9),
+                        org.assertj.core.groups.Tuple.tuple(8L, 10)
                 );
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
         assertThat(response.partial()).isFalse();
@@ -191,7 +191,7 @@ class RecommendationServiceTest {
 
         RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
 
-        verify(setWriter).replaceCurrentSet(input, "SIMILARITY_V1", List.of());
+        verify(setWriter).replaceCurrentSet(input, "TAG_MATCH_RATIO_V1", List.of());
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
     }
 
@@ -225,17 +225,17 @@ class RecommendationServiceTest {
                 ArgumentCaptor.forClass(List.class);
         verify(setWriter).replaceCurrentSet(
                 org.mockito.ArgumentMatchers.eq(input),
-                org.mockito.ArgumentMatchers.eq("SIMILARITY_V1"),
+                org.mockito.ArgumentMatchers.eq("TAG_MATCH_RATIO_V1"),
                 selectionsCaptor.capture()
         );
         assertThat(selectionsCaptor.getValue()).singleElement().satisfies(selection -> {
-            assertThat(selection.similarityScore()).isEqualByComparingTo("70.00");
-            assertThat(selection.reasonCodes()).containsExactly("TAG_MATCH");
+            assertThat(selection.similarityScore()).isEqualByComparingTo("100.00");
+            assertThat(selection.reasonCodes()).containsExactly("HIGH_SIMILARITY");
         });
     }
 
     @Test
-    void excludesStyleTagFromSearchButKeepsItForScoring() {
+    void excludesStyleTagFromSearchAndScoring() {
         RecommendationInputSnapshot input = new RecommendationInputSnapshot(
                 501L,
                 1L,
@@ -243,14 +243,14 @@ class RecommendationServiceTest {
                 70,
                 List.of(
                         new TagInput(10L, "Fixture", TagType.STYLE),
-                        new TagInput(20L, "shirt", TagType.DETAIL)
+                        new TagInput(20L, "unmatched", TagType.DETAIL)
                 ),
                 List.of()
         );
         ExternalProductCandidate candidate = candidate(1, null, true);
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(new ProductSearchQuery(
-                "shirt",
+                "unmatched",
                 null,
                 null,
                 20
@@ -273,12 +273,12 @@ class RecommendationServiceTest {
                 ArgumentCaptor.forClass(List.class);
         verify(setWriter).replaceCurrentSet(
                 org.mockito.ArgumentMatchers.eq(input),
-                org.mockito.ArgumentMatchers.eq("SIMILARITY_V1"),
+                org.mockito.ArgumentMatchers.eq("TAG_MATCH_RATIO_V1"),
                 selectionsCaptor.capture()
         );
         assertThat(selectionsCaptor.getValue()).singleElement().satisfies(selection -> {
-            assertThat(selection.similarityScore()).isEqualByComparingTo("70.00");
-            assertThat(selection.reasonCodes()).containsExactly("TAG_MATCH");
+            assertThat(selection.similarityScore()).isEqualByComparingTo("0.00");
+            assertThat(selection.reasonCodes()).isEmpty();
         });
     }
 
@@ -329,14 +329,14 @@ class RecommendationServiceTest {
         RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
 
         verify(productCatalogPort, never()).search(any(ProductSearchQuery.class));
-        verify(setWriter).replaceCurrentSet(input, "SIMILARITY_V1", List.of());
+        verify(setWriter).replaceCurrentSet(input, "TAG_MATCH_RATIO_V1", List.of());
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
     }
 
     @Test
     void recordsCurrentEmptySetWhenEveryCandidateIsBelowThreshold() {
         RecommendationGenerateRequest request = new RecommendationGenerateRequest(
-                List.of(10L),
+                List.of(10L, 20L),
                 List.of(),
                 100
         );
@@ -345,7 +345,10 @@ class RecommendationServiceTest {
                 1L,
                 2,
                 100,
-                List.of(new TagInput(10L, "Fixture", TagType.DETAIL))
+                List.of(
+                        new TagInput(10L, "Fixture", TagType.DETAIL),
+                        new TagInput(20L, "Unmatched", TagType.COLOR)
+                )
         );
         when(inputCommandService.confirmAndRead(1L, 501L, request)).thenReturn(input);
         when(productCatalogPort.search(any(ProductSearchQuery.class)))
@@ -364,17 +367,17 @@ class RecommendationServiceTest {
         verify(materializationService, never()).materializeForRecommendation(any());
         verify(setWriter).replaceCurrentSet(
                 input,
-                "SIMILARITY_THRESHOLD_V2",
+                "TAG_MATCH_RATIO_THRESHOLD_V1",
                 List.of()
         );
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
-        assertThat(response.scoreVersion()).isEqualTo("SIMILARITY_THRESHOLD_V2");
+        assertThat(response.scoreVersion()).isEqualTo("TAG_MATCH_RATIO_THRESHOLD_V1");
     }
 
     @Test
     void thresholdOneHundredIncludesOnlyPerfectScoreCandidate() {
         RecommendationGenerateRequest request = new RecommendationGenerateRequest(
-                List.of(10L),
+                List.of(10L, 20L),
                 List.of(),
                 100
         );
@@ -383,10 +386,23 @@ class RecommendationServiceTest {
                 1L,
                 2,
                 100,
-                List.of(new TagInput(10L, "Fixture", TagType.DETAIL))
+                List.of(
+                        new TagInput(10L, "Fixture", TagType.DETAIL),
+                        new TagInput(20L, "Perfect", TagType.COLOR)
+                )
         );
-        ExternalProductCandidate perfect = candidate(1, "1.00", true);
-        ExternalProductCandidate below = candidate(2, "0.99", true);
+        ExternalProductCandidate perfect = candidate(
+                1,
+                "0.01",
+                true,
+                "Fixture Perfect Product"
+        );
+        ExternalProductCandidate below = candidate(
+                2,
+                "1.00",
+                true,
+                "Fixture Product"
+        );
         when(inputCommandService.confirmAndRead(1L, 501L, request)).thenReturn(input);
         when(productCatalogPort.search(any(ProductSearchQuery.class)))
                 .thenReturn(new ProductSearchResult(List.of(perfect, below), null));
@@ -416,7 +432,7 @@ class RecommendationServiceTest {
                 .toList();
         return new RecommendationResultResponse(
                 RecommendationStatus.CURRENT,
-                "SIMILARITY_V1",
+                "TAG_MATCH_RATIO_V1",
                 groups,
                 false,
                 List.of()
@@ -428,12 +444,21 @@ class RecommendationServiceTest {
             String score,
             boolean stable
     ) {
+        return candidate(id, score, stable, "Fixture Product " + id);
+    }
+
+    private static ExternalProductCandidate candidate(
+            int id,
+            String score,
+            boolean stable,
+            String name
+    ) {
         ProviderProductRef providerRef = stable
                 ? ProviderProductRef.stable("fixture", Integer.toString(id), null, "store")
                 : ProviderProductRef.unstable("fixture");
         return new ExternalProductCandidate(
                 providerRef,
-                "Fixture Product " + id,
+                name,
                 null,
                 "tops/shirts",
                 null,

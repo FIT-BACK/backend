@@ -200,6 +200,18 @@ class EntityInvariantTest {
                 List.of("HIGH_SIMILARITY")
         );
         assertThat(rankTen.getRankNo()).isEqualTo(10);
+        RecommendedItem noReasonCodes = RecommendedItem.create(
+                report,
+                product,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                "TAG_MATCH_RATIO_V1",
+                List.of()
+        );
+        assertThat(noReasonCodes.getReasonCodeList()).isEmpty();
         assertThatThrownBy(() -> RecommendedItem.create(
                 report,
                 product,
