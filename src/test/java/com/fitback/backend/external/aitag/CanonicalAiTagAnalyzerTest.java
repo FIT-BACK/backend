@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.domain.tag.entity.TagTargetClothing;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
@@ -21,9 +22,9 @@ class CanonicalAiTagAnalyzerTest {
     private final Image image = mock(Image.class);
     private final AiTagImage content = new AiTagImage(new byte[]{1}, "image/jpeg");
     private final List<Tag> catalog = List.of(
-            Tag.create("캐주얼", TagType.STYLE),
-            Tag.create("데님", TagType.MATERIAL),
-            Tag.create("와이드핏", TagType.SILHOUETTE)
+            Tag.create("캐주얼", TagType.STYLE, List.of(TagTargetClothing.ALL)),
+            Tag.create("데님", TagType.MATERIAL, List.of(TagTargetClothing.ALL)),
+            Tag.create("와이드핏", TagType.SILHOUETTE, List.of(TagTargetClothing.PANTS))
     );
 
     @BeforeEach

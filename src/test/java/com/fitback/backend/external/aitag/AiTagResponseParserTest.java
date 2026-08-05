@@ -33,7 +33,7 @@ class AiTagResponseParserTest {
                     {
                       "piece": "SHOES",
                       "canonicalTags": [
-                        {"type": "MATERIAL", "name": "레더"}
+                        {"type": "MATERIAL", "name": "가죽"}
                       ],
                       "suggestedTags": []
                     }
@@ -95,7 +95,7 @@ class AiTagResponseParserTest {
                     },
                     {
                       "piece": "TOP",
-                      "canonicalTags": [{"type": "COLOR", "name": "베이지톤"}],
+                      "canonicalTags": [{"type": "COLOR", "name": "베이지"}],
                       "suggestedTags": []
                     }
                   ]

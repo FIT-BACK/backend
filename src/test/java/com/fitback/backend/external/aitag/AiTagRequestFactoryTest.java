@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.domain.tag.entity.TagTargetClothing;
 import com.fitback.backend.domain.tag.entity.TagType;
 import java.util.List;
 import java.util.Map;
@@ -15,10 +16,10 @@ class AiTagRequestFactoryTest {
     @Test
     void createsGarmentScopedCanonicalAndFreeFormSuggestionSchema() {
         AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
-                Tag.create("와이드핏", TagType.SILHOUETTE),
-                Tag.create("베이지", TagType.COLOR),
-                Tag.create("캐주얼", TagType.STYLE),
-                Tag.create("데님", TagType.MATERIAL)
+                Tag.create("와이드핏", TagType.SILHOUETTE, List.of(TagTargetClothing.PANTS)),
+                Tag.create("베이지", TagType.COLOR, List.of(TagTargetClothing.ALL)),
+                Tag.create("캐주얼", TagType.STYLE, List.of(TagTargetClothing.ALL)),
+                Tag.create("데님", TagType.MATERIAL, List.of(TagTargetClothing.ALL))
         ));
 
         Map<String, Object> rootProperties = map(request.jsonSchema().get("properties"));

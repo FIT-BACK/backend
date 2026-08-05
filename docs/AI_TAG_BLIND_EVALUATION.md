@@ -8,6 +8,12 @@ OpenAI와 Amazon Bedrock 모델을 동일한 이미지, 프롬프트, JSON Schem
 목록을 함께 가진다. 프롬프트는 각 피스에서 `SILHOUETTE`, `COLOR`, `DETAIL`, `STYLE`,
 `MATERIAL`을 독립적으로 확인한다.
 
+AI 결과의 `GarmentPiece`는 모델 결과를 묶기 위한 `TOP`, `BOTTOM`, `SHOES` 계약이다.
+V25 태그 마스터의 적용 복종 `TagTargetClothing`은 `TOP`, `PANTS`, `SKIRT`, `DRESS`,
+`OUTER`, `ALL` 계약이며 서로 다른 enum으로 유지한다. `BOTTOM`을 `PANTS`로 간주하거나
+`SHOES`를 태그 적용 복종에 추가하지 않는다. canonical catalog는 V25에서 적용 복종이 매핑된
+태그만 조회해 사용한다.
+
 - `canonicalTags`: 승인된 카탈로그 안에서만 선택하며 운영 `AiTagAnalyzer`가 DB `Tag`로
   변환할 수 있는 목록
 - `suggestedTags`: 카탈로그에 없지만 이미지에서 직접 확인되는 자유 생성 후보로, 타입,

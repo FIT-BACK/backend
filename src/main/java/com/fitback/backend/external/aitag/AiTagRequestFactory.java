@@ -36,7 +36,6 @@ public final class AiTagRequestFactory {
                 Analyze the visible fashion item or outfit in the image. The image may show a
                 person-worn outfit or a product-only fashion image. Return one garment object for
                 each visible TOP, BOTTOM, and SHOES piece. Do not merge tags from different pieces.
-                Treat a one-piece garment or outerwear as TOP when no more specific piece applies.
 
                 For every garment, inspect all five dimensions independently: SILHOUETTE, COLOR,
                 DETAIL, STYLE, and MATERIAL. A dimension may have no result when it is not visibly

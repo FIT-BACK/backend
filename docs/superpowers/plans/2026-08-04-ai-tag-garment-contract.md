@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Align issue #219 adapters with issue #220 runtime configuration, extract canonical and free-form tags per garment piece across all five tag dimensions, and seed the approved MATERIAL catalog.
+**Goal:** Align issue #219 adapters with issue #220 runtime configuration, extract canonical and free-form tags per garment piece across all five tag dimensions, and consume the tag master taxonomy delivered by #225.
 
-**Architecture:** Provider-neutral model output becomes a list of `TOP`, `BOTTOM`, and `SHOES` garment results. OpenAI and Bedrock keep one shared prompt/schema and the existing `AiTagAnalyzer` persistence boundary flattens and deduplicates canonical tags because the current analysis database contract does not store garment ownership. Runtime configuration uses one validated request timeout for both providers and the exact #220 property names.
+**Architecture:** Provider-neutral model output becomes a list of `TOP`, `BOTTOM`, and `SHOES` garment results. This AI result grouping remains separate from #225's `TagTargetClothing` values (`TOP`, `PANTS`, `SKIRT`, `DRESS`, `OUTER`, `ALL`); it neither converts `BOTTOM` to `PANTS` nor adds `SHOES` to the taxonomy. OpenAI and Bedrock keep one shared prompt/schema and the existing `AiTagAnalyzer` persistence boundary flattens and deduplicates canonical tags because the current analysis database contract does not store garment ownership. Runtime configuration uses one validated request timeout for both providers and the exact #220 property names.
 
-**Tech Stack:** Java 21, Spring Boot 4.1 configuration properties, OpenAI Responses API, AWS SDK Bedrock Runtime, Jackson, Flyway/MySQL 8.4, JUnit 5, AssertJ
+**Tech Stack:** Java 21, Spring Boot 4.1 configuration properties, OpenAI Responses API, AWS SDK Bedrock Runtime, Jackson, JUnit 5, AssertJ
 
 ## Global Constraints
 
@@ -114,7 +114,7 @@ git commit -m "fix: AI 분석기 배포 설정 계약 정렬"
     },
     {
       "piece": "SHOES",
-      "canonicalTags": [{"type": "MATERIAL", "name": "레더"}],
+      "canonicalTags": [{"type": "MATERIAL", "name": "가죽"}],
       "suggestedTags": []
     }
   ]
@@ -220,62 +220,44 @@ git add src/test/java/com/fitback/backend/external/aitag/AiTagBlindEvaluationMai
 git commit -m "docs: 가먼트별 블라인드 평가 계약 반영"
 ```
 
-### Task 4: Seed the approved MATERIAL tag catalog
+### Task 4: Consume the #225 tag master taxonomy
 
 **Files:**
-- Create: `src/main/resources/db/migration/V24__seed_material_tags.sql`
-- Modify: `scripts/ci/test_mysql_migrations.sh`
-- Modify: `docs/ERD.md`
+- Verify: `src/main/resources/db/migration/V25__seed_tag_master_taxonomy.sql`
+- Verify: `src/main/java/com/fitback/backend/domain/tag/entity/TagType.java`
+- Verify: `src/main/java/com/fitback/backend/domain/tag/entity/TagTargetClothing.java`
+- Verify: `src/main/java/com/fitback/backend/domain/tag/repository/TagRepository.java`
 
 **Interfaces:**
-- Consumes: unique `tag.tag_name` and `TagType.MATERIAL`.
-- Produces: idempotent `코튼`, `데님`, `니트`, `레더`, and `린넨` MATERIAL rows matching the checked-in blind-evaluation catalog.
+- Consumes: #225's 43 canonical tags and mapped target clothing values from V25.
+- Produces: an AI canonical catalog containing only mapped master tags. No migration is added by #223.
 
-- [ ] **Step 1: Extend the MySQL assertion before creating V24**
+- [ ] **Step 1: Verify the merged taxonomy contract**
 
-```sql
-SUM(tag_name = '코튼' AND tag_type = 'MATERIAL'),
-SUM(tag_name = '데님' AND tag_type = 'MATERIAL'),
-SUM(tag_name = '니트' AND tag_type = 'MATERIAL'),
-SUM(tag_name = '레더' AND tag_type = 'MATERIAL'),
-SUM(tag_name = '린넨' AND tag_type = 'MATERIAL')
-```
+Confirm V25 is the only tag master seed and that its clothing values are exactly `TOP`, `PANTS`,
+`SKIRT`, `DRESS`, `OUTER`, and `ALL`. `TagType` remains `SILHOUETTE`, `COLOR`, `DETAIL`,
+`STYLE`, and `MATERIAL`.
 
-The script reapplies V24 after the first full migration pass and expects one row for every seeded name.
+- [ ] **Step 2: Keep the AI garment result grouping separate**
 
-- [ ] **Step 2: Run the migration gate and confirm the missing migration contract fails**
+`GarmentPiece` remains `TOP`, `BOTTOM`, and `SHOES`. Do not convert `BOTTOM` to `PANTS` and do
+not add `SHOES` to `TagTargetClothing`; there is no approved mapping for that conversion.
 
-Run: `bash scripts/ci/test_mysql_migrations.sh`
+- [ ] **Step 3: Use only mapped master tags**
 
-Expected: failure because the five MATERIAL rows do not exist.
+`CanonicalAiTagAnalyzer` reads the catalog through `TagRepository.findAllByOrderByIdAsc()`, whose
+#225 query joins `targetClothing`, so unmapped legacy tags do not enter the model schema.
 
-- [ ] **Step 3: Add idempotent MATERIAL inserts**
-
-```sql
-INSERT INTO tag (tag_name, tag_type, created_at, updated_at)
-SELECT '코튼', 'MATERIAL', CURRENT_TIMESTAMP(6), NULL
-WHERE NOT EXISTS (SELECT 1 FROM tag WHERE tag_name = '코튼');
-```
-
-Repeat the exact statement for `데님`, `니트`, `레더`, and `린넨`, and document V24 in the ERD migration notes.
-
-- [ ] **Step 4: Run the MySQL migration gate twice through its built-in idempotency check**
+- [ ] **Step 4: Run the existing migration gate**
 
 Run: `bash scripts/ci/test_mysql_migrations.sh`
 
 Expected: `MySQL migration tests passed.`
 
-- [ ] **Step 5: Commit the migration unit**
-
-```bash
-git add src/main/resources/db/migration/V24__seed_material_tags.sql scripts/ci/test_mysql_migrations.sh docs/ERD.md
-git commit -m "feat: AI 분석 MATERIAL 태그 시딩"
-```
-
 ### Task 5: Verify, publish, and separate the live production check
 
 **Files:**
-- Verify: all files changed by Tasks 1-4
+- Verify: all files changed by Tasks 1-3 and the merged #225 migration contract
 
 **Interfaces:**
 - Consumes: issue #219 acceptance criteria and the issue #220 deployment boundary.
