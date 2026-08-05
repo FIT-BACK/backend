@@ -235,6 +235,105 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void excludesStyleTagFromSearchButKeepsItForScoring() {
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                1,
+                70,
+                List.of(
+                        new TagInput(10L, "Fixture", TagType.STYLE),
+                        new TagInput(20L, "shirt", TagType.DETAIL)
+                ),
+                List.of()
+        );
+        ExternalProductCandidate candidate = candidate(1, null, true);
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "shirt",
+                null,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(candidate), null));
+        when(candidateMapper.category(candidate)).thenReturn(ProductCategory.TOP);
+        when(materializationService.materializeForRecommendation(candidate))
+                .thenReturn(new RecommendationMaterializationResult(1L, true));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L);
+
+        verify(productCatalogPort, never()).search(new ProductSearchQuery(
+                "Fixture",
+                null,
+                null,
+                20
+        ));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<RecommendationSelection>> selectionsCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(setWriter).replaceCurrentSet(
+                org.mockito.ArgumentMatchers.eq(input),
+                org.mockito.ArgumentMatchers.eq("SIMILARITY_V1"),
+                selectionsCaptor.capture()
+        );
+        assertThat(selectionsCaptor.getValue()).singleElement().satisfies(selection -> {
+            assertThat(selection.similarityScore()).isEqualByComparingTo("70.00");
+            assertThat(selection.reasonCodes()).containsExactly("TAG_MATCH");
+        });
+    }
+
+    @Test
+    void searchesNonStyleAndCustomTagsInInputOrder() {
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                1,
+                70,
+                List.of(
+                        new TagInput(10L, "실루엣", TagType.SILHOUETTE),
+                        new TagInput(20L, "색상", TagType.COLOR),
+                        new TagInput(30L, "스타일", TagType.STYLE),
+                        new TagInput(40L, "디테일", TagType.DETAIL),
+                        new TagInput(50L, "소재", TagType.MATERIAL)
+                ),
+                List.of("사용자 태그")
+        );
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenReturn(new ProductSearchResult(List.of(), null));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L);
+
+        ArgumentCaptor<ProductSearchQuery> queryCaptor =
+                ArgumentCaptor.forClass(ProductSearchQuery.class);
+        verify(productCatalogPort, org.mockito.Mockito.times(5)).search(queryCaptor.capture());
+        assertThat(queryCaptor.getAllValues())
+                .extracting(ProductSearchQuery::keyword)
+                .containsExactly("실루엣", "색상", "디테일", "소재", "사용자 태그");
+    }
+
+    @Test
+    void recordsEmptySetWithoutProviderCallWhenOnlyStyleTagsExist() {
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                1,
+                70,
+                List.of(new TagInput(10L, "스타일", TagType.STYLE)),
+                List.of()
+        );
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
+
+        verify(productCatalogPort, never()).search(any(ProductSearchQuery.class));
+        verify(setWriter).replaceCurrentSet(input, "SIMILARITY_V1", List.of());
+        assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
+    }
+
+    @Test
     void recordsCurrentEmptySetWhenEveryCandidateIsBelowThreshold() {
         RecommendationGenerateRequest request = new RecommendationGenerateRequest(
                 List.of(10L),
