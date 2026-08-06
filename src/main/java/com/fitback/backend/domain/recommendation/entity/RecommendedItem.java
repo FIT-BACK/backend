@@ -179,7 +179,7 @@ public class RecommendedItem extends BaseCreateTimeEntity {
                 .distinct()
                 .sorted()
                 .collect(java.util.stream.Collectors.joining(","));
-        if (serialized.length() > MAX_REASON_CODES_LENGTH) {
+        if (serialized.isEmpty() || serialized.length() > MAX_REASON_CODES_LENGTH) {
             throw new IllegalArgumentException("reasonCodes length is invalid");
         }
         return serialized;

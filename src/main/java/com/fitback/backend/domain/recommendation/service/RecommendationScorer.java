@@ -42,11 +42,19 @@ public class RecommendationScorer {
                 attributeTags.size()
         );
         Set<String> reasonCodes = new TreeSet<>();
-        if (similarityScore.compareTo(HIGH_SIMILARITY_THRESHOLD) >= 0) {
-            reasonCodes.add("HIGH_SIMILARITY");
+        int totalTagCount = attributeTags.size();
+        if (totalTagCount == 0) {
+            reasonCodes.add("NO_SCORABLE_TAGS");
+        } else if (matchedTagCount == 0) {
+            reasonCodes.add("NO_ATTRIBUTE_MATCH");
+        } else if (matchedTagCount == totalTagCount) {
+            reasonCodes.add("FULL_ATTRIBUTE_MATCH");
+        } else {
+            reasonCodes.add("PARTIAL_ATTRIBUTE_MATCH");
         }
-        if (matchedTagCount > 0) {
-            reasonCodes.add("TAG_MATCH");
+        if (totalTagCount > 0
+                && similarityScore.compareTo(HIGH_SIMILARITY_THRESHOLD) >= 0) {
+            reasonCodes.add("HIGH_SIMILARITY");
         }
         return new Score(similarityScore, List.copyOf(reasonCodes));
     }
