@@ -15,6 +15,8 @@ import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.product.service.model.ProductStorageMode;
 import com.fitback.backend.domain.product.service.model.ProviderIdentityType;
 import com.fitback.backend.domain.recommendation.entity.RecommendedItem;
+import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.trend.entity.TrendContent;
 import com.fitback.backend.domain.trend.entity.TrendTag;
 import jakarta.persistence.Table;
@@ -131,6 +133,22 @@ class EntityInvariantTest {
                 .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> content.changeContent("changed", null, null))
                 .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void trendTagUsesDefaultWeightAndRejectsNonPositiveWeight() {
+        TrendContent trend = TrendContent.create(
+                "title",
+                "https://example.com/trend.jpg",
+                null,
+                member()
+        );
+        Tag tag = Tag.create("미니멀", TagType.STYLE);
+
+        assertThat(TrendTag.create(trend, tag).getRelevanceWeight()).isEqualTo(1);
+        assertThat(TrendTag.create(trend, tag, 100).getRelevanceWeight()).isEqualTo(100);
+        assertThatThrownBy(() -> TrendTag.create(trend, tag, 0))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

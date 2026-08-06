@@ -1,0 +1,3 @@
+ALTER TABLE trend_tag
+    ADD COLUMN relevance_weight INT NOT NULL DEFAULT 1,
+    ADD CONSTRAINT CK_TREND_TAG_RELEVANCE_WEIGHT CHECK (relevance_weight > 0);
