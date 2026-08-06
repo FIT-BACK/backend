@@ -230,7 +230,7 @@ class RecommendationServiceTest {
         );
         assertThat(selectionsCaptor.getValue()).singleElement().satisfies(selection -> {
             assertThat(selection.similarityScore()).isEqualByComparingTo("100.00");
-            assertThat(selection.reasonCodes()).containsExactly("HIGH_SIMILARITY");
+            assertThat(selection.reasonCodes()).containsExactly("NO_SCORABLE_TAGS");
         });
     }
 
@@ -278,7 +278,7 @@ class RecommendationServiceTest {
         );
         assertThat(selectionsCaptor.getValue()).singleElement().satisfies(selection -> {
             assertThat(selection.similarityScore()).isEqualByComparingTo("0.00");
-            assertThat(selection.reasonCodes()).isEmpty();
+            assertThat(selection.reasonCodes()).containsExactly("NO_ATTRIBUTE_MATCH");
         });
     }
 

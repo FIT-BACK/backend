@@ -421,7 +421,7 @@ CK_PRODUCT_PRICE_VALUE(
 | `similarity_score` | `DECIMAL(5,2)` | N | 0~100 정규화 점수 |
 | `final_score` | `DECIMAL(5,2)` | N | 이번 범위에서는 similarity와 동일 |
 | `score_version` | `VARCHAR(30)` | N | 신규 `TAG_MATCH_RATIO_V1`/`TAG_MATCH_RATIO_THRESHOLD_V1`, 레거시 `SIMILARITY_V1`/`SIMILARITY_THRESHOLD_V2` |
-| `reason_codes` | `VARCHAR(500)` | N | 정렬된 내부 code 목록. 해당 code가 없으면 빈 문자열 |
+| `reason_codes` | `VARCHAR(500)` | N | 정렬된 내부 code 목록. 신규 추천 항목은 최소 1개 필수 |
 | `created_at` | `DATETIME(6)` | N | 생성 시각 |
 
 ```text
@@ -441,8 +441,10 @@ CHK_RECOMMENDED_SCORE(
 CHK_RECOMMENDED_INPUT_REVISION(input_revision >= 1)
 ```
 
-`reason_codes`는 공급자 자유 텍스트가 아니라 `HIGH_SIMILARITY`처럼 서버가 정의한 code만 저장한다.
-다국어 문장은 API 계층이 code로 조립한다.
+`reason_codes`는 공급자 자유 텍스트가 아니라 `FULL_ATTRIBUTE_MATCH`,
+`PARTIAL_ATTRIBUTE_MATCH`, `NO_ATTRIBUTE_MATCH`, `NO_SCORABLE_TAGS`, `HIGH_SIMILARITY`처럼
+서버가 정의한 code만 저장한다. 신규 추천 항목은 빈 목록과 허용 목록 외 code의 저장을 거부한다.
+레거시 빈 문자열은 조회 시 빈 code 목록으로 처리한다. 다국어 문장은 API 계층이 code로 조립한다.
 
 ### 4.3 `report_custom_tag`
 
