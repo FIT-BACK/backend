@@ -31,6 +31,7 @@ import com.fitback.backend.domain.lookbook.repository.LookbookImageRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookReportRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookRepository.RelatedLookbookRank;
 import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
@@ -919,6 +920,127 @@ class LookbookServiceTest {
     }
 
     @Test
+    void getRelatedLookbooksReturnsThreeItemsInRankOrderAndNextCursor() {
+        LocalDateTime createdAt = LocalDateTime.of(2026, 8, 7, 12, 0);
+        List<RelatedLookbookRank> rankedPage = List.of(
+                relatedRank(100L, 111L, createdAt),
+                relatedRank(99L, 110L, createdAt.minusMinutes(1)),
+                relatedRank(98L, 100L, createdAt.minusMinutes(2)),
+                relatedRank(97L, 10L, createdAt.minusMinutes(3))
+        );
+        Lookbook first = createListLookbook(100L, createdAt);
+        Lookbook second = createListLookbook(99L, createdAt.minusMinutes(1));
+        Lookbook third = createListLookbook(98L, createdAt.minusMinutes(2));
+        when(lookbookRepository.findRelatedLookbookRanks(
+                eq(1L),
+                eq(LookbookModerationStatus.VISIBLE),
+                any(Pageable.class)
+        )).thenReturn(rankedPage);
+        when(lookbookRepository.findAllByIdIn(List.of(100L, 99L, 98L)))
+                .thenReturn(List.of(third, first, second));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(
+                List.of(100L, 99L, 98L)
+        )).thenReturn(List.of(LookbookTag.create(first, minimalTag)));
+        when(lookbookLikeRepository.findLikedLookbookIds(
+                1L,
+                List.of(100L, 99L, 98L)
+        )).thenReturn(Set.of(100L));
+        when(memberProfileImageService.resolveProfileImageUrls(anyList()))
+                .thenReturn(Map.of(1L, "https://s3.example.com/profile.jpg"));
+
+        LookbookResponse.LookbookList response = lookbookService.getRelatedLookbooks(
+                1L,
+                null,
+                member
+        );
+
+        assertThat(response.items())
+                .extracting(LookbookResponse.LookbookItem::lookbookId)
+                .containsExactly(100L, 99L, 98L);
+        assertThat(response.items().get(0).tags()).containsExactly("미니멀");
+        assertThat(response.items().get(0).isLiked()).isTrue();
+        assertThat(response.nextCursor()).isEqualTo(98L);
+        assertThat(response.hasNext()).isTrue();
+        assertThat(response.pageSize()).isEqualTo(3);
+    }
+
+    @Test
+    void getRelatedLookbooksUsesCursorRankForNextPage() {
+        LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 8, 7, 12, 0);
+        RelatedLookbookRank cursorRank = relatedRank(100L, 111L, cursorCreatedAt);
+        RelatedLookbookRank nextRank = relatedRank(
+                99L,
+                110L,
+                cursorCreatedAt.minusMinutes(1)
+        );
+        Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
+        when(lookbookRepository.findRelatedLookbookRank(
+                1L,
+                100L,
+                LookbookModerationStatus.VISIBLE
+        )).thenReturn(Optional.of(cursorRank));
+        when(lookbookRepository.findNextRelatedLookbookRanks(
+                eq(1L),
+                eq(LookbookModerationStatus.VISIBLE),
+                eq(111L),
+                eq(cursorCreatedAt),
+                eq(100L),
+                any(Pageable.class)
+        )).thenReturn(List.of(nextRank));
+        when(lookbookRepository.findAllByIdIn(List.of(99L)))
+                .thenReturn(List.of(nextLookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(99L)))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookList response = lookbookService.getRelatedLookbooks(
+                1L,
+                100L,
+                null
+        );
+
+        assertThat(response.items())
+                .extracting(LookbookResponse.LookbookItem::lookbookId)
+                .containsExactly(99L);
+        assertThat(response.nextCursor()).isNull();
+        assertThat(response.hasNext()).isFalse();
+    }
+
+    @Test
+    void getRelatedLookbooksFailsWhenCursorIsNotRelatedToTrend() {
+        when(lookbookRepository.findRelatedLookbookRank(
+                1L,
+                999L,
+                LookbookModerationStatus.VISIBLE
+        )).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> lookbookService.getRelatedLookbooks(1L, 999L, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
+                );
+    }
+
+    @Test
+    void getRelatedLookbooksReturnsEmptyPageWhenNoTagsOverlap() {
+        when(lookbookRepository.findRelatedLookbookRanks(
+                eq(1L),
+                eq(LookbookModerationStatus.VISIBLE),
+                any(Pageable.class)
+        )).thenReturn(List.of());
+
+        LookbookResponse.LookbookList response = lookbookService.getRelatedLookbooks(
+                1L,
+                null,
+                null
+        );
+
+        assertThat(response.items()).isEmpty();
+        assertThat(response.nextCursor()).isNull();
+        assertThat(response.hasNext()).isFalse();
+        assertThat(response.pageSize()).isEqualTo(3);
+        verify(lookbookRepository, never()).findAllByIdIn(anyList());
+    }
+
+    @Test
     void searchLookbooksMapsTagsAndLikedState() {
         Lookbook lookbook = createListLookbook(
                 100L,
@@ -1014,5 +1136,35 @@ class LookbookServiceTest {
         ReflectionTestUtils.setField(lookbook, "id", lookbookId);
         ReflectionTestUtils.setField(lookbook, "createdAt", createdAt);
         return lookbook;
+    }
+
+    private RelatedLookbookRank relatedRank(
+            Long lookbookId,
+            Long relevanceScore,
+            LocalDateTime createdAt
+    ) {
+        return new TestRelatedLookbookRank(lookbookId, relevanceScore, createdAt);
+    }
+
+    private record TestRelatedLookbookRank(
+            Long lookbookId,
+            Long relevanceScore,
+            LocalDateTime createdAt
+    ) implements RelatedLookbookRank {
+
+        @Override
+        public Long getLookbookId() {
+            return lookbookId;
+        }
+
+        @Override
+        public Long getRelevanceScore() {
+            return relevanceScore;
+        }
+
+        @Override
+        public LocalDateTime getCreatedAt() {
+            return createdAt;
+        }
     }
 }

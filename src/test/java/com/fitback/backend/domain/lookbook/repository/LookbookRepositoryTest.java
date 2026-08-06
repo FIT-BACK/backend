@@ -9,18 +9,23 @@ import com.fitback.backend.domain.image.entity.ImageStatus;
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
 import com.fitback.backend.domain.lookbook.entity.LookbookModerationStatus;
 import com.fitback.backend.domain.lookbook.entity.LookbookTag;
+import com.fitback.backend.domain.lookbook.repository.LookbookRepository.RelatedLookbookRank;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
+import com.fitback.backend.domain.trend.entity.TrendContent;
+import com.fitback.backend.domain.trend.entity.TrendTag;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 @ActiveProfiles("test")
@@ -184,6 +189,94 @@ class LookbookRepositoryTest {
     }
 
     @Test
+    void relatedLookbookQueriesApplyWeightsAndExcludeUnavailableLookbooks() {
+        Member member = Member.create(
+                "related-member@fitback.com",
+                "related-member",
+                "password",
+                LoginProvider.EMAIL
+        );
+        entityManager.persist(member);
+
+        Tag minimalTag = Tag.create("관련-미니멀", TagType.DETAIL);
+        Tag neutralTag = Tag.create("관련-뉴트럴", TagType.DETAIL);
+        Tag streetTag = Tag.create("관련-스트릿", TagType.DETAIL);
+        entityManager.persist(minimalTag);
+        entityManager.persist(neutralTag);
+        entityManager.persist(streetTag);
+
+        TrendContent trend = TrendContent.create(
+                "관련 룩북 테스트",
+                "https://cdn.fitback.app/trends/related.jpg",
+                "트렌드 관련 룩북 조회 테스트",
+                member
+        );
+        entityManager.persist(trend);
+        entityManager.persist(TrendTag.create(trend, minimalTag, 100));
+        entityManager.persist(TrendTag.create(trend, neutralTag, 10));
+
+        Lookbook highest = persistLookbook(member, "related-highest");
+        entityManager.persist(LookbookTag.create(highest, minimalTag));
+        entityManager.persist(LookbookTag.create(highest, neutralTag));
+        Lookbook latestTie = persistLookbook(member, "related-latest-tie");
+        entityManager.persist(LookbookTag.create(latestTie, minimalTag));
+        Lookbook olderTie = persistLookbook(member, "related-older-tie");
+        entityManager.persist(LookbookTag.create(olderTie, minimalTag));
+
+        Lookbook hidden = createLookbook(member, "related-hidden");
+        ReflectionTestUtils.setField(
+                hidden,
+                "moderationStatus",
+                LookbookModerationStatus.AUTO_HIDDEN
+        );
+        entityManager.persist(hidden);
+        entityManager.persist(LookbookTag.create(hidden, minimalTag));
+        entityManager.persist(LookbookTag.create(hidden, neutralTag));
+
+        Lookbook deleted = createLookbook(member, "related-deleted");
+        deleted.softDelete();
+        entityManager.persist(deleted);
+        entityManager.persist(LookbookTag.create(deleted, minimalTag));
+        entityManager.persist(LookbookTag.create(deleted, neutralTag));
+
+        Lookbook unrelated = persistLookbook(member, "related-unrelated");
+        entityManager.persist(LookbookTag.create(unrelated, streetTag));
+
+        entityManager.flush();
+        LocalDateTime createdAt = LocalDateTime.of(2026, 8, 7, 12, 0);
+        updateCreatedAt(highest, createdAt);
+        updateCreatedAt(latestTie, createdAt.minusMinutes(1));
+        updateCreatedAt(olderTie, createdAt.minusMinutes(2));
+        entityManager.clear();
+
+        List<RelatedLookbookRank> firstPage = lookbookRepository.findRelatedLookbookRanks(
+                trend.getId(),
+                LookbookModerationStatus.VISIBLE,
+                PageRequest.of(0, 4)
+        );
+
+        assertThat(firstPage)
+                .extracting(RelatedLookbookRank::getLookbookId)
+                .containsExactly(highest.getId(), latestTie.getId(), olderTie.getId());
+        assertThat(firstPage)
+                .extracting(RelatedLookbookRank::getRelevanceScore)
+                .containsExactly(110L, 100L, 100L);
+
+        List<RelatedLookbookRank> nextPage = lookbookRepository.findNextRelatedLookbookRanks(
+                trend.getId(),
+                LookbookModerationStatus.VISIBLE,
+                100L,
+                createdAt.minusMinutes(1),
+                latestTie.getId(),
+                PageRequest.of(0, 4)
+        );
+
+        assertThat(nextPage)
+                .extracting(RelatedLookbookRank::getLookbookId)
+                .containsExactly(olderTie.getId());
+    }
+
+    @Test
     void incrementLikeCountUpdatesActiveLookbookAtomically() {
         Member member = Member.create(
                 "like-member@fitback.com",
@@ -299,5 +392,23 @@ class LookbookRepositoryTest {
                 null,
                 null
         );
+    }
+
+    private Lookbook persistLookbook(Member member, String imageName) {
+        Lookbook lookbook = createLookbook(member, imageName);
+        entityManager.persist(lookbook);
+        return lookbook;
+    }
+
+    // JPA가 관리하는 생성 시간을 고정하여 동점 룩북의 정렬 조건 검증
+    private void updateCreatedAt(Lookbook lookbook, LocalDateTime createdAt) {
+        entityManager.createNativeQuery("""
+                        UPDATE lookbook
+                        SET created_at = :createdAt
+                        WHERE lookbook_id = :lookbookId
+                        """)
+                .setParameter("createdAt", createdAt)
+                .setParameter("lookbookId", lookbook.getId())
+                .executeUpdate();
     }
 }
