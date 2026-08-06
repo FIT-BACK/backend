@@ -53,12 +53,15 @@ class TrendContentRepositoryTest {
         entityManager.persist(TrendTag.create(latestMatched, minimalTag));
         TrendContent latestUnmatched = persistTrend("비관심-최신", interestedMember);
         entityManager.persist(TrendTag.create(latestUnmatched, streetTag));
+        TrendContent olderUnmatched = persistTrend("비관심-이전", interestedMember);
+        entityManager.persist(TrendTag.create(olderUnmatched, streetTag));
 
         entityManager.flush();
         LocalDateTime baseTime = LocalDateTime.of(2026, 8, 7, 12, 0);
         updateCreatedAt(olderMatched, baseTime.minusMinutes(2));
         updateCreatedAt(latestMatched, baseTime.minusMinutes(1));
         updateCreatedAt(latestUnmatched, baseTime);
+        updateCreatedAt(olderUnmatched, baseTime.minusMinutes(3));
         entityManager.clear();
 
         List<TrendContent> personalized = trendContentRepository
@@ -72,7 +75,8 @@ class TrendContentRepositoryTest {
                 .containsExactly(
                         latestMatched.getId(),
                         olderMatched.getId(),
-                        latestUnmatched.getId()
+                        latestUnmatched.getId(),
+                        olderUnmatched.getId()
                 );
 
         boolean cursorMatchesInterest = trendTagRepository.existsMemberInterestMatch(
@@ -91,7 +95,25 @@ class TrendContentRepositoryTest {
         assertThat(cursorMatchesInterest).isTrue();
         assertThat(nextPage)
                 .extracting(TrendContent::getId)
-                .containsExactly(latestUnmatched.getId());
+                .containsExactly(latestUnmatched.getId(), olderUnmatched.getId());
+
+        boolean unmatchedCursorMatchesInterest = trendTagRepository.existsMemberInterestMatch(
+                latestUnmatched.getId(),
+                interestedMember.getId()
+        );
+        List<TrendContent> nextPageAfterUnmatchedCursor = trendContentRepository
+                .findNextPagePrioritizingMemberTags(
+                        interestedMember.getId(),
+                        unmatchedCursorMatchesInterest,
+                        baseTime,
+                        latestUnmatched.getId(),
+                        PageRequest.of(0, 10)
+                );
+
+        assertThat(unmatchedCursorMatchesInterest).isFalse();
+        assertThat(nextPageAfterUnmatchedCursor)
+                .extracting(TrendContent::getId)
+                .containsExactly(olderUnmatched.getId());
 
         List<TrendContent> noInterest = trendContentRepository
                 .findAllPrioritizingMemberTags(
@@ -104,7 +126,8 @@ class TrendContentRepositoryTest {
                 .containsExactly(
                         latestUnmatched.getId(),
                         latestMatched.getId(),
-                        olderMatched.getId()
+                        olderMatched.getId(),
+                        olderUnmatched.getId()
                 );
     }
 
