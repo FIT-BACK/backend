@@ -443,7 +443,8 @@ CHK_RECOMMENDED_INPUT_REVISION(input_revision >= 1)
 
 `reason_codes`는 공급자 자유 텍스트가 아니라 `FULL_ATTRIBUTE_MATCH`,
 `PARTIAL_ATTRIBUTE_MATCH`, `NO_ATTRIBUTE_MATCH`, `NO_SCORABLE_TAGS`, `HIGH_SIMILARITY`처럼
-서버가 정의한 code만 저장한다. 다국어 문장은 API 계층이 code로 조립한다.
+서버가 정의한 code만 저장한다. 신규 추천 항목은 빈 목록과 허용 목록 외 code의 저장을 거부한다.
+레거시 빈 문자열은 조회 시 빈 code 목록으로 처리한다. 다국어 문장은 API 계층이 code로 조립한다.
 
 ### 4.3 `report_custom_tag`
 

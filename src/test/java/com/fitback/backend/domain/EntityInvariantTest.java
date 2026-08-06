@@ -211,6 +211,18 @@ class EntityInvariantTest {
                 "TAG_MATCH_RATIO_V1",
                 List.of()
         )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> RecommendedItem.create(
+                report,
+                product,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "TAG_MATCH_RATIO_V1",
+                List.of("UNKNOWN_CODE")
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported reasonCode");
         RecommendedItem legacyBlankReasonCodes = RecommendedItem.create(
                 report,
                 product,

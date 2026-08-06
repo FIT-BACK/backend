@@ -166,7 +166,9 @@ OTHER
 - 계산 대상 태그가 없으면 `NO_SCORABLE_TAGS`를 사용한다. 이때 계산 점수는 100점이지만
   실제 매칭 결과가 아니므로 `HIGH_SIMILARITY`를 추가하지 않는다.
 - 계산 대상 태그가 있고 점수가 80점 이상이면 `HIGH_SIMILARITY`를 추가한다.
-- 모든 추천 상품은 최소 하나의 reason code를 가지며 code 목록은 정렬해 저장한다.
+- `TAG_MATCH_RATIO_V1`과 `TAG_MATCH_RATIO_THRESHOLD_V1`로 새로 생성되는 모든 추천 상품은
+  최소 하나의 reason code를 가지며 code 목록은 정렬해 저장한다.
+- 레거시 추천 항목의 `reason_codes` 저장값이 빈 문자열이면 조회 응답의 `reasonCodes`는 빈 배열이다.
 
 ### 2.4 동점 정렬
 
