@@ -459,6 +459,7 @@ public class LookbookService {
 
     // 관련도 점수, 생성 시간, id 순서로 다음 룩북 페이지 조회
     private List<RelatedLookbookRank> findRelatedLookbookPage(Long trendId, Long cursor) {
+        // 첫 페이지는 공통 태그 가중치 합계가 높은 룩북부터 조회
         if (cursor == null) {
             return lookbookRepository.findRelatedLookbookRanks(
                     trendId,
@@ -467,6 +468,7 @@ public class LookbookService {
             );
         }
 
+        // id만으로 정렬 위치를 알 수 없으므로 커서 룩북의 점수와 생성 시간을 함께 복원
         RelatedLookbookRank cursorRank = lookbookRepository.findRelatedLookbookRank(
                         trendId,
                         cursor,

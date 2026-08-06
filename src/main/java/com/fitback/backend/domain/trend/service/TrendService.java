@@ -110,14 +110,17 @@ public class TrendService {
     // tag 필터를 우선 적용하고 로그인 회원은 관심 태그 기준으로 트렌드 조회
     private List<TrendContent> findTrendPage(Long cursor, String tag, Member member) {
 
+        // 명시적으로 요청한 태그 필터는 로그인 회원의 관심 태그 개인화보다 우선 적용
         if (tag != null) {
             return findTagFilteredTrendPage(cursor, tag);
         }
 
+        // 로그인 회원은 관심 태그 일치 그룹을 먼저 보여주고 나머지 그룹을 이어서 조회
         if (member != null) {
             return findPersonalizedTrendPage(cursor, member.getId());
         }
 
+        // 비로그인 요청은 회원 정보 없이 전체 트렌드를 최신순으로 조회
         return findLatestTrendPage(cursor);
     }
 
@@ -156,6 +159,7 @@ public class TrendService {
 
     // 관심 태그 일치 그룹을 우선하고 각 그룹 안에서는 최신순 조회
     private List<TrendContent> findPersonalizedTrendPage(Long cursor, Long memberId) {
+        // 첫 페이지는 관심 일치 여부와 최신순을 한 번에 적용
         if (cursor == null) {
             return trendContentRepository.findAllPrioritizingMemberTags(
                     memberId,
@@ -165,6 +169,8 @@ public class TrendService {
 
         TrendContent cursorTrend = trendContentRepository.findById(cursor)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TREND_NOT_FOUND));
+
+        // 커서가 속한 그룹을 전달하여 비관심 그룹 진입 후 관심 그룹이 다시 노출되지 않도록 처리
         boolean cursorMatchesInterest = trendTagRepository.existsMemberInterestMatch(
                 cursorTrend.getId(),
                 memberId

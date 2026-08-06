@@ -67,7 +67,7 @@ public interface TrendContentRepository extends JpaRepository<TrendContent, Long
             Pageable pageable
     );
 
-    // 개인화 정렬 그룹과 최신순 조건을 함께 적용하여 커서 이후 조회
+    // 관심 커서 뒤에는 남은 관심·비관심 그룹을, 비관심 커서 뒤에는 남은 비관심 그룹만 조회
     @Query("""
             SELECT trend
             FROM TrendContent trend

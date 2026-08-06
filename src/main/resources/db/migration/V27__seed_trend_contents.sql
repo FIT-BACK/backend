@@ -94,6 +94,7 @@ INSERT INTO trend_content (
         NULL
     );
 
+-- 대표 스타일 태그에 더 큰 가중치를 주어 관련 룩북을 우선 노출한다.
 INSERT INTO trend_tag (trend_id, tag_id, relevance_weight, created_at)
 SELECT mapping.trend_id, tag.tag_id, mapping.relevance_weight, CURRENT_TIMESTAMP(6)
 FROM (

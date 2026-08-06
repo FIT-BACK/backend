@@ -46,9 +46,9 @@ public class TrendTag extends BaseCreateTimeEntity {
     @JoinColumn(name = "tag_id", nullable = false)
     private Tag tag;
 
+    // 트렌드와 공통 태그를 가진 룩북의 관련도 합산 점수로 사용
     @Column(name = "relevance_weight", nullable = false)
     private int relevanceWeight = DEFAULT_RELEVANCE_WEIGHT;
-
 
     private TrendTag(TrendContent trend, Tag tag) {
         this(trend, tag, DEFAULT_RELEVANCE_WEIGHT);

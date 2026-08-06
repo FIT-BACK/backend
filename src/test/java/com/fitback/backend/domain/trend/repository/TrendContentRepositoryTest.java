@@ -97,6 +97,7 @@ class TrendContentRepositoryTest {
                 .extracting(TrendContent::getId)
                 .containsExactly(latestUnmatched.getId(), olderUnmatched.getId());
 
+        // 비관심 그룹에 진입한 뒤에는 앞선 관심 그룹이 다음 페이지에 다시 노출되지 않아야 함
         boolean unmatchedCursorMatchesInterest = trendTagRepository.existsMemberInterestMatch(
                 latestUnmatched.getId(),
                 interestedMember.getId()
