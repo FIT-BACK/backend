@@ -38,6 +38,7 @@ seed_baseline_schema() {
   local database="$1"
   local member_columns="$2"
 
+  # V17이 legacy trend_tag 중복을 정리한 뒤 UNIQUE 제약을 생성하는지 검증한다.
   printf '%s\n' \
     "CREATE TABLE member (${member_columns});" \
     "INSERT INTO member (member_id, email) VALUES (1, NULL), (8001, 'fitback.demo+content@gmail.com');" \
@@ -112,6 +113,77 @@ if docker exec -i "$container_name" mysql -uroot fitback_mismatched_social_uid \
   < src/main/resources/db/migration/V12__add_member_social_uid.sql \
   >/dev/null 2>&1; then
   echo 'V12 accepted a mismatched UK_MEMBER_PROVIDER_UID constraint.' >&2
+  exit 1
+fi
+
+seed_v27_prerequisite_schema() {
+  local database="$1"
+
+  docker exec "$container_name" mysql -uroot -e \
+    "CREATE DATABASE $database;
+     CREATE TABLE $database.member (
+       member_id BIGINT NOT NULL PRIMARY KEY,
+       email VARCHAR(255) NULL
+     );
+     CREATE TABLE $database.tag (
+       tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       tag_name VARCHAR(50) NOT NULL UNIQUE,
+       tag_type VARCHAR(30) NOT NULL,
+       created_at DATETIME(6) NOT NULL,
+       updated_at DATETIME(6) NULL
+     );
+     CREATE TABLE $database.tag_target_clothing (
+       tag_id BIGINT NOT NULL,
+       target_clothing VARCHAR(20) NOT NULL,
+       PRIMARY KEY (tag_id, target_clothing)
+     );
+     CREATE TABLE $database.trend_content (
+       trend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       title VARCHAR(100) NOT NULL,
+       image_url VARCHAR(2048) NOT NULL,
+       description TEXT NULL,
+       created_by BIGINT NOT NULL,
+       created_at DATETIME(6) NOT NULL,
+       updated_at DATETIME(6) NULL
+     );
+     CREATE TABLE $database.trend_tag (
+       trend_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       trend_id BIGINT NOT NULL,
+       tag_id BIGINT NOT NULL,
+       relevance_weight INT NOT NULL DEFAULT 1,
+       created_at DATETIME(6) NOT NULL
+     );"
+}
+
+seed_v27_prerequisite_schema fitback_missing_trend_author
+if missing_author_error="$(docker exec -i "$container_name" mysql -uroot \
+  fitback_missing_trend_author \
+  < src/main/resources/db/migration/V27__seed_trend_contents.sql 2>&1)"; then
+  echo 'V27 accepted a schema without the required content author.' >&2
+  exit 1
+fi
+if [[ "$missing_author_error" != *'V27_CONTENT_AUTHOR_REQUIRED'* ]]; then
+  echo "V27 returned an unexpected missing-author error: $missing_author_error" >&2
+  exit 1
+fi
+
+seed_v27_prerequisite_schema fitback_conflicting_trend_ids
+docker exec "$container_name" mysql -uroot fitback_conflicting_trend_ids -e \
+  "INSERT INTO member (member_id, email)
+   VALUES (8001, 'fitback.demo+content@gmail.com');
+   INSERT INTO trend_content (
+     trend_id, title, image_url, created_by, created_at
+   ) VALUES (
+     1, 'Existing Trend', 'https://example.com/existing.jpg', 8001, NOW()
+   );"
+if conflicting_id_error="$(docker exec -i "$container_name" mysql -uroot \
+  fitback_conflicting_trend_ids \
+  < src/main/resources/db/migration/V27__seed_trend_contents.sql 2>&1)"; then
+  echo 'V27 accepted a schema with a conflicting trend ID.' >&2
+  exit 1
+fi
+if [[ "$conflicting_id_error" != *'V27_TREND_IDS_1_TO_6_MUST_BE_EMPTY'* ]]; then
+  echo "V27 returned an unexpected trend-ID conflict error: $conflicting_id_error" >&2
   exit 1
 fi
 

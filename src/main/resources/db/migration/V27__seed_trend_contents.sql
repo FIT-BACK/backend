@@ -7,6 +7,31 @@ SET @trend_author_id := (
     LIMIT 1
 );
 
+-- 콘텐츠 작성자 계정이 없으면 원인을 식별할 수 있는 이름으로 마이그레이션 중단
+SET @assert_sql := IF(
+    @trend_author_id IS NULL,
+    'SELECT * FROM V27_CONTENT_AUTHOR_REQUIRED',
+    'DO 1'
+);
+PREPARE statement FROM @assert_sql;
+EXECUTE statement;
+DEALLOCATE PREPARE statement;
+
+-- 프론트 targetId 계약을 덮어쓰지 않도록 1~6번 ID가 비어 있는 환경에서만 시드
+SET @trend_id_conflict_count := (
+    SELECT COUNT(*)
+    FROM trend_content
+    WHERE trend_id BETWEEN 1 AND 6
+);
+SET @assert_sql := IF(
+    @trend_id_conflict_count > 0,
+    'SELECT * FROM V27_TREND_IDS_1_TO_6_MUST_BE_EMPTY',
+    'DO 1'
+);
+PREPARE statement FROM @assert_sql;
+EXECUTE statement;
+DEALLOCATE PREPARE statement;
+
 INSERT INTO tag (tag_name, tag_type, created_at, updated_at)
 SELECT trend_tag.tag_name, 'STYLE', CURRENT_TIMESTAMP(6), NULL
 FROM (
