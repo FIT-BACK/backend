@@ -308,7 +308,7 @@ class AnalysisReportSaveServiceTest {
                 new BigDecimal("90.00"),
                 new BigDecimal("88.00"),
                 "SIMILARITY_V1",
-                List.of("TAG_MATCH")
+                List.of("HIGH_SIMILARITY")
         );
     }
 }

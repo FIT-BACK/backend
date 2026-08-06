@@ -119,7 +119,7 @@ class AnalysisLookbookLinkIntegrationTest {
                 new BigDecimal("90.00"),
                 new BigDecimal("88.00"),
                 "SIMILARITY_V1",
-                List.of("TAG_MATCH")
+                List.of("HIGH_SIMILARITY")
         ));
         Tag tag = tagRepository.save(Tag.create("미니멀", TagType.DETAIL));
         String requestBody = objectMapper.writeValueAsString(Map.of(

@@ -99,10 +99,10 @@ class RecommendationControllerIntegrationTest {
                         .value(100.00))
                 .andExpect(jsonPath(
                         "$.data.recommendationGroups[1].items[0].reasonCodes[0]"
-                ).value("HIGH_SIMILARITY"))
+                ).value("FULL_ATTRIBUTE_MATCH"))
                 .andExpect(jsonPath(
                         "$.data.recommendationGroups[1].items[0].reasonCodes[1]"
-                ).value("TAG_MATCH"))
+                ).value("HIGH_SIMILARITY"))
                 .andExpect(jsonPath("$.data.recommendationGroups[7].category").value("OTHER"))
                 .andExpect(jsonPath("$.data.partial").value(true))
                 .andExpect(jsonPath("$.data.warnings[0]").value("MATERIALIZATION_SKIPPED"));
@@ -185,7 +185,7 @@ class RecommendationControllerIntegrationTest {
     }
 
     @Test
-    void persistsAndReturnsEmptyReasonsWhenNoAttributeTagsMatch() throws Exception {
+    void persistsAndReturnsNoAttributeMatchReason() throws Exception {
         String email = "recommendation-empty-reasons@fitback.com";
         String accessToken = signUpAndGetAccessToken(email);
         AnalysisReport report = report(email, "Unmatched");
@@ -209,15 +209,19 @@ class RecommendationControllerIntegrationTest {
                         "$.data.recommendationGroups[1].items[0].similarityScore"
                 ).value(0.00))
                 .andExpect(jsonPath(
-                        "$.data.recommendationGroups[1].items[0].reasonCodes"
-                ).isEmpty());
+                        "$.data.recommendationGroups[1].items[0].reasonCodes.length()"
+                ).value(1))
+                .andExpect(jsonPath(
+                        "$.data.recommendationGroups[1].items[0].reasonCodes[0]"
+                ).value("NO_ATTRIBUTE_MATCH"));
 
         assertThat(recommendedItemRepository.findAll())
                 .isNotEmpty()
                 .allSatisfy(item -> {
                     assertThat(item.getScoreVersion())
                             .isEqualTo("TAG_MATCH_RATIO_THRESHOLD_V1");
-                    assertThat(item.getReasonCodeList()).isEmpty();
+                    assertThat(item.getReasonCodeList())
+                            .containsExactly("NO_ATTRIBUTE_MATCH");
                 });
         assertThat(analysisReportRepository.findById(report.getId()).orElseThrow()
                 .getResultScoreVersion()).isEqualTo("TAG_MATCH_RATIO_THRESHOLD_V1");

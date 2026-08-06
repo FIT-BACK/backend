@@ -161,8 +161,14 @@ OTHER
   포함된 태그의 비율을 0~100 점수로 계산하고 소수 둘째 자리에서 `HALF_UP`으로 저장한다.
 - `STYLE` 타입과 직접 입력 태그는 점수 계산의 분자와 분모에서 제외한다.
 - 점수 계산 대상 태그가 없으면 100점으로 계산한다. 공급자 raw score는 점수에 사용하지 않는다.
-- 80점 이상은 `HIGH_SIMILARITY`, 계산 대상 태그가 하나 이상 일치하면 `TAG_MATCH`를 사용한다.
-  계산 대상 태그가 있지만 일치 태그가 없으면 reason code는 빈 목록이며, code 목록은 정렬해 저장한다.
+- 계산 대상 태그가 모두 일치하면 `FULL_ATTRIBUTE_MATCH`, 일부만 일치하면
+  `PARTIAL_ATTRIBUTE_MATCH`, 하나도 일치하지 않으면 `NO_ATTRIBUTE_MATCH`를 사용한다.
+- 계산 대상 태그가 없으면 `NO_SCORABLE_TAGS`를 사용한다. 이때 계산 점수는 100점이지만
+  실제 매칭 결과가 아니므로 `HIGH_SIMILARITY`를 추가하지 않는다.
+- 계산 대상 태그가 있고 점수가 80점 이상이면 `HIGH_SIMILARITY`를 추가한다.
+- `TAG_MATCH_RATIO_V1`과 `TAG_MATCH_RATIO_THRESHOLD_V1`로 새로 생성되는 모든 추천 상품은
+  최소 하나의 reason code를 가지며 code 목록은 정렬해 저장한다.
+- 레거시 추천 항목의 `reason_codes` 저장값이 빈 문자열이면 조회 응답의 `reasonCodes`는 빈 배열이다.
 
 ### 2.4 동점 정렬
 
@@ -514,7 +520,7 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
             "purchaseUrl": "https://mall.example/products/100",
             "similarityScore": 100.00,
             "finalScore": 100.00,
-            "reasonCodes": ["HIGH_SIMILARITY", "TAG_MATCH"],
+            "reasonCodes": ["FULL_ATTRIBUTE_MATCH", "HIGH_SIMILARITY"],
             "availability": "AVAILABLE",
             "isSaved": false
           }

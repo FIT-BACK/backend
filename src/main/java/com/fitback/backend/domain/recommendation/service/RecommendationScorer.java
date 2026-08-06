@@ -1,6 +1,7 @@
 package com.fitback.backend.domain.recommendation.service;
 
 import com.fitback.backend.domain.product.service.model.ExternalProductCandidate;
+import com.fitback.backend.domain.recommendation.entity.RecommendationReasonCode;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot.TagInput;
 import com.fitback.backend.domain.tag.entity.TagType;
 import java.math.BigDecimal;
@@ -42,11 +43,19 @@ public class RecommendationScorer {
                 attributeTags.size()
         );
         Set<String> reasonCodes = new TreeSet<>();
-        if (similarityScore.compareTo(HIGH_SIMILARITY_THRESHOLD) >= 0) {
-            reasonCodes.add("HIGH_SIMILARITY");
+        int totalTagCount = attributeTags.size();
+        if (totalTagCount == 0) {
+            reasonCodes.add(RecommendationReasonCode.NO_SCORABLE_TAGS.name());
+        } else if (matchedTagCount == 0) {
+            reasonCodes.add(RecommendationReasonCode.NO_ATTRIBUTE_MATCH.name());
+        } else if (matchedTagCount == totalTagCount) {
+            reasonCodes.add(RecommendationReasonCode.FULL_ATTRIBUTE_MATCH.name());
+        } else {
+            reasonCodes.add(RecommendationReasonCode.PARTIAL_ATTRIBUTE_MATCH.name());
         }
-        if (matchedTagCount > 0) {
-            reasonCodes.add("TAG_MATCH");
+        if (totalTagCount > 0
+                && similarityScore.compareTo(HIGH_SIMILARITY_THRESHOLD) >= 0) {
+            reasonCodes.add(RecommendationReasonCode.HIGH_SIMILARITY.name());
         }
         return new Score(similarityScore, List.copyOf(reasonCodes));
     }

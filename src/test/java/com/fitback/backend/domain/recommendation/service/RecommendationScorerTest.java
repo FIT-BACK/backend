@@ -28,7 +28,8 @@ class RecommendationScorerTest {
         );
 
         assertThat(score.similarityScore()).isEqualByComparingTo("100.00");
-        assertThat(score.reasonCodes()).containsExactly("HIGH_SIMILARITY", "TAG_MATCH");
+        assertThat(score.reasonCodes())
+                .containsExactly("FULL_ATTRIBUTE_MATCH", "HIGH_SIMILARITY");
     }
 
     @Test
@@ -52,13 +53,32 @@ class RecommendationScorerTest {
         );
 
         assertThat(halfMatched.similarityScore()).isEqualByComparingTo("50.00");
-        assertThat(halfMatched.reasonCodes()).containsExactly("TAG_MATCH");
+        assertThat(halfMatched.reasonCodes()).containsExactly("PARTIAL_ATTRIBUTE_MATCH");
         assertThat(twoOfThreeMatched.similarityScore()).isEqualByComparingTo("66.67");
-        assertThat(twoOfThreeMatched.reasonCodes()).containsExactly("TAG_MATCH");
+        assertThat(twoOfThreeMatched.reasonCodes())
+                .containsExactly("PARTIAL_ATTRIBUTE_MATCH");
     }
 
     @Test
-    void returnsZeroAndEmptyReasonsWhenNoAttributeTagsMatch() {
+    void addsHighSimilarityToPartialMatchAtEightyPercent() {
+        RecommendationScorer.Score score = scorer.score(
+                List.of(
+                        tag(10L, "minimal", TagType.SILHOUETTE),
+                        tag(20L, "linen", TagType.MATERIAL),
+                        tag(30L, "button", TagType.DETAIL),
+                        tag(40L, "navy", TagType.COLOR),
+                        tag(50L, "unmatched", TagType.DETAIL)
+                ),
+                candidate("Minimal Shirt", "Navy Brand", "linen/button", null)
+        );
+
+        assertThat(score.similarityScore()).isEqualByComparingTo("80.00");
+        assertThat(score.reasonCodes())
+                .containsExactly("HIGH_SIMILARITY", "PARTIAL_ATTRIBUTE_MATCH");
+    }
+
+    @Test
+    void returnsNoAttributeMatchWhenNoAttributeTagsMatch() {
         RecommendationScorer.Score score = scorer.score(
                 List.of(
                         tag(10L, "wide", TagType.SILHOUETTE),
@@ -70,7 +90,7 @@ class RecommendationScorerTest {
         );
 
         assertThat(score.similarityScore()).isEqualByComparingTo("0.00");
-        assertThat(score.reasonCodes()).isEmpty();
+        assertThat(score.reasonCodes()).containsExactly("NO_ATTRIBUTE_MATCH");
     }
 
     @Test
@@ -81,7 +101,7 @@ class RecommendationScorerTest {
         );
 
         assertThat(score.similarityScore()).isEqualByComparingTo("100.00");
-        assertThat(score.reasonCodes()).containsExactly("HIGH_SIMILARITY");
+        assertThat(score.reasonCodes()).containsExactly("NO_SCORABLE_TAGS");
     }
 
     @Test
@@ -101,7 +121,7 @@ class RecommendationScorerTest {
         );
 
         assertThat(score.similarityScore()).isEqualByComparingTo("50.00");
-        assertThat(score.reasonCodes()).containsExactly("TAG_MATCH");
+        assertThat(score.reasonCodes()).containsExactly("PARTIAL_ATTRIBUTE_MATCH");
     }
 
     private static TagInput tag(Long id, String name, TagType tagType) {
