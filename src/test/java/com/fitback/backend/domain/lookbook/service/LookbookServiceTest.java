@@ -936,7 +936,10 @@ class LookbookServiceTest {
                 eq(LookbookModerationStatus.VISIBLE),
                 any(Pageable.class)
         )).thenReturn(rankedPage);
-        when(lookbookRepository.findAllByIdIn(List.of(100L, 99L, 98L)))
+        when(lookbookRepository.findAllByIdInAndDeletedAtIsNullAndModerationStatus(
+                List.of(100L, 99L, 98L),
+                LookbookModerationStatus.VISIBLE
+        ))
                 .thenReturn(List.of(third, first, second));
         when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(
                 List.of(100L, 99L, 98L)
@@ -965,6 +968,29 @@ class LookbookServiceTest {
     }
 
     @Test
+    void getRelatedLookbooksFailsWhenRankedLookbookIsMissingFromVisibleResults() {
+        LocalDateTime createdAt = LocalDateTime.of(2026, 8, 7, 12, 0);
+        Lookbook first = createListLookbook(100L, createdAt);
+        when(lookbookRepository.findRelatedLookbookRanks(
+                eq(1L),
+                eq(LookbookModerationStatus.VISIBLE),
+                any(Pageable.class)
+        )).thenReturn(List.of(
+                relatedRank(100L, 111L, createdAt),
+                relatedRank(99L, 110L, createdAt.minusMinutes(1))
+        ));
+        when(lookbookRepository.findAllByIdInAndDeletedAtIsNullAndModerationStatus(
+                List.of(100L, 99L),
+                LookbookModerationStatus.VISIBLE
+        )).thenReturn(List.of(first));
+
+        assertThatThrownBy(() -> lookbookService.getRelatedLookbooks(1L, null, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
+                );
+    }
+
+    @Test
     void getRelatedLookbooksUsesCursorRankForNextPage() {
         LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 8, 7, 12, 0);
         RelatedLookbookRank cursorRank = relatedRank(100L, 111L, cursorCreatedAt);
@@ -976,8 +1002,7 @@ class LookbookServiceTest {
         Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
         when(lookbookRepository.findRelatedLookbookRank(
                 1L,
-                100L,
-                LookbookModerationStatus.VISIBLE
+                100L
         )).thenReturn(Optional.of(cursorRank));
         when(lookbookRepository.findNextRelatedLookbookRanks(
                 eq(1L),
@@ -987,7 +1012,10 @@ class LookbookServiceTest {
                 eq(100L),
                 any(Pageable.class)
         )).thenReturn(List.of(nextRank));
-        when(lookbookRepository.findAllByIdIn(List.of(99L)))
+        when(lookbookRepository.findAllByIdInAndDeletedAtIsNullAndModerationStatus(
+                List.of(99L),
+                LookbookModerationStatus.VISIBLE
+        ))
                 .thenReturn(List.of(nextLookbook));
         when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(99L)))
                 .thenReturn(List.of());
@@ -1009,8 +1037,7 @@ class LookbookServiceTest {
     void getRelatedLookbooksFailsWhenCursorIsNotRelatedToTrend() {
         when(lookbookRepository.findRelatedLookbookRank(
                 1L,
-                999L,
-                LookbookModerationStatus.VISIBLE
+                999L
         )).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> lookbookService.getRelatedLookbooks(1L, 999L, null))
@@ -1037,7 +1064,11 @@ class LookbookServiceTest {
         assertThat(response.nextCursor()).isNull();
         assertThat(response.hasNext()).isFalse();
         assertThat(response.pageSize()).isEqualTo(3);
-        verify(lookbookRepository, never()).findAllByIdIn(anyList());
+        verify(lookbookRepository, never())
+                .findAllByIdInAndDeletedAtIsNullAndModerationStatus(
+                        anyList(),
+                        any(LookbookModerationStatus.class)
+                );
     }
 
     @Test

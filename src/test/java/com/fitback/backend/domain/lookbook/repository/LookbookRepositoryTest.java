@@ -262,6 +262,25 @@ class LookbookRepositoryTest {
                 .extracting(RelatedLookbookRank::getRelevanceScore)
                 .containsExactly(110L, 100L, 100L);
 
+        // 이전 페이지 이후 상태가 바뀐 커서도 정렬 위치를 복원할 수 있어야 함
+        assertThat(lookbookRepository.findRelatedLookbookRank(
+                trend.getId(),
+                hidden.getId()
+        )).isPresent();
+        assertThat(lookbookRepository.findRelatedLookbookRank(
+                trend.getId(),
+                deleted.getId()
+        )).isPresent();
+
+        List<Lookbook> visibleLookbooks = lookbookRepository
+                .findAllByIdInAndDeletedAtIsNullAndModerationStatus(
+                        List.of(highest.getId(), hidden.getId(), deleted.getId()),
+                        LookbookModerationStatus.VISIBLE
+                );
+        assertThat(visibleLookbooks)
+                .extracting(Lookbook::getId)
+                .containsExactly(highest.getId());
+
         List<RelatedLookbookRank> nextPage = lookbookRepository.findNextRelatedLookbookRanks(
                 trend.getId(),
                 LookbookModerationStatus.VISIBLE,

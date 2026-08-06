@@ -268,7 +268,11 @@ public class LookbookService {
         List<Long> lookbookIds = displayedRanks.stream()
                 .map(RelatedLookbookRank::getLookbookId)
                 .toList();
-        Map<Long, Lookbook> lookbooksById = lookbookRepository.findAllByIdIn(lookbookIds)
+        Map<Long, Lookbook> lookbooksById = lookbookRepository
+                .findAllByIdInAndDeletedAtIsNullAndModerationStatus(
+                        lookbookIds,
+                        LookbookModerationStatus.VISIBLE
+                )
                 .stream()
                 .collect(Collectors.toMap(Lookbook::getId, Function.identity()));
         List<Lookbook> lookbooks = lookbookIds.stream()
@@ -471,8 +475,7 @@ public class LookbookService {
         // id만으로 정렬 위치를 알 수 없으므로 커서 룩북의 점수와 생성 시간을 함께 복원
         RelatedLookbookRank cursorRank = lookbookRepository.findRelatedLookbookRank(
                         trendId,
-                        cursor,
-                        LookbookModerationStatus.VISIBLE
+                        cursor
                 )
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.NOT_FOUND,

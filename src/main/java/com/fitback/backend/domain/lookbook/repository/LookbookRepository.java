@@ -77,7 +77,7 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             Pageable pageable
     );
 
-    // 다음 페이지 기준이 되는 커서 룩북의 현재 정렬값 조회
+    // 삭제·숨김 상태와 무관하게 다음 페이지 기준이 되는 커서 룩북의 정렬값 복원
     @Query("""
             SELECT lookbook.id AS lookbookId,
                    SUM(trendTag.relevanceWeight) AS relevanceScore,
@@ -87,14 +87,11 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             JOIN TrendTag trendTag ON trendTag.tag = lookbookTag.tag
             WHERE trendTag.trend.id = :trendId
               AND lookbook.id = :lookbookId
-              AND lookbook.deletedAt IS NULL
-              AND lookbook.moderationStatus = :moderationStatus
             GROUP BY lookbook.id, lookbook.createdAt
             """)
     Optional<RelatedLookbookRank> findRelatedLookbookRank(
             @Param("trendId") Long trendId,
-            @Param("lookbookId") Long lookbookId,
-            @Param("moderationStatus") LookbookModerationStatus moderationStatus
+            @Param("lookbookId") Long lookbookId
     );
 
     // 관련도 점수, 생성 시간, id 순서로 커서 이후 룩북 조회
@@ -128,13 +125,16 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             Pageable pageable
     );
 
-    // 관련도 조회 결과의 룩북과 응답 생성에 필요한 연관관계 일괄 조회
+    // 관련도 조회 결과 중 현재 노출 가능한 룩북과 응답 생성에 필요한 연관관계 일괄 조회
     @EntityGraph(
             attributePaths = {
                 "member", "matchedProduct", "matchedImage", "originalImage"
             }
     )
-    List<Lookbook> findAllByIdIn(List<Long> lookbookIds);
+    List<Lookbook> findAllByIdInAndDeletedAtIsNullAndModerationStatus(
+            List<Long> lookbookIds,
+            LookbookModerationStatus moderationStatus
+    );
 
     @EntityGraph(
             attributePaths = {
