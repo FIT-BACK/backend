@@ -10,11 +10,15 @@ import com.fitback.backend.external.aitag.AiTagModelResult;
 import com.fitback.backend.external.aitag.config.AiTagProperties;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 class OpenAiTagModelClientTest {
@@ -101,10 +105,54 @@ class OpenAiTagModelClientTest {
     }
 
     @Test
+    void logsHttpStatusAndSafeProviderCategoryWithoutSensitiveValues() {
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(429, "provider-secret-response");
+
+            assertAnalysisNotReady(client);
+
+            String message = appender.list.getFirst().getFormattedMessage();
+            assertThat(message)
+                    .contains("provider=openai", "model=test-model", "httpStatus=429")
+                    .contains("providerErrorCategory=RATE_LIMIT", "elapsedMillis=")
+                    .doesNotContain("test-key", "provider-secret-response", "data:image");
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
     void translatesMalformedResponseToAnalysisNotReady() {
         OpenAiTagModelClient client = clientReturning(200, "not-json");
 
         assertAnalysisNotReady(client);
+    }
+
+    @Test
+    void logsResponseParsingFailureWithoutResponseBody() {
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, "provider-secret-response");
+
+            assertAnalysisNotReady(client);
+
+            String message = appender.list.getFirst().getFormattedMessage();
+            assertThat(message)
+                    .contains("provider=openai", "model=test-model")
+                    .contains("responseParsingCategory=INVALID_OR_MISSING_OUTPUT", "elapsedMillis=")
+                    .doesNotContain("provider-secret-response", "test-key");
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
     }
 
     @Test

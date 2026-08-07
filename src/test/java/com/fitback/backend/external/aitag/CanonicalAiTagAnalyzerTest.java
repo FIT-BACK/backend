@@ -12,9 +12,13 @@ import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 class CanonicalAiTagAnalyzerTest {
 
@@ -76,10 +80,26 @@ class CanonicalAiTagAnalyzerTest {
                 1
         );
 
-        assertThatThrownBy(() -> analyzer(client).analyze(image))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.ANALYSIS_NOT_READY);
+        Logger logger = (Logger) LoggerFactory.getLogger(CanonicalAiTagAnalyzer.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            assertThatThrownBy(() -> analyzer(client).analyze(image))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                    .isEqualTo(ErrorCode.ANALYSIS_NOT_READY);
+
+            String message = appender.list.getFirst().getFormattedMessage();
+            assertThat(message)
+                    .contains("provider=test", "model=test-model")
+                    .contains("canonicalValidationCategory=UNKNOWN_CANONICAL_TAG")
+                    .contains("predictedTagCount=1", "catalogTagCount=3", "elapsedMillis=1")
+                    .doesNotContain("데님");
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
     }
 
     @Test
