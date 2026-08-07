@@ -13,6 +13,7 @@ import com.fitback.backend.domain.image.event.ImageReferencesReleasedEvent;
 import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
+import com.fitback.backend.domain.notification.event.AnalysisCompletedEvent;
 import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.global.exception.BusinessException;
@@ -64,6 +65,9 @@ public class AnalysisService {
             suggestedTags.forEach(report::addAiSuggestedTag);
             AnalysisReport savedReport = analysisReportRepository.save(report);
 
+            // 분석 요청자에게 보낼 완료 알림 발행 (실제 생성은 이 트랜잭션 커밋 이후)
+            eventPublisher.publishEvent(new AnalysisCompletedEvent(savedReport.getId(), memberId));
+
             List<SuggestedTagResponse> tagResponses = savedReport.getReportTags().stream()
                     .map(reportTag -> new SuggestedTagResponse(
                             reportTag.getTag().getId(),
@@ -102,6 +106,10 @@ public class AnalysisService {
         );
         suggestedTags.forEach(report::addAiSuggestedTag);
         AnalysisReport savedReport = analysisReportRepository.save(report);
+
+        // 분석 요청자에게 보낼 완료 알림 발행 (실제 생성은 이 트랜잭션 커밋 이후)
+        eventPublisher.publishEvent(new AnalysisCompletedEvent(savedReport.getId(), memberId));
+
         return toCreateResponse(savedReport);
     }
 
