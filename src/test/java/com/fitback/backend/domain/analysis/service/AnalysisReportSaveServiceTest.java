@@ -25,6 +25,8 @@ import com.fitback.backend.domain.product.service.model.ProductStorageMode;
 import com.fitback.backend.domain.product.service.model.ProviderIdentityType;
 import com.fitback.backend.domain.recommendation.entity.RecommendedItem;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
+import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import jakarta.persistence.EntityManager;
@@ -32,6 +34,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -242,6 +245,62 @@ class AnalysisReportSaveServiceTest {
         );
         ReflectionTestUtils.setField(member, "id", id);
         return member;
+    }
+
+    // 기본 태그와 직접 입력한 커스텀 태그를 한 목록으로 반환
+    @Test
+    void findClosetViewsReturnsImageUrlWithKnownAndCustomTags() {
+        Member member = member(1L);
+        AnalysisReport report = currentReport(33L, member);
+        Tag minimalTag = Tag.create("미니멀", TagType.DETAIL);
+        ReflectionTestUtils.setField(minimalTag, "id", 10L);
+        report.addAiSuggestedTag(minimalTag);
+        report.confirmRecommendationInput(List.of(minimalTag), List.of("와이드핏"), 70);
+        when(analysisReportRepository.findByIdInAndMemberIdAndDeletedAtIsNull(List.of(33L), 1L))
+                .thenReturn(List.of(report));
+
+        Map<Long, AnalysisReportSaveService.ClosetReportView> views =
+                service.findClosetViews(List.of(33L), 1L);
+
+        assertThat(views).containsOnlyKeys(33L);
+        assertThat(views.get(33L).thumbnailUrl()).isEqualTo("https://example.com/original.jpg");
+        assertThat(views.get(33L).tags()).containsExactly("미니멀", "와이드핏");
+    }
+
+    // 원본 이미지가 없는 레거시 리포트는 imageUrl 컬럼으로 폴백
+    @Test
+    void findClosetViewsFallsBackToImageUrlWhenOriginalImageMissing() {
+        AnalysisReport report = currentReport(33L, member(1L));
+        when(analysisReportRepository.findByIdInAndMemberIdAndDeletedAtIsNull(List.of(33L), 1L))
+                .thenReturn(List.of(report));
+
+        Map<Long, AnalysisReportSaveService.ClosetReportView> views =
+                service.findClosetViews(List.of(33L), 1L);
+
+        assertThat(views.get(33L).thumbnailUrl()).isEqualTo("https://example.com/original.jpg");
+        verify(imageUploadService, never()).createReadUrl(any());
+    }
+
+    // 삭제된 리포트는 전용 목록과 달리 예외 없이 제외
+    @Test
+    void findClosetViewsExcludesDeletedReportsWithoutException() {
+        when(analysisReportRepository.findByIdInAndMemberIdAndDeletedAtIsNull(List.of(33L), 1L))
+                .thenReturn(List.of());
+
+        Map<Long, AnalysisReportSaveService.ClosetReportView> views =
+                service.findClosetViews(List.of(33L), 1L);
+
+        assertThat(views).isEmpty();
+    }
+
+    @Test
+    void findClosetViewsSkipsQueryWhenNoReportSaved() {
+        Map<Long, AnalysisReportSaveService.ClosetReportView> views =
+                service.findClosetViews(List.of(), 1L);
+
+        assertThat(views).isEmpty();
+        verify(analysisReportRepository, never())
+                .findByIdInAndMemberIdAndDeletedAtIsNull(any(), any());
     }
 
     private AnalysisReport currentReport(Long id, Member member) {

@@ -979,6 +979,74 @@ class LookbookServiceTest {
         );
     }
 
+    @Test
+    void findClosetViewsReturnsOriginalAndMatchedImageUrlWithTags() {
+        Lookbook lookbook = createListLookbook(12L, LocalDateTime.of(2026, 8, 1, 12, 0));
+        Tag streetTag = Tag.create("스트릿", TagType.DETAIL);
+        when(lookbookRepository.findAllByIdInAndDeletedAtIsNull(List.of(12L)))
+                .thenReturn(List.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(12L)))
+                .thenReturn(List.of(LookbookTag.create(lookbook, streetTag)));
+        when(imageAccessUrlProvider.createReadUrl(any(Image.class)))
+                .thenReturn("https://cdn.fitback.app/signed.jpg");
+
+        Map<Long, LookbookService.ClosetLookbookView> views =
+                lookbookService.findClosetViews(List.of(12L));
+
+        assertThat(views).containsOnlyKeys(12L);
+        assertThat(views.get(12L).thumbnailUrl()).isEqualTo("https://cdn.fitback.app/signed.jpg");
+        assertThat(views.get(12L).matchedImageUrl()).isEqualTo("https://cdn.fitback.app/signed.jpg");
+        assertThat(views.get(12L).tags()).containsExactly("스트릿");
+    }
+
+    // 상품 매칭 룩북은 서명 URL 대신 저장된 상품 이미지 URL 사용
+    @Test
+    void findClosetViewsUsesProductImageUrlWhenMatchedByProduct() {
+        Product product = mock(Product.class);
+        when(product.getImageUrl()).thenReturn("https://shop.example.com/product.jpg");
+        Lookbook lookbook = Lookbook.createWithProduct(
+                member,
+                readyImage("original-13", member, ImagePurpose.LOOKBOOK),
+                product,
+                null,
+                null
+        );
+        ReflectionTestUtils.setField(lookbook, "id", 13L);
+        when(lookbookRepository.findAllByIdInAndDeletedAtIsNull(List.of(13L)))
+                .thenReturn(List.of(lookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(13L)))
+                .thenReturn(List.of());
+        when(imageAccessUrlProvider.createReadUrl(any(Image.class)))
+                .thenReturn("https://cdn.fitback.app/signed.jpg");
+
+        Map<Long, LookbookService.ClosetLookbookView> views =
+                lookbookService.findClosetViews(List.of(13L));
+
+        assertThat(views.get(13L).matchedImageUrl()).isEqualTo("https://shop.example.com/product.jpg");
+        assertThat(views.get(13L).tags()).isEmpty();
+    }
+
+    // 삭제된 룩북은 조회에서 빠져 호출측 목록에서도 제외됨
+    @Test
+    void findClosetViewsExcludesDeletedLookbooks() {
+        when(lookbookRepository.findAllByIdInAndDeletedAtIsNull(List.of(12L, 99L)))
+                .thenReturn(List.of());
+
+        Map<Long, LookbookService.ClosetLookbookView> views =
+                lookbookService.findClosetViews(List.of(12L, 99L));
+
+        assertThat(views).isEmpty();
+    }
+
+    @Test
+    void findClosetViewsSkipsQueryWhenNoLookbookSaved() {
+        Map<Long, LookbookService.ClosetLookbookView> views =
+                lookbookService.findClosetViews(List.of());
+
+        assertThat(views).isEmpty();
+        verify(lookbookRepository, never()).findAllByIdInAndDeletedAtIsNull(anyList());
+    }
+
     private Lookbook createPersistedLookbook(LocalDateTime createdAt) {
         member.changeProfileImageId("profile-image");
         Lookbook lookbook = Lookbook.create(
