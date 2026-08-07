@@ -26,7 +26,10 @@ public interface AnalysisReportRepository extends JpaRepository<AnalysisReport, 
     @EntityGraph(attributePaths = {"reportTags", "reportTags.tag"})
     Optional<AnalysisReport> findByIdAndMemberIdAndDeletedAtIsNull(Long reportId, Long memberId);
 
-    @EntityGraph(attributePaths = {"reportTags", "reportTags.tag"})
+    //저장 리포트 목록과 마이 클로젯 목록에서 공용, 둘 다 이미지와 태그를 함께 표시
+    //createReadUrl 이 objectKey 를 읽으므로 originalImage 필수,
+    //customTags 는 엔티티의 @BatchSize 로 묶여 EntityGraph 불필요
+    @EntityGraph(attributePaths = {"originalImage", "reportTags", "reportTags.tag"})
     List<AnalysisReport> findByIdInAndMemberIdAndDeletedAtIsNull(
             List<Long> reportIds,
             Long memberId
