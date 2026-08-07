@@ -47,7 +47,7 @@ seed_baseline_schema() {
     "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
     'CREATE TABLE recommended_item (recommend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, report_id BIGINT NOT NULL, product_id BIGINT NOT NULL, `rank` INT NOT NULL, category VARCHAR(50) NOT NULL, similarity_score INT NOT NULL, is_value_match BOOLEAN NOT NULL, created_at DATETIME(6) NOT NULL);' \
     "INSERT INTO recommended_item (report_id, product_id, \`rank\`, category, similarity_score, is_value_match, created_at) VALUES (7001, 1, 1, 'TOP', 90, TRUE, NOW());" \
-    'CREATE TABLE tag (tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, tag_name VARCHAR(50) NOT NULL, tag_type VARCHAR(30) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, CONSTRAINT UK_TAG_NAME UNIQUE (tag_name));' \
+    "CREATE TABLE tag (tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, tag_name VARCHAR(50) NOT NULL, tag_type ENUM('COLOR','DETAIL','SILHOUETTE') NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, CONSTRAINT UK_TAG_NAME UNIQUE (tag_name));" \
     "INSERT INTO tag (tag_name, tag_type, created_at) VALUES ('기존태그', 'DETAIL', NOW());" \
     'CREATE TABLE product_tag (product_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, product_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL, CONSTRAINT UK_PRODUCT_TAG_PRODUCT_ID_TAG_ID UNIQUE (product_id, tag_id), CONSTRAINT FK_PRODUCT_TAG_PRODUCT_TEST FOREIGN KEY (product_id) REFERENCES product (product_id), CONSTRAINT FK_PRODUCT_TAG_TAG_TEST FOREIGN KEY (tag_id) REFERENCES tag (tag_id));' \
     'CREATE TABLE member_tag (member_tag_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_MEMBER_TAG_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
@@ -97,6 +97,21 @@ for database in fitback fitback_existing_refresh_token; do
     fi
     docker exec -i "$container_name" mysql -uroot "$database" < "$migration"
   done < <(printf '%s\n' src/main/resources/db/migration/V*.sql | sort -V)
+done
+
+for database in fitback fitback_existing_refresh_token; do
+  tag_type_contract="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COLUMN_TYPE
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'tag'
+          AND COLUMN_NAME = 'tag_type';")"
+
+  if [ "$tag_type_contract" != "enum('COLOR','DETAIL','SILHOUETTE','STYLE','MATERIAL')" ]; then
+    echo "Unexpected tag_type ENUM in $database: $tag_type_contract" >&2
+    exit 1
+  fi
 done
 
 docker exec "$container_name" mysql -uroot -e \

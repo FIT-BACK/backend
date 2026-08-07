@@ -357,6 +357,46 @@ V23은 `미니멀`, `스트릿`, `러블리`, `캐주얼`, `포멀`의 타입을
 V25는 확정 태그 43개와 복종 매핑 70개를 멱등하게 구성하고 legacy `베이지톤` 참조를
 `베이지`로 수렴시킨다.
 
+### V23 실패 migration 복구
+
+V23 배포가 `tag.tag_type` ENUM에 없는 `STYLE` 값을 UPDATE하다 실패해
+`flyway_schema_history.success=0` 행을 남긴 경우, 수정된 이미지를 재배포하기 전에 운영 DB에서
+다음 순서로 V23 실패 이력만 복구한다. 먼저 대상 행이 실제로 실패 상태인지 확인한다.
+
+```sql
+SELECT version, description, success
+FROM flyway_schema_history
+WHERE version = '23';
+```
+
+결과가 `version=23`, `success=0`인 경우에만 해당 실패 행을 삭제한다. 성공한 migration이나
+다른 version의 이력은 삭제하지 않는다.
+
+```sql
+DELETE FROM flyway_schema_history
+WHERE version = '23'
+  AND success = 0;
+```
+
+그 다음 V23 ENUM 수정이 포함된 release를 배포하면 Flyway가 V23을 다시 실행한다. 배포 후에는
+다음 조회에서 V23이 `success=1`이고 `tag.tag_type`이 `STYLE`과 후속 V25의 `MATERIAL`을
+포함하는지 확인한다.
+
+```sql
+SELECT version, description, success
+FROM flyway_schema_history
+WHERE version = '23';
+
+SELECT COLUMN_TYPE
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = 'tag'
+  AND COLUMN_NAME = 'tag_type';
+```
+
+이 절차는 V23의 확인된 실패 이력만 복구하기 위한 일회성 운영 조치이며, Flyway history 전체
+삭제나 임의 migration 자동 repair로 대체하지 않는다.
+
 ## 배포 및 Rollback 동작
 
 `scripts/deploy/remote_deploy.sh`는 다음 작업을 수행한다.
@@ -364,7 +404,7 @@ V25는 확정 태그 43개와 복종 매핑 70개를 멱등하게 구성하고 l
 1. digest가 포함된 ECR 이미지 참조를 검증한다.
 2. Parameter Store의 DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, Base64 CloudFront 개인 키와 OpenAI 모드의 API key 값을 단일 행 값으로 검증한다.
 3. host 단위 `flock`을 획득해 같은 EC2에서 두 배포가 동시에 실행되지 않게 한다.
-4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키와 OpenAI API key는 현재 Compose 프로세스 환경으로 전달한다.
+4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키와 OpenAI API key는 현재 Compose 프로세스 환경으로 전달한다. rollback 시에는 release-scoped 상위 환경변수를 제거해 대상 release의 `.env`가 우선된다.
 5. EC2 instance role로 ECR에 로그인하고 backend 이미지를 pull한다.
 6. 새 release의 `docker compose up -d --remove-orphans`를 실행한다.
 7. `/nginx-health`와 backend container health가 모두 정상인지 확인한다.
