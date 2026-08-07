@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.tag.dto.TagResponse;
 import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.domain.tag.entity.TagTargetClothing;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import java.util.List;
@@ -27,19 +28,33 @@ class TagServiceTest {
 
     @Test
     void getTagsReturnsAllTagsOrderedById() {
-        Tag minimalTag = Tag.create("와이드핏", TagType.SILHOUETTE);
+        Tag minimalTag = Tag.create(
+                "와이드핏",
+                TagType.SILHOUETTE,
+                List.of(TagTargetClothing.PANTS)
+        );
         ReflectionTestUtils.setField(minimalTag, "id", 12L);
-        Tag colorTag = Tag.create("베이지톤", TagType.COLOR);
+        Tag colorTag = Tag.create("베이지", TagType.COLOR);
         ReflectionTestUtils.setField(colorTag, "id", 21L);
         when(tagRepository.findAllByOrderByIdAsc()).thenReturn(List.of(minimalTag, colorTag));
 
         TagResponse.TagList response = tagService.getTags();
 
         assertThat(response.items())
-                .extracting(TagResponse.TagItem::tagId, TagResponse.TagItem::tagName)
+                .extracting(
+                        TagResponse.TagItem::tagId,
+                        TagResponse.TagItem::tagName,
+                        TagResponse.TagItem::tagType,
+                        TagResponse.TagItem::targetClothing
+                )
                 .containsExactly(
-                        tuple(12L, "와이드핏"),
-                        tuple(21L, "베이지톤")
+                        tuple(
+                                12L,
+                                "와이드핏",
+                                TagType.SILHOUETTE,
+                                List.of(TagTargetClothing.PANTS)
+                        ),
+                        tuple(21L, "베이지", TagType.COLOR, List.of())
                 );
     }
 

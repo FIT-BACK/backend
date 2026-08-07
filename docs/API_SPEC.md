@@ -5,8 +5,8 @@
 | 항목 | 값 |
 | --- | --- |
 | 최초 작성일 | 2026-07-26 |
-| 최종 검증일 | 2026-08-02 |
-| 검증 기준 | `develop` `7a84f9cf8b0746fc294a0db8529439c9a6d4fb33` |
+| 최종 검증일 | 2026-08-05 |
+| 검증 기준 | `develop` `85ecbc381eb2e89de686f790535ad55b6f6de179` 기반 issue #224 변경 |
 | 적용 범위 | 현재 Controller가 제공하는 Auth, Member, Image, Analysis, Recommendation, Product, Lookbook, Trend, Tag, Content Search, Closet, Notification API |
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
@@ -157,12 +157,18 @@ OTHER
 - `finalScore`는 이번 범위에서 `similarityScore`와 같다.
 - 상품 가격은 검색·상세·찜 화면 표시용이며 추천 점수나 가성비 문구에 사용하지 않는다.
 - 공급자 raw score를 그대로 내부 점수로 저장하지 않는다.
-- `SIMILARITY_V1`은 Adapter가 제공한 0~1 score를 0~100으로 변환하고 소수 둘째 자리에서
-  `HALF_UP`으로 저장한다.
-- score가 없으면 상품명·브랜드·카테고리에 분석 태그가 포함된 후보는 70점, 일치하지 않는
-  후보는 0점으로 계산한다.
-- 80점 이상은 `HIGH_SIMILARITY`, 분석 태그 문자열이 일치하면 `TAG_MATCH`, 그 외에는
-  `PROVIDER_SIMILARITY` reason code를 사용하며 code 목록은 정렬해 저장한다.
+- `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 타입 분석 태그 중 상품명·브랜드·카테고리에
+  포함된 태그의 비율을 0~100 점수로 계산하고 소수 둘째 자리에서 `HALF_UP`으로 저장한다.
+- `STYLE` 타입과 직접 입력 태그는 점수 계산의 분자와 분모에서 제외한다.
+- 점수 계산 대상 태그가 없으면 100점으로 계산한다. 공급자 raw score는 점수에 사용하지 않는다.
+- 계산 대상 태그가 모두 일치하면 `FULL_ATTRIBUTE_MATCH`, 일부만 일치하면
+  `PARTIAL_ATTRIBUTE_MATCH`, 하나도 일치하지 않으면 `NO_ATTRIBUTE_MATCH`를 사용한다.
+- 계산 대상 태그가 없으면 `NO_SCORABLE_TAGS`를 사용한다. 이때 계산 점수는 100점이지만
+  실제 매칭 결과가 아니므로 `HIGH_SIMILARITY`를 추가하지 않는다.
+- 계산 대상 태그가 있고 점수가 80점 이상이면 `HIGH_SIMILARITY`를 추가한다.
+- `TAG_MATCH_RATIO_V1`과 `TAG_MATCH_RATIO_THRESHOLD_V1`로 새로 생성되는 모든 추천 상품은
+  최소 하나의 reason code를 가지며 code 목록은 정렬해 저장한다.
+- 레거시 추천 항목의 `reason_codes` 저장값이 빈 문자열이면 조회 응답의 `reasonCodes`는 빈 배열이다.
 
 ### 2.4 동점 정렬
 
@@ -490,9 +496,9 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
   "message": "성공적으로 요청을 처리했습니다.",
   "data": {
     "reportId": 501,
-    "analysisTags": ["미니멀", "와이드핏", "베이지톤"],
+    "analysisTags": ["미니멀", "와이드핏", "베이지"],
     "matchPercentage": 70,
-    "scoreVersion": "SIMILARITY_THRESHOLD_V2",
+    "scoreVersion": "TAG_MATCH_RATIO_THRESHOLD_V1",
     "recommendationStatus": "CURRENT",
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
@@ -512,9 +518,9 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
               "observedAt": "2026-07-18T03:00:00Z"
             },
             "purchaseUrl": "https://mall.example/products/100",
-            "similarityScore": 82.00,
-            "finalScore": 82.00,
-            "reasonCodes": ["HIGH_SIMILARITY"],
+            "similarityScore": 100.00,
+            "finalScore": 100.00,
+            "reasonCodes": ["FULL_ATTRIBUTE_MATCH", "HIGH_SIMILARITY"],
             "availability": "AVAILABLE",
             "isSaved": false
           }
@@ -548,8 +554,8 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
 - 새 세트 저장에 성공하기 전 기존 세트를 삭제하지 않는다.
 - 입력 revision, 태그 key 또는 매칭값이 달라지면 `RECOMMENDATION409_1`을 반환하고 기존 세트를 유지한다.
 - body 요청은 `matchPercentage` 미만 후보를 materialization 전에 제외하고
-  `SIMILARITY_THRESHOLD_V2`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
-- body 없는 하위 호환 요청은 임계값 필터 없이 `SIMILARITY_V1`을 유지한다.
+  `TAG_MATCH_RATIO_THRESHOLD_V1`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
+- body 없는 하위 호환 요청은 임계값 필터 없이 `TAG_MATCH_RATIO_V1`로 저장한다.
 - 외부 공급자가 모두 실패하면 대표 실패 원인에 따라 malformed response는 `PRODUCT502_1`,
   timeout/auth/unavailable은 `PRODUCT503_1`, quota는 `PRODUCT503_2`이며 기존 세트를 유지한다.
 - materialize할 수 없는 후보는 현재 세트에서 제외하고 warning을 남긴다.
@@ -576,9 +582,9 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
   "message": "성공적으로 요청을 처리했습니다.",
   "data": {
     "reportId": 501,
-    "tags": ["미니멀", "와이드핏", "베이지톤"],
+    "tags": ["미니멀", "와이드핏", "베이지"],
     "recommendationStatus": "CURRENT",
-    "scoreVersion": "SIMILARITY_V1",
+    "scoreVersion": "TAG_MATCH_RATIO_V1",
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
       {"category": "TOP", "items": []},
@@ -726,6 +732,7 @@ body는 없다.
 | `CLOSET_TARGET_UNSUPPORTED` | `CLOSET422_1` | 422 | 지원하지 않는 저장 대상 |
 | `EMAIL_ALREADY_EXISTS` | `AUTH409_1` | 409 | 가입된 이메일 |
 | `INVALID_CREDENTIALS` | `AUTH401_1` | 401 | 이메일 또는 비밀번호 불일치 |
+| `LOGIN_ATTEMPT_LOCKED` | `AUTH429_1` | 429 | 로그인 시도 횟수 초과로 일시 잠금 |
 | `INVALID_REFRESH_TOKEN` | `AUTH401_2` | 401 | refresh token 오류 |
 | `INVALID_TEMP_TOKEN` | `AUTH401_3` | 401 | Kakao 임시 token 오류 |
 | `INVALID_PASSWORD_RESET_TOKEN` | `AUTH401_4` | 401 | 비밀번호 재설정 token 오류·만료 |
@@ -857,7 +864,7 @@ Shopify 등 공급자 이름을 DTO 계약에 노출하지 않는다.
 
 ## 14. 자동화 검증 현황
 
-`develop` `7a84f9c`의 테스트 기준이다. 체크되지 않은 항목은 정책이 없다는 뜻이 아니라 해당
+`develop` `85ecbc3` 기반 issue #224 변경의 테스트 기준이다. 체크되지 않은 항목은 정책이 없다는 뜻이 아니라 해당
 속성을 직접 고정하는 전용 자동화 테스트를 확인하지 못했다는 뜻이다.
 
 - [x] 요청 DTO validation과 공통 응답 envelope
@@ -1019,7 +1026,7 @@ S3 객체가 없으면 `404 IMAGE404_2`, S3 timeout·연결 실패·429·5xx 및
 거절하므로, 클라이언트는 Presigned POST 완료 후 `imageId` JSON 계약을 사용해야 한다.
 
 `FITBACK_AI_TAG_ANALYZER=prototype`은 이미지 의미를 판별하는 실제 AI가 아니라 end-to-end
-프로토타입용 결정적 fallback이다. `미니멀`, `와이드핏`, `베이지톤` 기준 태그를 반환하며,
+프로토타입용 결정적 fallback이다. `미니멀`, `와이드핏`, `베이지` 기준 태그를 반환하며,
 기본값 `unavailable`은 실제 AI 공급자 연결 전까지 분석 생성을 fail-closed로 유지한다.
 
 | 조건 | HTTP | code |
@@ -1201,7 +1208,46 @@ DTO를 반환한다. `isSaved`, `isLiked` 필드는 항상 포함하며 익명 �
 
 ### `GET /api/v1/tags`
 
-관심 태그, 분석 태그 수정, 룩북 업로드에 사용할 전체 태그 목록을 반환한다.
+관심 태그, 분석 태그 수정, 룩북 업로드에 사용할 canonical 태그 마스터를 반환한다.
+각 항목은 태그 분류 `tagType`과 적용 복종 `targetClothing`을 포함한다. `ALL`은 상의,
+바지, 스커트, 원피스, 아우터에 공통 적용됨을 뜻하며 다른 복종 값과 함께 반환하지 않는다.
+
+```json
+{
+  "success": true,
+  "code": "COMMON200_1",
+  "message": "성공적으로 요청을 처리했습니다.",
+  "data": {
+    "items": [
+      {
+        "tagId": 8,
+        "tagName": "와이드핏",
+        "tagType": "SILHOUETTE",
+        "targetClothing": ["PANTS"]
+      },
+      {
+        "tagId": 22,
+        "tagName": "데님",
+        "tagType": "MATERIAL",
+        "targetClothing": ["ALL"]
+      }
+    ]
+  }
+}
+```
+
+`tagType`은 `STYLE`, `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 중 하나다.
+`targetClothing` 값은 `TOP`, `PANTS`, `SKIRT`, `DRESS`, `OUTER`, `ALL`이다. 개별 복종 배열은
+앞의 다섯 값 순서로 정렬하고, `ALL`은 개별 복종 값과 함께 반환하지 않는다. 마스터는 STYLE
+5개, SILHOUETTE 12개, MATERIAL 8개, DETAIL 10개, COLOR 8개로 총 43개다.
+
+| 타입 | 태그와 적용 복종 |
+| --- | --- |
+| `STYLE` | 미니멀, 스트릿, 러블리, 캐주얼, 포멀 — 모두 `ALL` |
+| `SILHOUETTE` | 와이드핏(`PANTS`), 슬림핏(`TOP/PANTS/SKIRT/DRESS/OUTER`), 오버사이즈(`TOP/DRESS/OUTER`), 레귤러핏(`TOP/PANTS/SKIRT/DRESS/OUTER`), A라인(`SKIRT/DRESS/OUTER`), H라인(`SKIRT/DRESS`), 크롭(`TOP/DRESS/OUTER`), 로우라이즈·하이라이즈·숏기장·미디기장·롱기장(`PANTS/SKIRT`) |
+| `MATERIAL` | 데님, 니트, 코튼, 린넨, 가죽, 트위드, 시폰, 우븐/시어 — 모두 `ALL` |
+| `DETAIL` | 브이넥·터틀넥·라운드넥(`TOP/DRESS/OUTER`), 러플/프릴·지퍼·벨트·포켓·슬릿·단추(`ALL`), 턱(`PANTS/SKIRT`) |
+| `COLOR` | 화이트, 블랙, 베이지, 네이비, 그레이, 브라운, 카키, 파스텔/메탈릭 — 모두 `ALL` |
 
 ### `POST /api/v1/closet-saves`
 

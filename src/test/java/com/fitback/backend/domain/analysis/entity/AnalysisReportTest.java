@@ -36,7 +36,7 @@ class AnalysisReportTest {
         AnalysisReport report = AnalysisReport.create(member(), "/uploads/look.jpg", 70);
         Tag minimal = tag(10L, "미니멀");
         Tag wideFit = tag(20L, "와이드핏");
-        Tag beige = tag(30L, "베이지톤");
+        Tag beige = tag(30L, "베이지");
         report.addAiSuggestedTag(minimal);
         report.addAiSuggestedTag(wideFit);
 
@@ -56,7 +56,7 @@ class AnalysisReportTest {
     @Test
     void storesDuplicateNewlyConfirmedTagOnlyOnce() {
         AnalysisReport report = AnalysisReport.create(member(), "/uploads/look.jpg", 70);
-        Tag beige = tag(30L, "베이지톤");
+        Tag beige = tag(30L, "베이지");
 
         report.confirmTags(List.of(beige, beige), 85);
 
@@ -68,7 +68,7 @@ class AnalysisReportTest {
     @Test
     void confirmsKnownAndCustomTagsIdempotently() {
         AnalysisReport report = AnalysisReport.create(member(), "/uploads/look.jpg", 70);
-        Tag beige = tag(30L, "베이지톤");
+        Tag beige = tag(30L, "베이지");
 
         report.confirmRecommendationInput(
                 List.of(beige),

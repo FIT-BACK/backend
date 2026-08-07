@@ -16,7 +16,9 @@ import com.fitback.backend.domain.recommendation.dto.RecommendationGenerateReque
 import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
 import com.fitback.backend.domain.recommendation.service.RecommendationScorer.Score;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
+import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot.TagInput;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationSelection;
+import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.math.BigDecimal;
@@ -27,13 +29,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 
 @Service
 public class RecommendationService {
 
-    static final String SCORE_VERSION = "SIMILARITY_V1";
-    static final String THRESHOLD_SCORE_VERSION = "SIMILARITY_THRESHOLD_V2";
+    static final String SCORE_VERSION = "TAG_MATCH_RATIO_V1";
+    static final String THRESHOLD_SCORE_VERSION = "TAG_MATCH_RATIO_THRESHOLD_V1";
 
     private static final int SEARCH_PAGE_SIZE = 20;
     private static final int MAX_ITEMS_PER_CATEGORY = 10;
@@ -82,7 +85,10 @@ public class RecommendationService {
         RecommendationInputSnapshot input = applyThreshold
                 ? inputCommandService.confirmAndRead(memberId, reportId, request)
                 : inputReader.read(memberId, reportId);
-        CandidateCollection candidateCollection = collectCandidates(input.tagNames());
+        CandidateCollection candidateCollection = collectCandidates(
+                input.tags(),
+                input.customTagNames()
+        );
         Set<String> warnings = new TreeSet<>(candidateCollection.warnings());
         List<ScoredCandidate> eligibleCandidates = scoreEligibleCandidates(
                 input,
@@ -113,11 +119,20 @@ public class RecommendationService {
         );
     }
 
-    private CandidateCollection collectCandidates(List<String> tagNames) {
+    private CandidateCollection collectCandidates(
+            List<TagInput> tags,
+            List<String> customTagNames
+    ) {
+        List<String> searchTagNames = Stream.concat(
+                tags.stream()
+                        .filter(tag -> tag.tagType() != TagType.STYLE)
+                        .map(TagInput::name),
+                customTagNames.stream()
+        ).toList();
         Map<String, ExternalProductCandidate> candidatesByKey = new LinkedHashMap<>();
         List<BusinessException> failures = new ArrayList<>();
         int successfulSearches = 0;
-        for (String tagName : tagNames) {
+        for (String tagName : searchTagNames) {
             try {
                 ProductSearchResult searchResult = productCatalogPort.search(
                         new ProductSearchQuery(tagName, null, null, SEARCH_PAGE_SIZE)
@@ -147,7 +162,7 @@ public class RecommendationService {
         return candidates.stream()
                 .map(candidate -> new ScoredCandidate(
                         candidate,
-                        scorer.score(input.tagNames(), candidate)
+                        scorer.score(input.tags(), candidate)
                 ))
                 .filter(candidate -> !applyThreshold
                         || candidate.score().similarityScore().compareTo(threshold) >= 0)

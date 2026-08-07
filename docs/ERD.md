@@ -4,15 +4,15 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 기준일 | 2026-08-02 |
+| 기준일 | 2026-08-05 |
 | 적용 범위 | 회원·프로필 이미지, 이미지 생명주기, 분석·추천·상품·저장·룩북, 알림 설정·이력·알림 목록 |
-| 기준 코드 | `develop` `7a84f9c`, JPA Entity, Flyway V1~V21 |
+| 기준 코드 | `develop` `4870b52`, JPA Entity, Flyway V1~V25 |
 | 연동 참고 | Recommendation은 기존 분석 입력을 읽거나 요청의 확정 태그·매칭값을 멱등 반영 |
 | 문서 성격 | 현재 애플리케이션·migration이 보장하는 계약과 의도적인 scalar 참조 경계를 기록 |
 
 이 문서는 기존 Recommendation/Product 설계에 현재 구현된 이미지, 회원 프로필,
 알림 설정·동의 이력·알림 테이블을 포함한다. 운영 DDL의 단일 출처는
-`src/main/resources/db/migration` 아래 V1~V21이며, 이 문서는 DDL을 대체하지 않는다.
+`src/main/resources/db/migration` 아래 V1~V25이며, 이 문서는 DDL을 대체하지 않는다.
 
 ---
 
@@ -95,8 +95,10 @@ providerIdentityKey = SHA-256(
 | `ProductStorageMode` | `product.storage_mode VARCHAR(20)` | `SNAPSHOT`, `IDENTITY_ONLY` |
 | `ProductAvailability` | `product.availability VARCHAR(30)` | `AVAILABLE`, `UNAVAILABLE`, `TEMPORARILY_UNRESOLVED`, `UNKNOWN` |
 | `ProductCategory` | category 컬럼 `VARCHAR(30)` | `OUTER`, `TOP`, `BOTTOM`, `DRESS`, `SHOES`, `BAG`, `ACCESSORY`, `OTHER` |
-| `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(30)` | `SIMILARITY_V1`, `SIMILARITY_THRESHOLD_V2` |
+| `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(30)` | `TAG_MATCH_RATIO_V1`, `TAG_MATCH_RATIO_THRESHOLD_V1` (신규 생성), `SIMILARITY_V1`, `SIMILARITY_THRESHOLD_V2` (레거시) |
 | `ProductTagSource` | `product_tag.source VARCHAR(20)` | `PROVIDER`, `AI`, `RULE`, `MANUAL` |
+| `TagType` | `tag.tag_type VARCHAR(30)` | `STYLE`, `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` |
+| `TagTargetClothing` | `tag_target_clothing.target_clothing VARCHAR(20)` | `TOP`, `PANTS`, `SKIRT`, `DRESS`, `OUTER`, `ALL` |
 | `ImageUploadPurpose` | API request enum | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
 | `ImagePurpose` | `image.purpose VARCHAR(30)` | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
 | `ImageStatus` | `image.status VARCHAR(20)` | `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
@@ -136,6 +138,7 @@ erDiagram
     IMAGE ||--o{ LOOKBOOK : used_as_original_or_matched
     PRODUCT ||--o{ PRODUCT_TAG : tagged_with
     TAG ||--o{ PRODUCT_TAG : classifies
+    TAG ||--|{ TAG_TARGET_CLOTHING : applies_to
 
     MEMBER {
         BIGINT member_id PK
@@ -310,11 +313,48 @@ erDiagram
         VARCHAR source
         DATETIME created_at
     }
+
+    TAG {
+        BIGINT tag_id PK
+        VARCHAR tag_name UK
+        VARCHAR tag_type
+        DATETIME created_at
+        DATETIME updated_at
+    }
+
+    TAG_TARGET_CLOTHING {
+        BIGINT tag_id PK,FK
+        VARCHAR target_clothing PK
+    }
 ```
 
 ---
 
 ## 4. 물리 테이블 계약
+
+### 4.0 `tag`와 `tag_target_clothing`
+
+`tag`는 전역 canonical 이름과 타입을 저장하고, 다중 복종 적용 범위는
+`tag_target_clothing`의 enum element collection으로 분리한다. `ALL`은 다섯 개 복종에 공통
+적용된다는 축약값이며 개별 복종 row와 함께 저장하지 않는다. V25는 43개 canonical 태그와
+70개 적용 범위 row를 멱등하게 구성한다.
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `tag_target_clothing.tag_id` | `BIGINT` | N | PK 일부, `tag.tag_id` FK |
+| `tag_target_clothing.target_clothing` | `VARCHAR(20)` | N | PK 일부, `TagTargetClothing` 문자열 |
+
+```text
+PK(tag_id, target_clothing)
+IX_TAG_TARGET_CLOTHING_TARGET(target_clothing)
+FK_TAG_TARGET_CLOTHING_TAG(tag_id)
+  -> tag(tag_id) ON DELETE CASCADE
+CK_TAG_TARGET_CLOTHING_VALUE(target_clothing IN (TOP, PANTS, SKIRT, DRESS, OUTER, ALL))
+```
+
+V25는 legacy prototype 이름 `베이지톤`을 확정 명칭 `베이지`로 전환한다. 두 이름이 이미
+공존하면 `member_tag`, `report_tag`, `product_tag`, `lookbook_tag`, `trend_tag` 참조를
+`베이지` ID로 이관하고 중복 연결과 legacy tag row를 제거한다.
 
 ### 4.1 `product`
 
@@ -380,8 +420,8 @@ CK_PRODUCT_PRICE_VALUE(
 | `category` | `VARCHAR(30)` | N | 생성 시점 내부 category |
 | `similarity_score` | `DECIMAL(5,2)` | N | 0~100 정규화 점수 |
 | `final_score` | `DECIMAL(5,2)` | N | 이번 범위에서는 similarity와 동일 |
-| `score_version` | `VARCHAR(30)` | N | `SIMILARITY_V1` 또는 `SIMILARITY_THRESHOLD_V2` |
-| `reason_codes` | `VARCHAR(500)` | N | 정렬된 내부 code 목록 |
+| `score_version` | `VARCHAR(30)` | N | 신규 `TAG_MATCH_RATIO_V1`/`TAG_MATCH_RATIO_THRESHOLD_V1`, 레거시 `SIMILARITY_V1`/`SIMILARITY_THRESHOLD_V2` |
+| `reason_codes` | `VARCHAR(500)` | N | 정렬된 내부 code 목록. 신규 추천 항목은 최소 1개 필수 |
 | `created_at` | `DATETIME(6)` | N | 생성 시각 |
 
 ```text
@@ -401,8 +441,10 @@ CHK_RECOMMENDED_SCORE(
 CHK_RECOMMENDED_INPUT_REVISION(input_revision >= 1)
 ```
 
-`reason_codes`는 공급자 자유 텍스트가 아니라 `HIGH_SIMILARITY`처럼 서버가 정의한 code만 저장한다.
-다국어 문장은 API 계층이 code로 조립한다.
+`reason_codes`는 공급자 자유 텍스트가 아니라 `FULL_ATTRIBUTE_MATCH`,
+`PARTIAL_ATTRIBUTE_MATCH`, `NO_ATTRIBUTE_MATCH`, `NO_SCORABLE_TAGS`, `HIGH_SIMILARITY`처럼
+서버가 정의한 code만 저장한다. 신규 추천 항목은 빈 목록과 허용 목록 외 code의 저장을 거부한다.
+레거시 빈 문자열은 조회 시 빈 code 목록으로 처리한다. 다국어 문장은 API 계층이 code로 조립한다.
 
 ### 4.3 `report_custom_tag`
 
@@ -713,6 +755,7 @@ IDX_WITHDRAWAL_EMAIL_BLOCK_BLOCKED_UNTIL(blocked_until)
 | `product` 삭제 | recommendation, saved product `RESTRICT` | 추천 근거와 사용자 저장 보존 |
 | `product` 삭제 | 분석 상품 기반 lookbook `RESTRICT` | 게시된 룩북의 매칭 이미지 보존 |
 | `tag` 삭제 | product tag `RESTRICT` | 사용 중 태그 우발 삭제 방지 |
+| `tag` 삭제 | tag target clothing `CASCADE` | 태그 부속 적용 범위 정리 |
 
 JPA에는 대규모 `CascadeType.ALL`을 기본 적용하지 않는다. 특히 Product 삭제로 저장 상품이
 자동 삭제되면 안 된다.
@@ -721,7 +764,7 @@ JPA에는 대규모 `CascadeType.ALL`을 기본 적용하지 않는다. 특히 P
 
 ## 7. Entity·migration 상태
 
-현재 운영 migration 계약은 V1~V21이며, 프로덕션에서 Flyway 적용 후
+현재 운영 migration 계약은 V1~V25이며, 프로덕션에서 Flyway 적용 후
 Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
 
 ### 7.1 `Product`
@@ -768,11 +811,15 @@ Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
   `SavedAnalysisItem`으로 카테고리별 선택 상품 스냅샷을 구현한다.
 - 추천 실행 이력은 요구사항이 생길 때 별도 migration으로 추가한다.
 
-### 7.6 프로토타입 분석 기준 태그
+### 7.6 태그 마스터 taxonomy
 
-- V16 migration은 기존 태그를 변경하지 않고 누락된 `미니멀(DETAIL)`,
-  `와이드핏(SILHOUETTE)`, `베이지톤(COLOR)`만 멱등하게 추가한다.
-- 이 세 태그는 명시적 prototype 분석 모드의 결정적 end-to-end 검증 데이터다.
+- V16 migration은 legacy prototype 기준 태그를 제공하고, V22/V23은 회원 관심 STYLE 태그를
+  추가·재분류한다.
+- V25는 STYLE 5개, SILHOUETTE 12개, MATERIAL 8개, DETAIL 10개, COLOR 8개의 최종
+  43개 taxonomy와 복종 매핑 70개를 구성한다.
+- prototype 분석기는 최종 taxonomy의 `미니멀(STYLE)`, `와이드핏(SILHOUETTE)`,
+  `베이지(COLOR)`를 결정적 end-to-end 검증 데이터로 사용한다.
+- DB에 legacy `베이지톤`이 있으면 tag ID와 참조 관계를 보존하면서 `베이지`로 수렴시킨다.
 - 실제 AI 공급자를 연결할 때는 모델 결과를 승인된 태그 taxonomy에 매핑하고 prototype 분석기를
   비활성화한다.
 

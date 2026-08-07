@@ -40,6 +40,10 @@ IMAGE_S3_API_CALL_TIMEOUT=PT5S
 IMAGE_S3_API_CALL_ATTEMPT_TIMEOUT=PT2S
 HMAC_SECRET_KEY=change-me-to-a-stable-32-byte-random-secret
 FITBACK_AI_TAG_ANALYZER=unavailable
+FITBACK_AI_REQUEST_TIMEOUT=PT30S
+FITBACK_AI_OPENAI_API_KEY=your-openai-api-key
+FITBACK_AI_OPENAI_MODEL=
+FITBACK_AI_BEDROCK_MODEL_ID=
 SHOPIFY_ENABLED=false
 SHOPIFY_GLOBAL_CATALOG_ENDPOINT=https://catalog.shopify.com/api/ucp/mcp
 SHOPIFY_AGENT_PROFILE_URL=https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json
@@ -51,6 +55,7 @@ SHOPIFY_LANGUAGE=ko
 SHOPIFY_CURRENCY=KRW
 SHOPPING_CANDIDATE_TOKEN_TTL=PT10M
 SHOPPING_PROVIDER=fixture
+APP_CORS_ALLOWED_ORIGINS=https://frontend-chi-one-35.vercel.app,http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173
 KAKAO_REST_API_KEY=team_kakao_rest_api_key
 KAKAO_REST_API_SECRET=team_kakao_client_secret
 FRONT_REDIRECT_URI=http://localhost:3000/oauth/success
@@ -78,6 +83,26 @@ SHOPIFY_ENABLED=true
 `prototype` 분석기는 실제 이미지 의미를 판별하는 AI가 아니라 S3 업로드부터 분석·추천까지의
 계약을 검증하기 위한 결정적 fallback입니다. 운영 기본값 `unavailable`은 실제 AI 공급자가
 연결되기 전 데모 태그가 운영 데이터에 섞이지 않도록 fail-closed로 유지합니다.
+실제 분석기는 `FITBACK_AI_TAG_ANALYZER=openai` 또는 `bedrock`으로 선택할 수 있으며,
+두 공급자의 동일 조건 비교 절차는 [AI 태그 모델 블라인드 평가](docs/AI_TAG_BLIND_EVALUATION.md)를
+따릅니다.
+
+```env
+# OpenAI
+FITBACK_AI_TAG_ANALYZER=openai
+FITBACK_AI_REQUEST_TIMEOUT=PT30S
+FITBACK_AI_OPENAI_API_KEY=your-openai-api-key
+FITBACK_AI_OPENAI_MODEL=gpt-5.6-luna
+
+# 또는 Bedrock — 로컬은 AWS_PROFILE, 운영은 EC2 instance role 사용
+FITBACK_AI_TAG_ANALYZER=bedrock
+FITBACK_AI_REQUEST_TIMEOUT=PT30S
+AWS_REGION=ap-northeast-2
+FITBACK_AI_BEDROCK_MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
+AWS_PROFILE=your-sso-profile
+```
+
+실제 값은 저장소에 커밋하지 않는다. 전체 변수 목록은 `.env.example`을 기준으로 한다.
 Shopify를 사용할 때는 상품 식별자만 저장하며 표시 정보와 구매 URL은 `lookup_catalog`으로
 실시간 조회합니다.
 
@@ -107,7 +132,7 @@ CREATE DATABASE fitback;
 쇼핑 공급자 contract test도 외부 네트워크 없이 fixture Adapter를 기준으로 실행합니다.
 GitHub Actions의 Backend CI는 이 Gradle 빌드와 함께
 `bash scripts/ci/test_mysql_migrations.sh`를 실행하여 MySQL 8.4 컨테이너에서
-현재 Flyway `V1`~`V21` 마이그레이션과 주요 제약조건을 검증합니다.
+현재 Flyway `V1`~`V25` 마이그레이션과 주요 제약조건을 검증합니다.
 ECR 이미지 발행, Nginx 공개 진입점, 원격 배포 payload 계약까지 포함한 전체 CI 명령은
 [AGENTS.md의 CI 규칙](AGENTS.md#15-ci-규칙)과
 [workflow 정의](.github/workflows/backend-ci.yml)를 기준으로 합니다.
@@ -177,6 +202,8 @@ http://127.0.0.1:5173
 `data`에 발급합니다. 이후 인증 요청은 access token을 `Authorization: Bearer {accessToken}`
 헤더로 보내며, refresh token은 재발급 API의 JSON body로 전달합니다. credential cookie는
 허용하지 않습니다.
+운영 프로필의 Spring CORS allowlist는 comma-separated `APP_CORS_ALLOWED_ORIGINS` 환경변수로
+주입합니다. GitHub Repository Variable을 변경한 경우 새 production 배포가 필요합니다.
 배포 후에는 allowlist에 포함된 로컬 프론트엔드 Origin으로 로그인 OPTIONS preflight와 POST 응답의
 `Access-Control-Allow-Origin`을 확인합니다. Spring 애플리케이션 직접 경로는 성공하지만
 CloudFront 경유 요청만 실패하면 CloudFront의 Origin 요청 헤더 전달 및 OPTIONS 캐시 정책을

@@ -2,7 +2,9 @@ package com.fitback.backend.global.health;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fitback.backend.global.security.CorsProperties;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.Environment;
@@ -24,12 +26,18 @@ class ProductionProfileConfigurationTest {
                     "IMAGE_CDN_BASE_URL=https://images.example.com",
                     "CLOUDFRONT_KEY_PAIR_ID=TESTKEY",
                     "CLOUDFRONT_PRIVATE_KEY_BASE64=dGVzdC1rZXk=",
+                    "FITBACK_AI_TAG_ANALYZER=openai",
+                    "FITBACK_AI_REQUEST_TIMEOUT=PT45S",
+                    "FITBACK_AI_OPENAI_API_KEY=test-openai-key",
+                    "FITBACK_AI_OPENAI_MODEL=test-openai-model",
+                    "FITBACK_AI_BEDROCK_MODEL_ID=test-bedrock-model",
                     "KAKAO_REST_API_KEY=test-kakao-client-id",
                     "KAKAO_REST_API_SECRET=test-kakao-client-secret",
                     "FRONT_REDIRECT_URI=http://localhost:3000/oauth/success",
                     "MAIL_EMAIL=test@fitback.com",
                     "MAIL_APP_PASSWORD=test-mail-app-password",
-                    "FRONT_PASSWORD_RESET_URL=https://frontend.example.com/reset-password"
+                    "FRONT_PASSWORD_RESET_URL=https://frontend.example.com/reset-password",
+                    "APP_CORS_ALLOWED_ORIGINS=https://frontend.example.com,http://localhost:5173"
             );
 
     @Test
@@ -96,8 +104,39 @@ class ProductionProfileConfigurationTest {
                     .isEqualTo("5m");
             assertThat(environment.getProperty("app.password-reset.request-cooldown"))
                     .isEqualTo("1m");
-            assertThat(environment.getProperty("app.cors.allowed-origins[0]"))
-                    .isEqualTo("https://frontend-chi-one-35.vercel.app");
+        });
+    }
+
+    @Test
+    void productionProfileMapsCorsAllowedOriginsEnvironmentVariable() {
+        contextRunner.run(context -> {
+            CorsProperties properties = Binder.get(context.getEnvironment())
+                    .bind("app.cors", CorsProperties.class)
+                    .orElseThrow(() -> new AssertionError("app.cors must be bound"));
+
+            assertThat(properties.allowedOrigins()).containsExactly(
+                    "https://frontend.example.com",
+                    "http://localhost:5173"
+            );
+        });
+    }
+
+    @Test
+    void productionProfileMapsAiProviderEnvironmentContract() {
+        contextRunner.run(context -> {
+            Environment environment = context.getEnvironment();
+
+            assertThat(environment.getProperty("fitback.ai.tag-analyzer")).isEqualTo("openai");
+            assertThat(environment.getProperty("fitback.ai.request-timeout"))
+                    .isEqualTo("PT45S");
+            assertThat(environment.getProperty("fitback.ai.openai.api-key"))
+                    .isEqualTo("test-openai-key");
+            assertThat(environment.getProperty("fitback.ai.openai.model"))
+                    .isEqualTo("test-openai-model");
+            assertThat(environment.getProperty("fitback.ai.bedrock.model-id"))
+                    .isEqualTo("test-bedrock-model");
+            assertThat(environment.getProperty("fitback.ai.bedrock.region"))
+                    .isEqualTo("ap-northeast-2");
         });
     }
 

@@ -107,6 +107,8 @@ jobs:
             MAIL_EMAIL
             MAIL_APP_PASSWORD
             FRONT_PASSWORD_RESET_URL
+            APP_CORS_ALLOWED_ORIGINS
+            FITBACK_AI_REQUEST_TIMEOUT
             SPRING_FLYWAY_ENABLED
           ]
           missing_validation_env = required_validation_env.reject do |name|
@@ -134,7 +136,11 @@ jobs:
           end
 
           expected_feature_env = {
+            'APP_CORS_ALLOWED_ORIGINS' => "#{expression_open} vars.APP_CORS_ALLOWED_ORIGINS }}",
             'FITBACK_AI_TAG_ANALYZER' => "#{expression_open} vars.FITBACK_AI_TAG_ANALYZER || 'unavailable' }}",
+            'FITBACK_AI_REQUEST_TIMEOUT' => "#{expression_open} vars.FITBACK_AI_REQUEST_TIMEOUT || 'PT30S' }}",
+            'FITBACK_AI_OPENAI_MODEL' => "#{expression_open} vars.FITBACK_AI_OPENAI_MODEL || '' }}",
+            'FITBACK_AI_BEDROCK_MODEL_ID' => "#{expression_open} vars.FITBACK_AI_BEDROCK_MODEL_ID || '' }}",
             'SHOPPING_PROVIDER' => "#{expression_open} vars.SHOPPING_PROVIDER || 'fixture' }}",
             'SHOPIFY_ENABLED' => "#{expression_open} vars.SHOPIFY_ENABLED || 'false' }}"
           }
@@ -157,7 +163,11 @@ jobs:
           end
 
           required_feature_payload = %w[
+            APP_CORS_ALLOWED_ORIGINS
             FITBACK_AI_TAG_ANALYZER
+            FITBACK_AI_REQUEST_TIMEOUT
+            FITBACK_AI_OPENAI_MODEL
+            FITBACK_AI_BEDROCK_MODEL_ID
             SHOPPING_PROVIDER
             SHOPIFY_ENABLED
           ]
@@ -166,6 +176,10 @@ jobs:
           end
           unless missing_feature_payload.empty?
             abort "Backend CD SSM payload is missing feature settings: #{missing_feature_payload.join(', ')}"
+          end
+
+          if payload_script.include?('FITBACK_AI_OPENAI_API_KEY')
+            abort 'OpenAI API key must not be included in the GitHub SSM command payload.'
           end
 
           send_step = deploy_steps.find { |step| step['name'] == 'Send deployment command' }

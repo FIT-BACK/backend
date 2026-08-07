@@ -22,7 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class PrototypeAiTagAnalyzer implements AiTagAnalyzer {
 
     private static final List<String> PROTOTYPE_TAG_NAMES =
-            List.of("미니멀", "와이드핏", "베이지톤");
+            List.of("미니멀", "와이드핏", "베이지");
 
     private final TagRepository tagRepository;
 
