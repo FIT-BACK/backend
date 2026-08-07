@@ -239,6 +239,9 @@ jobs:
       CLOUDFRONT_KEY_PAIR_ID: ${{ vars.CLOUDFRONT_KEY_PAIR_ID }}
       APP_CORS_ALLOWED_ORIGINS: ${{ vars.APP_CORS_ALLOWED_ORIGINS }}
       FITBACK_AI_TAG_ANALYZER: ${{ vars.FITBACK_AI_TAG_ANALYZER || 'unavailable' }}
+      FITBACK_AI_REQUEST_TIMEOUT: ${{ vars.FITBACK_AI_REQUEST_TIMEOUT }}
+      FITBACK_AI_OPENAI_MODEL: ${{ vars.FITBACK_AI_OPENAI_MODEL }}
+      FITBACK_AI_BEDROCK_MODEL_ID: ${{ vars.FITBACK_AI_BEDROCK_MODEL_ID }}
       SHOPPING_PROVIDER: ${{ vars.SHOPPING_PROVIDER || 'fixture' }}
       SHOPIFY_ENABLED: ${{ vars.SHOPIFY_ENABLED || 'false' }}
       IMAGE_REFERENCE: ${{ needs.publish-image.outputs.image-reference }}
@@ -307,6 +310,43 @@ jobs:
             exit 1
           fi
 
+          validate_model() {
+            local variable_name="$1"
+            local value="$2"
+
+            if [ -z "$value" ] || [[ "$value" =~ [[:space:]] ]]; then
+              echo "Required AI model is missing or invalid: ${variable_name}" >&2
+              exit 1
+            fi
+          }
+
+          validate_timeout() {
+            if [[ ! "$FITBACK_AI_REQUEST_TIMEOUT" =~ ^PT([0-9]+H)?([0-9]+M)?([0-9]+([.][0-9]+)?S)?$ ]] \
+                || [ "$FITBACK_AI_REQUEST_TIMEOUT" = 'PT' ]; then
+              echo 'FITBACK_AI_REQUEST_TIMEOUT must be a valid ISO-8601 duration such as PT30S.' >&2
+              exit 1
+            fi
+          }
+
+          case "$FITBACK_AI_TAG_ANALYZER" in
+            openai)
+              validate_model FITBACK_AI_OPENAI_MODEL "$FITBACK_AI_OPENAI_MODEL"
+              [ -n "$FITBACK_AI_REQUEST_TIMEOUT" ] || {
+                echo 'Required AI deployment value is missing: FITBACK_AI_REQUEST_TIMEOUT' >&2
+                exit 1
+              }
+              validate_timeout
+              ;;
+            bedrock)
+              validate_model FITBACK_AI_BEDROCK_MODEL_ID "$FITBACK_AI_BEDROCK_MODEL_ID"
+              [ -n "$FITBACK_AI_REQUEST_TIMEOUT" ] || {
+                echo 'Required AI deployment value is missing: FITBACK_AI_REQUEST_TIMEOUT' >&2
+                exit 1
+              }
+              validate_timeout
+              ;;
+          esac
+
           if [ "$SHOPPING_PROVIDER" != 'fixture' ] && [ "$SHOPPING_PROVIDER" != 'shopify' ]; then
             echo "SHOPPING_PROVIDER must be fixture or shopify." >&2
             exit 1
@@ -369,6 +409,9 @@ jobs:
             --arg cloudfront_key_pair_id "$CLOUDFRONT_KEY_PAIR_ID" \
             --arg app_cors_allowed_origins "$APP_CORS_ALLOWED_ORIGINS" \
             --arg fitback_ai_tag_analyzer "$FITBACK_AI_TAG_ANALYZER" \
+            --arg fitback_ai_request_timeout "$FITBACK_AI_REQUEST_TIMEOUT" \
+            --arg fitback_ai_openai_model "$FITBACK_AI_OPENAI_MODEL" \
+            --arg fitback_ai_bedrock_model_id "$FITBACK_AI_BEDROCK_MODEL_ID" \
             --arg shopping_provider "$SHOPPING_PROVIDER" \
             --arg shopify_enabled "$SHOPIFY_ENABLED" \
             --arg release_dir "$release_dir" \
@@ -387,6 +430,9 @@ jobs:
                   + " CLOUDFRONT_KEY_PAIR_ID=" + ($cloudfront_key_pair_id | @sh)
                   + " APP_CORS_ALLOWED_ORIGINS=" + ($app_cors_allowed_origins | @sh)
                   + " FITBACK_AI_TAG_ANALYZER=" + ($fitback_ai_tag_analyzer | @sh)
+                  + " FITBACK_AI_REQUEST_TIMEOUT=" + ($fitback_ai_request_timeout | @sh)
+                  + " FITBACK_AI_OPENAI_MODEL=" + ($fitback_ai_openai_model | @sh)
+                  + " FITBACK_AI_BEDROCK_MODEL_ID=" + ($fitback_ai_bedrock_model_id | @sh)
                   + " SHOPPING_PROVIDER=" + ($shopping_provider | @sh)
                   + " SHOPIFY_ENABLED=" + ($shopify_enabled | @sh)
                   + " DEPLOY_ROOT=/opt/fitback"

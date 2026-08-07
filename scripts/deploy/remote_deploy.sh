@@ -21,6 +21,9 @@ HTTP_PORT="${HTTP_PORT:-80}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-30}"
 HEALTH_INTERVAL_SECONDS="${HEALTH_INTERVAL_SECONDS:-2}"
 FITBACK_AI_TAG_ANALYZER="${FITBACK_AI_TAG_ANALYZER:-unavailable}"
+FITBACK_AI_REQUEST_TIMEOUT="${FITBACK_AI_REQUEST_TIMEOUT:-}"
+FITBACK_AI_OPENAI_MODEL="${FITBACK_AI_OPENAI_MODEL:-}"
+FITBACK_AI_BEDROCK_MODEL_ID="${FITBACK_AI_BEDROCK_MODEL_ID:-}"
 SHOPPING_PROVIDER="${SHOPPING_PROVIDER:-fixture}"
 SHOPIFY_ENABLED="${SHOPIFY_ENABLED:-false}"
 
@@ -173,6 +176,40 @@ require_single_line() {
   fi
 }
 
+require_model() {
+  local name="$1"
+  local value="$2"
+
+  require_single_line "$name" "$value"
+  if [[ "$value" =~ [[:space:]] ]]; then
+    echo "Model must not contain whitespace: $name" >&2
+    exit 1
+  fi
+}
+
+require_timeout() {
+  local value="$1"
+
+  require_single_line 'FITBACK_AI_REQUEST_TIMEOUT' "$value"
+  if [[ ! "$value" =~ ^PT([0-9]+H)?([0-9]+M)?([0-9]+([.][0-9]+)?S)?$ ]] || [ "$value" = 'PT' ]; then
+    echo 'FITBACK_AI_REQUEST_TIMEOUT must be a valid ISO-8601 duration such as PT30S.' >&2
+    exit 1
+  fi
+}
+
+validate_ai_contract() {
+  case "$FITBACK_AI_TAG_ANALYZER" in
+    openai)
+      require_model 'FITBACK_AI_OPENAI_MODEL' "$FITBACK_AI_OPENAI_MODEL"
+      require_timeout "$FITBACK_AI_REQUEST_TIMEOUT"
+      ;;
+    bedrock)
+      require_model 'FITBACK_AI_BEDROCK_MODEL_ID' "$FITBACK_AI_BEDROCK_MODEL_ID"
+      require_timeout "$FITBACK_AI_REQUEST_TIMEOUT"
+      ;;
+  esac
+}
+
 write_environment() {
   local release_dir="$1"
   local image_reference="$2"
@@ -190,6 +227,9 @@ write_environment() {
     printf 'CLOUDFRONT_KEY_PAIR_ID=%s\n' "$CLOUDFRONT_KEY_PAIR_ID"
     printf 'APP_CORS_ALLOWED_ORIGINS=%s\n' "$APP_CORS_ALLOWED_ORIGINS"
     printf 'FITBACK_AI_TAG_ANALYZER=%s\n' "$FITBACK_AI_TAG_ANALYZER"
+    printf 'FITBACK_AI_REQUEST_TIMEOUT=%s\n' "$FITBACK_AI_REQUEST_TIMEOUT"
+    printf 'FITBACK_AI_OPENAI_MODEL=%s\n' "$FITBACK_AI_OPENAI_MODEL"
+    printf 'FITBACK_AI_BEDROCK_MODEL_ID=%s\n' "$FITBACK_AI_BEDROCK_MODEL_ID"
     printf 'SHOPPING_PROVIDER=%s\n' "$SHOPPING_PROVIDER"
     printf 'SHOPIFY_ENABLED=%s\n' "$SHOPIFY_ENABLED"
     printf 'SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.cj.jdbc.Driver\n'
@@ -214,7 +254,7 @@ compose_in() {
   MAIL_APP_PASSWORD="$mail_app_password" \
   FRONT_PASSWORD_RESET_URL="$front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$cloudfront_private_key_base64" \
-  OPENAI_API_KEY="$openai_api_key" \
+  FITBACK_AI_OPENAI_API_KEY="$openai_api_key" \
     docker compose \
     --project-directory "$release_dir" \
     --env-file "$release_dir/.env" \
@@ -311,6 +351,8 @@ rollback() {
   fi
   return 0
 }
+
+validate_ai_contract
 
 db_url="$(get_parameter 'db-url')"
 db_user="$(get_parameter 'db-user')"

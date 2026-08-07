@@ -19,6 +19,7 @@ special_mail_email="mail@fitback.com"
 special_mail_app_password="mail\$\$\\'password\\value#=end-for-fitback-test"
 special_front_password_reset_url="https://frontend.example.com/reset-password"
 special_cloudfront_private_key="Y2xvdWRmcm9udC1wcml2YXRlLWtleS1mb3ItdGVzdA=="
+special_openai_api_key="openai-api-key-for-runtime-only-test"
 app_cors_allowed_origins="https://frontend-chi-one-35.vercel.app,http://localhost:3000,http://localhost:5173"
 
 mkdir -p "$mock_bin"
@@ -83,6 +84,9 @@ if [ "${1:-}" = 'ssm' ] && [ "${2:-}" = 'get-parameter' ]; then
     */cloudfront-private-key)
       printf '%s\n' "$MOCK_CLOUDFRONT_PRIVATE_KEY"
       ;;
+    */openai-api-key)
+      printf '%s\n' "$MOCK_OPENAI_API_KEY"
+      ;;
     *)
       printf 'Unexpected parameter: %s\n' "$parameter_name" >&2
       exit 1
@@ -100,6 +104,10 @@ cat > "$mock_bin/docker" <<'EOF'
 set -euo pipefail
 
 printf 'docker %s\n' "$*" >> "$MOCK_LOG"
+
+if [ "${FITBACK_AI_OPENAI_API_KEY+x}" = 'x' ] && [ -n "$FITBACK_AI_OPENAI_API_KEY" ]; then
+  printf 'runtime FITBACK_AI_OPENAI_API_KEY=set\n' >> "$MOCK_LOG"
+fi
 
 if [ "${1:-}" = 'login' ]; then
   cat > /dev/null
@@ -215,7 +223,10 @@ run_deploy() {
   IMAGE_CDN_BASE_URL='https://d1p2ierkew26r1.cloudfront.net' \
   CLOUDFRONT_KEY_PAIR_ID='K1XNJ3JDEDCVL3' \
   APP_CORS_ALLOWED_ORIGINS="$app_cors_allowed_origins" \
-  FITBACK_AI_TAG_ANALYZER='prototype' \
+  FITBACK_AI_TAG_ANALYZER="${FITBACK_AI_TAG_ANALYZER:-prototype}" \
+  FITBACK_AI_REQUEST_TIMEOUT="${FITBACK_AI_REQUEST_TIMEOUT:-}" \
+  FITBACK_AI_OPENAI_MODEL="${FITBACK_AI_OPENAI_MODEL:-}" \
+  FITBACK_AI_BEDROCK_MODEL_ID="${FITBACK_AI_BEDROCK_MODEL_ID:-}" \
   SHOPPING_PROVIDER='shopify' \
   SHOPIFY_ENABLED='true' \
   PARAMETER_PREFIX='/fitback/prod' \
@@ -235,6 +246,7 @@ run_deploy() {
   MOCK_MAIL_APP_PASSWORD="$special_mail_app_password" \
   MOCK_FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
   MOCK_CLOUDFRONT_PRIVATE_KEY="$special_cloudfront_private_key" \
+  MOCK_OPENAI_API_KEY="$special_openai_api_key" \
   MOCK_CURL_FAIL_COUNT="${MOCK_CURL_FAIL_COUNT:-0}" \
   MOCK_DOCKER_FAIL_MATCH="${MOCK_DOCKER_FAIL_MATCH:-}" \
   MOCK_DOCKER_PULL_FAIL_MATCH="${MOCK_DOCKER_PULL_FAIL_MATCH:-}" \
@@ -269,6 +281,9 @@ grep -Fxq 'IMAGE_CDN_BASE_URL=https://d1p2ierkew26r1.cloudfront.net' "$env_file"
 grep -Fxq 'CLOUDFRONT_KEY_PAIR_ID=K1XNJ3JDEDCVL3' "$env_file"
 grep -Fxq "APP_CORS_ALLOWED_ORIGINS=$app_cors_allowed_origins" "$env_file"
 grep -Fxq 'FITBACK_AI_TAG_ANALYZER=prototype' "$env_file"
+grep -Fxq 'FITBACK_AI_REQUEST_TIMEOUT=' "$env_file"
+grep -Fxq 'FITBACK_AI_OPENAI_MODEL=' "$env_file"
+grep -Fxq 'FITBACK_AI_BEDROCK_MODEL_ID=' "$env_file"
 grep -Fxq 'SHOPPING_PROVIDER=shopify' "$env_file"
 grep -Fxq 'SHOPIFY_ENABLED=true' "$env_file"
 
@@ -440,6 +455,80 @@ if grep -Fq "$special_mail_app_password" "$mock_log"; then
 fi
 if grep -Fq "$special_cloudfront_private_key" "$mock_log"; then
   echo 'CloudFront private key leaked into a command log.' >&2
+  exit 1
+fi
+
+ai_deploy_root="$test_root/ai-fitback"
+mkdir -p "$ai_deploy_root/releases"
+openai_release="$ai_deploy_root/releases/release-openai"
+create_release "$openai_release"
+: > "$mock_log"
+: > "$curl_count_file"
+FITBACK_AI_TAG_ANALYZER='openai' \
+FITBACK_AI_REQUEST_TIMEOUT='PT30S' \
+FITBACK_AI_OPENAI_MODEL='gpt-test-model' \
+FITBACK_AI_BEDROCK_MODEL_ID='' \
+  run_deploy "$ai_deploy_root" "$openai_release" "$failed_image"
+openai_env_file="$openai_release/.env"
+grep -Fq '/fitback/prod/openai-api-key' "$mock_log"
+grep -Fq 'runtime FITBACK_AI_OPENAI_API_KEY=set' "$mock_log"
+grep -Fxq 'FITBACK_AI_REQUEST_TIMEOUT=PT30S' "$openai_env_file"
+grep -Fxq 'FITBACK_AI_OPENAI_MODEL=gpt-test-model' "$openai_env_file"
+grep -Fq 'FITBACK_AI_BEDROCK_MODEL_ID=' "$openai_env_file"
+if grep -Fq 'FITBACK_AI_OPENAI_API_KEY=' "$openai_env_file"; then
+  echo 'OpenAI API key was written to .env.' >&2
+  exit 1
+fi
+if grep -Fq "$special_openai_api_key" "$mock_log"; then
+  echo 'OpenAI API key leaked into a command log.' >&2
+  exit 1
+fi
+
+bedrock_release="$ai_deploy_root/releases/release-bedrock"
+create_release "$bedrock_release"
+: > "$mock_log"
+: > "$curl_count_file"
+FITBACK_AI_TAG_ANALYZER='bedrock' \
+FITBACK_AI_REQUEST_TIMEOUT='PT45S' \
+FITBACK_AI_OPENAI_MODEL='' \
+FITBACK_AI_BEDROCK_MODEL_ID='global.anthropic.claude-test-v1' \
+  run_deploy "$ai_deploy_root" "$bedrock_release" "$failed_image"
+if grep -Fq '/fitback/prod/openai-api-key' "$mock_log"; then
+  echo 'Bedrock deployment queried the OpenAI API key.' >&2
+  exit 1
+fi
+
+missing_timeout_release="$ai_deploy_root/releases/release-missing-timeout"
+create_release "$missing_timeout_release"
+: > "$mock_log"
+if FITBACK_AI_TAG_ANALYZER='openai' FITBACK_AI_REQUEST_TIMEOUT='' FITBACK_AI_OPENAI_MODEL='gpt-test-model' \
+  run_deploy "$ai_deploy_root" "$missing_timeout_release" "$failed_image" > /dev/null 2>&1; then
+  echo 'Expected missing OpenAI timeout to fail.' >&2
+  exit 1
+fi
+test ! -e "$missing_timeout_release/.env"
+test ! -s "$mock_log"
+
+missing_model_release="$ai_deploy_root/releases/release-missing-model"
+create_release "$missing_model_release"
+: > "$mock_log"
+if FITBACK_AI_TAG_ANALYZER='bedrock' FITBACK_AI_REQUEST_TIMEOUT='PT30S' FITBACK_AI_BEDROCK_MODEL_ID='' \
+  run_deploy "$ai_deploy_root" "$missing_model_release" "$failed_image" > /dev/null 2>&1; then
+  echo 'Expected missing Bedrock model to fail.' >&2
+  exit 1
+fi
+test ! -e "$missing_model_release/.env"
+test ! -s "$mock_log"
+
+workflow_file="$repo_root/.github/workflows/backend-cd.yml"
+grep -Fq 'FITBACK_AI_REQUEST_TIMEOUT: ${{ vars.FITBACK_AI_REQUEST_TIMEOUT }}' "$workflow_file"
+grep -Fq 'FITBACK_AI_OPENAI_MODEL: ${{ vars.FITBACK_AI_OPENAI_MODEL }}' "$workflow_file"
+grep -Fq 'FITBACK_AI_BEDROCK_MODEL_ID: ${{ vars.FITBACK_AI_BEDROCK_MODEL_ID }}' "$workflow_file"
+grep -Fq 'fitback_ai_request_timeout' "$workflow_file"
+grep -Fq 'fitback_ai_openai_model' "$workflow_file"
+grep -Fq 'fitback_ai_bedrock_model_id' "$workflow_file"
+if grep -Eq '(^|[[:space:]])OPENAI_API_KEY=' "$workflow_file"; then
+  echo 'OpenAI API key was added to the workflow.' >&2
   exit 1
 fi
 
