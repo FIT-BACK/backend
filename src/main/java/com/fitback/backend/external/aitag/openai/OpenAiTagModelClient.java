@@ -13,17 +13,21 @@ import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 public final class OpenAiTagModelClient implements AiTagModelClient {
 
     private static final String ENDPOINT = "https://api.openai.com/v1/responses";
+    private static final Logger log = LoggerFactory.getLogger(OpenAiTagModelClient.class);
 
     private final AiTagProperties.OpenAi properties;
     private final Duration requestTimeout;
@@ -56,16 +60,55 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     @Override
     public AiTagModelResult analyze(AiTagImage image, AiTagModelRequest request) {
         long startedAt = System.nanoTime();
+        TransportResponse response;
         try {
-            TransportResponse response = transport.post(
+            response = transport.post(
                     ENDPOINT,
                     properties.apiKey(),
                     requestTimeout,
                     objectMapper.writeValueAsString(payload(image, request))
             );
-            if (response.statusCode() >= 400) {
-                throw notReady();
-            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            log.warn(
+                    "AI tag provider call interrupted. provider=openai model={} providerErrorCategory=INTERRUPTED elapsedMillis={}",
+                    properties.model(),
+                    elapsedMillis(startedAt)
+            );
+            throw notReady();
+        } catch (HttpTimeoutException exception) {
+            log.warn(
+                    "AI tag provider call failed. provider=openai model={} providerErrorCategory=TIMEOUT elapsedMillis={}",
+                    properties.model(),
+                    elapsedMillis(startedAt)
+            );
+            throw notReady();
+        } catch (IOException exception) {
+            log.warn(
+                    "AI tag provider call failed. provider=openai model={} providerErrorCategory=TRANSPORT_ERROR elapsedMillis={}",
+                    properties.model(),
+                    elapsedMillis(startedAt)
+            );
+            throw notReady();
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "AI tag provider request failed. provider=openai model={} providerErrorCategory=REQUEST_ERROR elapsedMillis={}",
+                    properties.model(),
+                    elapsedMillis(startedAt)
+            );
+            throw notReady();
+        }
+        if (response.statusCode() >= 400) {
+            log.warn(
+                    "AI tag provider returned an error. provider=openai model={} httpStatus={} providerErrorCategory={} elapsedMillis={}",
+                    properties.model(),
+                    response.statusCode(),
+                    providerErrorCategory(response.statusCode()),
+                    elapsedMillis(startedAt)
+            );
+            throw notReady();
+        }
+        try {
             JsonNode root = objectMapper.readTree(response.body());
             String outputJson = outputText(root);
             AiTagModelOutput output = responseParser.parse(outputJson);
@@ -77,12 +120,14 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     nullableInt(root.path("usage").path("output_tokens")),
                     elapsedMillis(startedAt)
             );
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw notReady();
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
+            log.warn(
+                    "AI tag provider response parsing failed. provider=openai model={} responseParsingCategory=INVALID_OR_MISSING_OUTPUT elapsedMillis={}",
+                    properties.model(),
+                    elapsedMillis(startedAt)
+            );
             throw notReady();
         }
     }
@@ -129,6 +174,25 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
 
     private static Integer nullableInt(JsonNode node) {
         return node.isIntegralNumber() ? node.asInt() : null;
+    }
+
+    private static String providerErrorCategory(int statusCode) {
+        if (statusCode == 401 || statusCode == 403) {
+            return "AUTHENTICATION";
+        }
+        if (statusCode == 408) {
+            return "TIMEOUT";
+        }
+        if (statusCode == 429) {
+            return "RATE_LIMIT";
+        }
+        if (statusCode >= 400 && statusCode < 500) {
+            return "CLIENT_ERROR";
+        }
+        if (statusCode >= 500 && statusCode < 600) {
+            return "SERVER_ERROR";
+        }
+        return "UNEXPECTED_STATUS";
     }
 
     private static long elapsedMillis(long startedAt) {
