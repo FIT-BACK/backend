@@ -21,6 +21,9 @@ HTTP_PORT="${HTTP_PORT:-80}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-30}"
 HEALTH_INTERVAL_SECONDS="${HEALTH_INTERVAL_SECONDS:-2}"
 FITBACK_AI_TAG_ANALYZER="${FITBACK_AI_TAG_ANALYZER:-unavailable}"
+FITBACK_AI_REQUEST_TIMEOUT="${FITBACK_AI_REQUEST_TIMEOUT:-PT30S}"
+FITBACK_AI_OPENAI_MODEL="${FITBACK_AI_OPENAI_MODEL:-}"
+FITBACK_AI_BEDROCK_MODEL_ID="${FITBACK_AI_BEDROCK_MODEL_ID:-}"
 SHOPPING_PROVIDER="${SHOPPING_PROVIDER:-fixture}"
 SHOPIFY_ENABLED="${SHOPIFY_ENABLED:-false}"
 
@@ -64,11 +67,36 @@ if [[ ! "$HEALTH_INTERVAL_SECONDS" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-if [ "$FITBACK_AI_TAG_ANALYZER" != 'unavailable' ] \
-    && [ "$FITBACK_AI_TAG_ANALYZER" != 'prototype' ] \
-    && [ "$FITBACK_AI_TAG_ANALYZER" != 'openai' ] \
-    && [ "$FITBACK_AI_TAG_ANALYZER" != 'bedrock' ]; then
-  echo 'FITBACK_AI_TAG_ANALYZER must be unavailable, prototype, openai, or bedrock.' >&2
+for ai_model_setting in "$FITBACK_AI_OPENAI_MODEL" "$FITBACK_AI_BEDROCK_MODEL_ID"; do
+  if [ -n "$ai_model_setting" ] && [[ ! "$ai_model_setting" =~ ^[^[:space:]]+$ ]]; then
+    echo 'AI model settings must be empty or contain no whitespace.' >&2
+    exit 1
+  fi
+done
+
+case "$FITBACK_AI_TAG_ANALYZER" in
+  unavailable|prototype)
+    ;;
+  openai)
+    if [[ ! "$FITBACK_AI_OPENAI_MODEL" =~ ^[^[:space:]]+$ ]]; then
+      echo 'FITBACK_AI_OPENAI_MODEL is required for the OpenAI analyzer.' >&2
+      exit 1
+    fi
+    ;;
+  bedrock)
+    if [[ ! "$FITBACK_AI_BEDROCK_MODEL_ID" =~ ^[^[:space:]]+$ ]]; then
+      echo 'FITBACK_AI_BEDROCK_MODEL_ID is required for the Bedrock analyzer.' >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo 'FITBACK_AI_TAG_ANALYZER must be unavailable, prototype, openai, or bedrock.' >&2
+    exit 1
+    ;;
+esac
+
+if [[ ! "$FITBACK_AI_REQUEST_TIMEOUT" =~ ^PT[1-9][0-9]*S$ ]]; then
+  echo 'FITBACK_AI_REQUEST_TIMEOUT must be a positive whole-second ISO-8601 duration such as PT30S.' >&2
   exit 1
 fi
 
@@ -190,6 +218,9 @@ write_environment() {
     printf 'CLOUDFRONT_KEY_PAIR_ID=%s\n' "$CLOUDFRONT_KEY_PAIR_ID"
     printf 'APP_CORS_ALLOWED_ORIGINS=%s\n' "$APP_CORS_ALLOWED_ORIGINS"
     printf 'FITBACK_AI_TAG_ANALYZER=%s\n' "$FITBACK_AI_TAG_ANALYZER"
+    printf 'FITBACK_AI_REQUEST_TIMEOUT=%s\n' "$FITBACK_AI_REQUEST_TIMEOUT"
+    printf 'FITBACK_AI_OPENAI_MODEL=%s\n' "$FITBACK_AI_OPENAI_MODEL"
+    printf 'FITBACK_AI_BEDROCK_MODEL_ID=%s\n' "$FITBACK_AI_BEDROCK_MODEL_ID"
     printf 'SHOPPING_PROVIDER=%s\n' "$SHOPPING_PROVIDER"
     printf 'SHOPIFY_ENABLED=%s\n' "$SHOPIFY_ENABLED"
     printf 'SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.cj.jdbc.Driver\n'
@@ -214,7 +245,7 @@ compose_in() {
   MAIL_APP_PASSWORD="$mail_app_password" \
   FRONT_PASSWORD_RESET_URL="$front_password_reset_url" \
   CLOUDFRONT_PRIVATE_KEY_BASE64="$cloudfront_private_key_base64" \
-  OPENAI_API_KEY="$openai_api_key" \
+  FITBACK_AI_OPENAI_API_KEY="$fitback_ai_openai_api_key" \
     docker compose \
     --project-directory "$release_dir" \
     --env-file "$release_dir/.env" \
@@ -324,12 +355,13 @@ mail_email="$(get_parameter 'mail-email')"
 mail_app_password="$(get_parameter 'mail-app-password')"
 front_password_reset_url="$(get_parameter 'front-password-reset-url')"
 cloudfront_private_key_base64="$(get_parameter 'cloudfront-private-key')"
-openai_api_key=''
+fitback_ai_openai_api_key=''
 if [ "$FITBACK_AI_TAG_ANALYZER" = 'openai' ]; then
-  openai_api_key="$(get_parameter 'openai-api-key')"
+  fitback_ai_openai_api_key="$(get_parameter 'openai-api-key')"
 fi
 
 require_single_line 'APP_CORS_ALLOWED_ORIGINS' "$APP_CORS_ALLOWED_ORIGINS"
+require_single_line 'FITBACK_AI_REQUEST_TIMEOUT' "$FITBACK_AI_REQUEST_TIMEOUT"
 require_single_line 'db-url' "$db_url"
 require_single_line 'db-user' "$db_user"
 require_single_line 'db-password' "$db_password"
@@ -343,7 +375,7 @@ require_single_line 'mail-app-password' "$mail_app_password"
 require_single_line 'front-password-reset-url' "$front_password_reset_url"
 require_single_line 'cloudfront-private-key' "$cloudfront_private_key_base64"
 if [ "$FITBACK_AI_TAG_ANALYZER" = 'openai' ]; then
-  require_single_line 'openai-api-key' "$openai_api_key"
+  require_single_line 'openai-api-key' "$fitback_ai_openai_api_key"
 fi
 
 if [[ ! "$front_redirect_uri" =~ ^https://[^[:space:]]+$ ]]; then

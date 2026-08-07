@@ -26,6 +26,7 @@ class ProductionProfileConfigurationTest {
                     "IMAGE_CDN_BASE_URL=https://images.example.com",
                     "CLOUDFRONT_KEY_PAIR_ID=TESTKEY",
                     "CLOUDFRONT_PRIVATE_KEY_BASE64=dGVzdC1rZXk=",
+                    "FITBACK_AI_TAG_ANALYZER=openai",
                     "FITBACK_AI_REQUEST_TIMEOUT=PT45S",
                     "FITBACK_AI_OPENAI_API_KEY=test-openai-key",
                     "FITBACK_AI_OPENAI_MODEL=test-openai-model",
@@ -125,6 +126,7 @@ class ProductionProfileConfigurationTest {
         contextRunner.run(context -> {
             Environment environment = context.getEnvironment();
 
+            assertThat(environment.getProperty("fitback.ai.tag-analyzer")).isEqualTo("openai");
             assertThat(environment.getProperty("fitback.ai.request-timeout"))
                     .isEqualTo("PT45S");
             assertThat(environment.getProperty("fitback.ai.openai.api-key"))
