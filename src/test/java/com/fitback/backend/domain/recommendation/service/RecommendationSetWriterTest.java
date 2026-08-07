@@ -1,6 +1,7 @@
 package com.fitback.backend.domain.recommendation.service;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -95,6 +96,7 @@ class RecommendationSetWriterTest {
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.RECOMMENDATION_INPUT_CHANGED);
         verify(recommendedItemRepository, never()).deleteCurrentSetByReportId(REPORT_ID);
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
