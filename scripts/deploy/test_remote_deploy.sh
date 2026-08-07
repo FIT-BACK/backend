@@ -105,6 +105,25 @@ set -euo pipefail
 
 printf 'docker %s\n' "$*" >> "$MOCK_LOG"
 
+if [ "${1:-}" = 'compose' ]; then
+  compose_env_file=''
+  previous_argument=''
+  for argument in "$@"; do
+    if [ "$previous_argument" = '--env-file' ]; then
+      compose_env_file="$argument"
+      break
+    fi
+    previous_argument="$argument"
+  done
+
+  if [ -n "${FITBACK_AI_TAG_ANALYZER+x}" ]; then
+    effective_ai_tag_analyzer="$FITBACK_AI_TAG_ANALYZER"
+  else
+    effective_ai_tag_analyzer="$(sed -n 's/^FITBACK_AI_TAG_ANALYZER=//p' "$compose_env_file")"
+  fi
+  printf 'compose ai mode %s for %s\n' "$effective_ai_tag_analyzer" "$compose_env_file" >> "$MOCK_LOG"
+fi
+
 if [ "${1:-}" = 'login' ]; then
   cat > /dev/null
   exit 0
@@ -453,6 +472,33 @@ if grep -Fq "$special_cloudfront_private_key" "$mock_log"; then
   echo 'CloudFront private key leaked into a command log.' >&2
   exit 1
 fi
+
+ai_rollback_root="$test_root/ai-rollback"
+ai_previous_release="$ai_rollback_root/releases/release-previous"
+ai_candidate_release="$ai_rollback_root/releases/release-candidate"
+mkdir -p "$ai_rollback_root/releases"
+create_release "$ai_previous_release"
+create_release "$ai_candidate_release"
+: > "$mock_log"
+: > "$curl_count_file"
+export TEST_FITBACK_AI_TAG_ANALYZER='unavailable'
+unset TEST_FITBACK_AI_OPENAI_MODEL TEST_FITBACK_AI_BEDROCK_MODEL_ID
+run_deploy "$ai_rollback_root" "$ai_previous_release" "$first_image"
+
+: > "$mock_log"
+: > "$curl_count_file"
+export TEST_FITBACK_AI_TAG_ANALYZER='openai'
+export TEST_FITBACK_AI_OPENAI_MODEL='fitback-openai-vision-model'
+export MOCK_CURL_FAIL_COUNT=1
+if ai_rollback_output="$(run_deploy "$ai_rollback_root" "$ai_candidate_release" "$failed_image" 2>&1)"; then
+  echo 'Expected the OpenAI deployment to fail after rollback.' >&2
+  exit 1
+fi
+
+grep -Fq "compose ai mode unavailable for $ai_previous_release/.env" "$mock_log"
+grep -Fq 'Rollback succeeded.' <<< "$ai_rollback_output"
+test "$(readlink "$ai_rollback_root/current")" = "$ai_previous_release"
+unset MOCK_CURL_FAIL_COUNT TEST_FITBACK_AI_TAG_ANALYZER TEST_FITBACK_AI_OPENAI_MODEL
 
 openai_deploy_root="$test_root/openai"
 openai_release="$openai_deploy_root/releases/release-openai"
