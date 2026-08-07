@@ -12,9 +12,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.multipart.MultipartFile;
 
 public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
+
+    private static final Logger log = LoggerFactory.getLogger(CanonicalAiTagAnalyzer.class);
 
     private final TagRepository tagRepository;
     private final AnalysisImageContentLoader imageContentLoader;
@@ -68,6 +72,18 @@ public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
                 || predictedKeys.stream().anyMatch(key -> !canonicalTags.containsKey(key))) {
             throw notReady();
         }
+        // 최소 사용량 로그 — 아직 별도 대시보드/알람은 없지만, 최소한 호출당 비용 추정이
+        // 가능하도록 provider/모델/토큰/응답시간을 기록한다. (TF 산출물 안정화: API 비용 모니터링)
+        // 검증 실패 시의 첫 로그가 경고(canonicalValidationCategory=...)여야 한다는 기존
+        // 테스트 가정이 있어, 검증을 통과한 뒤(성공 경로)에만 기록한다.
+        log.info(
+                "AI tag analysis call completed. provider={} model={} inputTokens={} outputTokens={} elapsedMs={}",
+                result.provider(),
+                result.model(),
+                result.inputTokens(),
+                result.outputTokens(),
+                result.elapsedMillis()
+        );
         return predictedKeys.stream().map(canonicalTags::get).toList();
     }
 
