@@ -40,6 +40,10 @@ IMAGE_S3_API_CALL_TIMEOUT=PT5S
 IMAGE_S3_API_CALL_ATTEMPT_TIMEOUT=PT2S
 HMAC_SECRET_KEY=change-me-to-a-stable-32-byte-random-secret
 FITBACK_AI_TAG_ANALYZER=unavailable
+FITBACK_AI_REQUEST_TIMEOUT=PT30S
+FITBACK_AI_OPENAI_API_KEY=your-openai-api-key
+FITBACK_AI_OPENAI_MODEL=
+FITBACK_AI_BEDROCK_MODEL_ID=
 SHOPIFY_ENABLED=false
 SHOPIFY_GLOBAL_CATALOG_ENDPOINT=https://catalog.shopify.com/api/ucp/mcp
 SHOPIFY_AGENT_PROFILE_URL=https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json
@@ -86,13 +90,15 @@ SHOPIFY_ENABLED=true
 ```env
 # OpenAI
 FITBACK_AI_TAG_ANALYZER=openai
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5.6-luna
+FITBACK_AI_REQUEST_TIMEOUT=PT30S
+FITBACK_AI_OPENAI_API_KEY=your-openai-api-key
+FITBACK_AI_OPENAI_MODEL=gpt-5.6-luna
 
 # 또는 Bedrock — 로컬은 AWS_PROFILE, 운영은 EC2 instance role 사용
 FITBACK_AI_TAG_ANALYZER=bedrock
-BEDROCK_REGION=ap-northeast-2
-BEDROCK_MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
+FITBACK_AI_REQUEST_TIMEOUT=PT30S
+AWS_REGION=ap-northeast-2
+FITBACK_AI_BEDROCK_MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
 AWS_PROFILE=your-sso-profile
 ```
 

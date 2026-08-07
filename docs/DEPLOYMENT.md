@@ -81,11 +81,15 @@ RDS endpoint는 문서에 기록하지 않는다.
 | `CLOUDFRONT_KEY_PAIR_ID` | EC2 배포 | CloudFront signed URL에 포함할 public key ID이다. 현재 값은 `K1XNJ3JDEDCVL3`이다. |
 | `APP_CORS_ALLOWED_ORIGINS` | EC2 배포 | Spring CORS allowlist다. 공백 없는 origin을 쉼표로 구분하며 현재 운영 프론트와 승인된 로컬 개발 origin을 설정한다. 변경 후 새 production 배포가 필요하다. |
 | `FITBACK_AI_TAG_ANALYZER` | 선택 | 분석기 모드다. `unavailable`, `prototype`, `openai`, `bedrock` 중 하나이며 기본값은 `unavailable`이다. |
+| `FITBACK_AI_REQUEST_TIMEOUT` | 선택 | AI 공급자 1회 요청 제한이다. 양의 정수 초 ISO-8601 값만 허용하며 기본값은 `PT30S`다. |
+| `FITBACK_AI_OPENAI_MODEL` | `openai` 선택 시 | OpenAI 분석 모델 이름이다. 비밀값이 아니며 공백 없는 값으로 설정한다. |
+| `FITBACK_AI_BEDROCK_MODEL_ID` | `bedrock` 선택 시 | Bedrock foundation model 또는 inference profile ID다. 비밀값이 아니며 공백 없는 값으로 설정한다. |
 | `SHOPPING_PROVIDER` | 선택 | 상품 공급자다. 미설정 시 `fixture`; Shopify 프로토타입에서는 `shopify`를 사용한다. |
 | `SHOPIFY_ENABLED` | 선택 | Shopify adapter 활성화 여부다. 미설정 시 `false`; `SHOPPING_PROVIDER=shopify`와 함께 `true`로 설정한다. |
 
-민감정보는 Repository Variable 또는 GitHub command payload에 넣지 않는다.
-배포 workflow는 CORS와 위 세 feature 설정을 검증한 뒤 SSM command와 release `.env`까지 전달한다.
+민감정보는 Repository Variable 또는 GitHub command payload에 넣지 않는다. OpenAI API key도
+Repository Variable이 아니라 Parameter Store SecureString으로 관리한다. 배포 workflow는 CORS와
+AI/상품 비민감 설정을 검증한 뒤 SSM command와 release `.env`까지 전달한다.
 최소 프로토타입 운영 검증 시에는 `prototype/shopify/true` 조합을 명시하고, 검증 종료 후
 기본 fail-closed 조합으로 되돌릴 수 있다.
 
@@ -130,6 +134,8 @@ openai-api-key=<openai-project-api-key>
 `front-redirect-uri`는 카카오 로그인 성공/실패 후 임시 토큰 또는 에러 코드를 붙여 이동할 프론트 HTTPS URL이다.
 `mail-email`은 Gmail SMTP 로그인 및 비밀번호 재설정 메일 발신 주소이며,
 `mail-app-password`에는 Google 계정 비밀번호가 아니라 발급한 앱 비밀번호를 저장한다.
+`openai-api-key`는 OpenAI 모드에서만 EC2가 조회하며 workflow payload와 release `.env`에는
+포함하지 않는다. `prototype`, `unavailable`, `bedrock` 모드에서는 이 Parameter를 조회하지 않는다.
 `front-password-reset-url`은 메일의 `resetToken` 쿼리 파라미터를 전달할 프론트 HTTPS URL이다.
 운영 배포 전 카카오 개발자 콘솔의 Redirect URI에는 백엔드 콜백
 `https://d1ra74et9h0ohu.cloudfront.net/api/v1/auth/callback/kakao`를 등록한다.
@@ -178,6 +184,12 @@ Base64다. 전체 PEM을 다시 Base64로 인코딩하면 RSA key 크기에 따�
   ]
 }
 ```
+
+`FITBACK_AI_TAG_ANALYZER=bedrock`을 활성화하면 GitHub Actions OIDC 역할이 아니라 운영 EC2
+instance role 정책에 선택한 모델 또는 inference profile 리소스로 제한한 `bedrock:InvokeModel`
+권한을 추가한다. Compose에서 실행되는 backend는 이 EC2 역할로 Bedrock을 호출하므로 별도 장기
+Access Key를 Parameter Store나 환경변수에 만들지 않는다. OpenAI 모드는 EC2의 HTTPS outbound가
+허용되어야 한다.
 
 OIDC trust policy는 `FIT-BACK/backend`의 `main` branch에서만 역할을 위임받도록 유지한다.
 
@@ -235,9 +247,26 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - ECR 이미지 platform과 EC2 architecture가 일치해야 한다. 현재 workflow는 multi-architecture 이미지를 만들지 않는다.
 - `/opt/fitback/releases`에 배포 파일과 mode `600`의 비민감 runtime `.env`를 저장하고 `/opt/fitback/current` symlink를 교체할 수 있어야 한다. DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값은 파일에 기록하지 않고 Compose 프로세스 환경으로만 전달한다.
 - 비민감 runtime 설정 `APP_CORS_ALLOWED_ORIGINS`, `FITBACK_AI_TAG_ANALYZER`,
-  `SHOPPING_PROVIDER`, `SHOPIFY_ENABLED`는 release `.env`에 기록한다. feature 설정 기본값은
-  `unavailable/fixture/false`이며, 배포형 최소 프로토타입은
+  `FITBACK_AI_REQUEST_TIMEOUT`, 공급자별 model ID, `SHOPPING_PROVIDER`, `SHOPIFY_ENABLED`는
+  release `.env`에 기록한다. OpenAI API key는 기록하지 않고 현재 Compose 프로세스 환경으로만
+  전달한다. feature 설정 기본값은 `unavailable/fixture/false`이며, 배포형 최소 프로토타입은
   `prototype/shopify/true`를 명시한다.
+
+## AI 태그 분석기 배포 전환 절차
+
+1. 스테이징에서는 운영과 분리된 `DEPLOY_PARAMETER_PREFIX`와 EC2/CloudFront endpoint를 사용한다.
+   현재 `Backend CD` job은 `main`의 production endpoint만 허용하므로 실제 스테이징 실행은 별도
+   workflow/environment가 마련되기 전까지 `remote_deploy.sh` 계약 테스트로만 검증한다.
+2. `FITBACK_AI_TAG_ANALYZER`를 `openai` 또는 `bedrock`으로 바꾸기 전에 #219 어댑터가 포함된
+   digest-pinned 이미지를 준비한다.
+3. OpenAI는 선택한 prefix의 `openai-api-key` SecureString과 model 변수를, Bedrock은 model ID와
+   EC2 role의 `bedrock:InvokeModel` 최소 권한을 준비한다.
+4. 배포 전 `bash scripts/deploy/test_remote_deploy.sh`로 모드별 필수값, 비밀값 비영속화,
+   fail-closed 검증을 실행한다.
+5. 배포 후 readiness와 업로드 → 분석 → 다중 태그 추출 API를 실제 이미지로 확인하고, 컨테이너
+   로그에 API key·원본 이미지·공급자 원문 응답이 노출되지 않는지 확인한다.
+6. 타임아웃/공급자 장애가 지속되면 Repository Variable을 `unavailable`로 되돌려 새 배포하고,
+   `prototype`은 명시적인 데모 계약 검증에만 사용한다.
 
 ## 네트워크 계약
 
@@ -333,9 +362,9 @@ V25는 확정 태그 43개와 복종 매핑 70개를 멱등하게 구성하고 l
 `scripts/deploy/remote_deploy.sh`는 다음 작업을 수행한다.
 
 1. digest가 포함된 ECR 이미지 참조를 검증한다.
-2. Parameter Store의 DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, Base64 CloudFront 개인 키 값을 단일 행 값으로 검증한다.
+2. Parameter Store의 DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, Base64 CloudFront 개인 키와 OpenAI 모드의 API key 값을 단일 행 값으로 검증한다.
 3. host 단위 `flock`을 획득해 같은 EC2에서 두 배포가 동시에 실행되지 않게 한다.
-4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값은 현재 Compose 프로세스 환경으로 전달한다.
+4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키와 OpenAI API key는 현재 Compose 프로세스 환경으로 전달한다.
 5. EC2 instance role로 ECR에 로그인하고 backend 이미지를 pull한다.
 6. 새 release의 `docker compose up -d --remove-orphans`를 실행한다.
 7. `/nginx-health`와 backend container health가 모두 정상인지 확인한다.
@@ -432,6 +461,10 @@ ECR 및 S3 저장량, CloudFront 요청·데이터 전송, 소량의 CloudWatch 
 - [x] GitHub OIDC 역할에 SSM 최소 권한을 추가했다.
 - [x] GitHub Repository Variable `EC2_INSTANCE_ID`를 추가했다.
 - [ ] GitHub Repository Variable `APP_CORS_ALLOWED_ORIGINS`를 추가하고 production 재배포 후 확인한다.
+- [ ] AI 어댑터 #219 병합 후 공급자별 model/timeout Repository Variable을 설정한다.
+- [ ] OpenAI 선택 시 `/fitback/prod/openai-api-key` SecureString을 생성하고 값 비노출을 확인한다.
+- [ ] Bedrock 선택 시 EC2 role에 선택 모델로 제한한 `bedrock:InvokeModel` 권한을 추가한다.
+- [ ] 실제 이미지로 AI 태그 분석 smoke test를 통과한 뒤 `unavailable` rollback 절차를 확인한다.
 - [x] `Backend CD`를 실제 실행해 SSM command와 health check를 확인했다.
 - [x] CloudFront HTTPS endpoint에서 Nginx와 backend readiness를 확인했다.
 - [ ] 다음 `main` 배포 후 CloudFront 루트에서 안내 페이지와 Swagger UI/readiness 링크를 확인한다.
