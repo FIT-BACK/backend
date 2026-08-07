@@ -19,11 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class NotificationCreateService {
 
-    //화면설계서 기준 문구 (변경 요청 시 이 상수만 수정)
+    //알림 문구 (변경 요청 시 이 상수만 수정)
     private static final String LOOKBOOK_LIKED_TITLE = "룩북에 좋아요가 눌렸어요";
     private static final String LOOKBOOK_LIKED_BODY_FORMAT = "%s님이 내 룩북을 좋아해요 ❤️";
-    private static final String ANALYSIS_COMPLETE_TITLE = "분석이 완료됐어요";
-    private static final String ANALYSIS_COMPLETE_BODY = "분석이 완료됐어요! 지금 바로 확인해보세요 👗";
+    private static final String ANALYSIS_COMPLETE_TITLE = "AI 분석이 완료됐어요";
+    private static final String ANALYSIS_COMPLETE_BODY = "요청하신 스타일 분석과 추천 결과 확인이 가능합니다.";
 
     private final NotificationRepository notificationRepository;
     private final NotificationSettingService notificationSettingService;
