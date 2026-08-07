@@ -185,10 +185,11 @@ Base64다. 전체 PEM을 다시 Base64로 인코딩하면 RSA key 크기에 따�
 }
 ```
 
-`FITBACK_AI_TAG_ANALYZER=bedrock`을 활성화하면 위 정책에 선택한 모델 또는 inference profile
-리소스로 제한한 `bedrock:InvokeModel` 권한을 추가한다. Bedrock은 EC2 instance role을 사용하므로
-별도 장기 Access Key를 Parameter Store나 환경변수에 만들지 않는다. OpenAI 모드는 EC2의 HTTPS
-outbound가 허용되어야 한다.
+`FITBACK_AI_TAG_ANALYZER=bedrock`을 활성화하면 GitHub Actions OIDC 역할이 아니라 운영 EC2
+instance role 정책에 선택한 모델 또는 inference profile 리소스로 제한한 `bedrock:InvokeModel`
+권한을 추가한다. Compose에서 실행되는 backend는 이 EC2 역할로 Bedrock을 호출하므로 별도 장기
+Access Key를 Parameter Store나 환경변수에 만들지 않는다. OpenAI 모드는 EC2의 HTTPS outbound가
+허용되어야 한다.
 
 OIDC trust policy는 `FIT-BACK/backend`의 `main` branch에서만 역할을 위임받도록 유지한다.
 
