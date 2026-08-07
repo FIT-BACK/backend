@@ -12,9 +12,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.multipart.MultipartFile;
 
 public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
+
+    private static final Logger log = LoggerFactory.getLogger(CanonicalAiTagAnalyzer.class);
 
     private final TagRepository tagRepository;
     private final AnalysisImageContentLoader imageContentLoader;
@@ -50,6 +54,9 @@ public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
     private List<Tag> analyze(AiTagImage image) {
         List<Tag> catalog = tagRepository.findAllByOrderByIdAsc();
         if (catalog.isEmpty()) {
+            log.warn(
+                    "AI tag canonical validation failed. provider=unknown model=unknown canonicalValidationCategory=EMPTY_CATALOG elapsedMillis=0"
+            );
             throw notReady();
         }
         Map<TagKey, Tag> canonicalTags = catalog.stream().collect(Collectors.toMap(
@@ -62,13 +69,34 @@ public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
                 .map(prediction -> new TagKey(prediction.type(), prediction.name()))
                 .distinct()
                 .toList();
-        if (predictedKeys.isEmpty()
-                || predictedKeys.size()
-                > AiTagRequestFactory.MAX_GARMENTS * AiTagRequestFactory.MAX_TAGS_PER_GARMENT
-                || predictedKeys.stream().anyMatch(key -> !canonicalTags.containsKey(key))) {
+        String validationFailureCategory = validationFailureCategory(predictedKeys, canonicalTags);
+        if (validationFailureCategory != null) {
+            log.warn(
+                    "AI tag canonical validation failed. provider={} model={} canonicalValidationCategory={} predictedTagCount={} catalogTagCount={} elapsedMillis={}",
+                    result.provider(),
+                    result.model(),
+                    validationFailureCategory,
+                    predictedKeys.size(),
+                    canonicalTags.size(),
+                    result.elapsedMillis()
+            );
             throw notReady();
         }
         return predictedKeys.stream().map(canonicalTags::get).toList();
+    }
+
+    private String validationFailureCategory(List<TagKey> predictedKeys, Map<TagKey, Tag> canonicalTags) {
+        if (predictedKeys.isEmpty()) {
+            return "EMPTY_PROVIDER_RESULT";
+        }
+        if (predictedKeys.size()
+                > AiTagRequestFactory.MAX_GARMENTS * AiTagRequestFactory.MAX_TAGS_PER_GARMENT) {
+            return "TOO_MANY_TAGS";
+        }
+        if (predictedKeys.stream().anyMatch(key -> !canonicalTags.containsKey(key))) {
+            return "UNKNOWN_CANONICAL_TAG";
+        }
+        return null;
     }
 
     private BusinessException notReady() {
