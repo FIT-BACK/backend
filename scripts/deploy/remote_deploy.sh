@@ -191,7 +191,7 @@ require_timeout() {
   local value="$1"
 
   require_single_line 'FITBACK_AI_REQUEST_TIMEOUT' "$value"
-  if [[ ! "$value" =~ ^PT([0-9]+H)?([0-9]+M)?([0-9]+([.][0-9]+)?S)?$ ]] || [ "$value" = 'PT' ]; then
+  if [[ ! "$value" =~ ^PT[1-9][0-9]*S$ ]]; then
     echo 'FITBACK_AI_REQUEST_TIMEOUT must be a valid ISO-8601 duration such as PT30S.' >&2
     exit 1
   fi

@@ -520,6 +520,19 @@ fi
 test ! -e "$missing_model_release/.env"
 test ! -s "$mock_log"
 
+for invalid_timeout in PT0S PT1.5S; do
+  invalid_timeout_release="$ai_deploy_root/releases/release-invalid-${invalid_timeout//[^A-Za-z0-9]/-}"
+  create_release "$invalid_timeout_release"
+  : > "$mock_log"
+  if FITBACK_AI_TAG_ANALYZER='openai' FITBACK_AI_REQUEST_TIMEOUT="$invalid_timeout" FITBACK_AI_OPENAI_MODEL='gpt-test-model' \
+    run_deploy "$ai_deploy_root" "$invalid_timeout_release" "$failed_image" > /dev/null 2>&1; then
+    echo "Expected invalid timeout to fail: $invalid_timeout" >&2
+    exit 1
+  fi
+  test ! -e "$invalid_timeout_release/.env"
+  test ! -s "$mock_log"
+done
+
 workflow_file="$repo_root/.github/workflows/backend-cd.yml"
 grep -Fq 'FITBACK_AI_REQUEST_TIMEOUT: ${{ vars.FITBACK_AI_REQUEST_TIMEOUT }}' "$workflow_file"
 grep -Fq 'FITBACK_AI_OPENAI_MODEL: ${{ vars.FITBACK_AI_OPENAI_MODEL }}' "$workflow_file"
@@ -527,6 +540,8 @@ grep -Fq 'FITBACK_AI_BEDROCK_MODEL_ID: ${{ vars.FITBACK_AI_BEDROCK_MODEL_ID }}' 
 grep -Fq 'fitback_ai_request_timeout' "$workflow_file"
 grep -Fq 'fitback_ai_openai_model' "$workflow_file"
 grep -Fq 'fitback_ai_bedrock_model_id' "$workflow_file"
+grep -Fq 'if [[ ! "$FITBACK_AI_REQUEST_TIMEOUT" =~ ^PT[1-9][0-9]*S$ ]]' "$workflow_file"
+grep -Fq 'if [[ ! "$value" =~ ^PT[1-9][0-9]*S$ ]]' "$repo_root/scripts/deploy/remote_deploy.sh"
 if grep -Eq '(^|[[:space:]])OPENAI_API_KEY=' "$workflow_file"; then
   echo 'OpenAI API key was added to the workflow.' >&2
   exit 1
