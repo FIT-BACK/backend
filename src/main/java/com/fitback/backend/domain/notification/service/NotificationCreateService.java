@@ -11,6 +11,7 @@ import com.fitback.backend.domain.notification.repository.NotificationRepository
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 //도메인 이벤트를 받아 알림 저장 전담 (조회·읽음·삭제는 NotificationService)
@@ -29,8 +30,9 @@ public class NotificationCreateService {
     private final MemberRepository memberRepository;
 
     //룩북 좋아요 알림 생성 (NotificationEventListener가 커밋 이후 호출)
-    //호출 시점에 원본 트랜잭션이 종료된 상태이므로 여기서 새 트랜잭션 시작
-    @Transactional
+    //AFTER_COMMIT 시점에도 원본 트랜잭션 자원이 스레드에 남아 있어
+    //기본 propagation으로는 이미 커밋된 트랜잭션에 합류해 저장이 유실되므로 REQUIRES_NEW 필수
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void createLookbookLikedNotification(LookbookLikedEvent event) {
 
         //본인 룩북에 본인이 누른 좋아요는 알림 대상 아님
@@ -62,7 +64,8 @@ public class NotificationCreateService {
     }
 
     //AI 분석 완료 알림 생성 (NotificationEventListener가 커밋 이후 호출)
-    @Transactional
+    //REQUIRES_NEW가 필요한 이유는 createLookbookLikedNotification 주석 참고
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void createAnalysisCompletedNotification(AnalysisCompletedEvent event) {
 
         //수신자는 분석을 요청한 본인이므로 자기 알림 제외 분기 없음
