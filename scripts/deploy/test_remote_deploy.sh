@@ -122,6 +122,11 @@ if [ "${1:-}" = 'compose' ]; then
     effective_ai_tag_analyzer="$(sed -n 's/^FITBACK_AI_TAG_ANALYZER=//p' "$compose_env_file")"
   fi
   printf 'compose ai mode %s for %s\n' "$effective_ai_tag_analyzer" "$compose_env_file" >> "$MOCK_LOG"
+  if [ -n "${FITBACK_AI_OPENAI_API_KEY+x}" ]; then
+    printf 'compose openai key present for %s\n' "$compose_env_file" >> "$MOCK_LOG"
+  else
+    printf 'compose openai key absent for %s\n' "$compose_env_file" >> "$MOCK_LOG"
+  fi
 fi
 
 if [ "${1:-}" = 'login' ]; then
@@ -496,6 +501,8 @@ if ai_rollback_output="$(run_deploy "$ai_rollback_root" "$ai_candidate_release" 
 fi
 
 grep -Fq "compose ai mode unavailable for $ai_previous_release/.env" "$mock_log"
+grep -Fq "compose openai key present for $ai_candidate_release/.env" "$mock_log"
+grep -Fq "compose openai key absent for $ai_previous_release/.env" "$mock_log"
 grep -Fq 'Rollback succeeded.' <<< "$ai_rollback_output"
 test "$(readlink "$ai_rollback_root/current")" = "$ai_previous_release"
 unset MOCK_CURL_FAIL_COUNT TEST_FITBACK_AI_TAG_ANALYZER TEST_FITBACK_AI_OPENAI_MODEL
