@@ -232,20 +232,51 @@ write_environment() {
 
 compose_in() {
   local release_dir="$1"
+  local release_ai_tag_analyzer
+  local release_openai_api_key
+  local -a compose_environment
   shift
-  DB_URL="$db_url" \
-  DB_USER="$db_user" \
-  DB_PASSWORD="$db_password" \
-  JWT_SECRET_KEY="$jwt_secret_key" \
-  HMAC_SECRET_KEY="$hmac_secret_key" \
-  KAKAO_REST_API_KEY="$kakao_rest_api_key" \
-  KAKAO_REST_API_SECRET="$kakao_rest_api_secret" \
-  FRONT_REDIRECT_URI="$front_redirect_uri" \
-  MAIL_EMAIL="$mail_email" \
-  MAIL_APP_PASSWORD="$mail_app_password" \
-  FRONT_PASSWORD_RESET_URL="$front_password_reset_url" \
-  CLOUDFRONT_PRIVATE_KEY_BASE64="$cloudfront_private_key_base64" \
-  FITBACK_AI_OPENAI_API_KEY="$fitback_ai_openai_api_key" \
+  release_ai_tag_analyzer="$(sed -n 's/^FITBACK_AI_TAG_ANALYZER=//p' "$release_dir/.env")"
+  compose_environment=(
+    -u BACKEND_IMAGE
+    -u HTTP_BIND_ADDRESS
+    -u HTTP_PORT
+    -u AWS_REGION
+    -u IMAGE_BUCKET
+    -u IMAGE_CDN_BASE_URL
+    -u CLOUDFRONT_KEY_PAIR_ID
+    -u APP_CORS_ALLOWED_ORIGINS
+    -u FITBACK_AI_TAG_ANALYZER
+    -u FITBACK_AI_REQUEST_TIMEOUT
+    -u FITBACK_AI_OPENAI_MODEL
+    -u FITBACK_AI_BEDROCK_MODEL_ID
+    -u FITBACK_AI_OPENAI_API_KEY
+    -u SHOPPING_PROVIDER
+    -u SHOPIFY_ENABLED
+    -u SPRING_DATASOURCE_DRIVER_CLASS_NAME
+    -u SPRING_JPA_HIBERNATE_DDL_AUTO
+    DB_URL="$db_url"
+    DB_USER="$db_user"
+    DB_PASSWORD="$db_password"
+    JWT_SECRET_KEY="$jwt_secret_key"
+    HMAC_SECRET_KEY="$hmac_secret_key"
+    KAKAO_REST_API_KEY="$kakao_rest_api_key"
+    KAKAO_REST_API_SECRET="$kakao_rest_api_secret"
+    FRONT_REDIRECT_URI="$front_redirect_uri"
+    MAIL_EMAIL="$mail_email"
+    MAIL_APP_PASSWORD="$mail_app_password"
+    FRONT_PASSWORD_RESET_URL="$front_password_reset_url"
+    CLOUDFRONT_PRIVATE_KEY_BASE64="$cloudfront_private_key_base64"
+  )
+  if [ "$release_ai_tag_analyzer" = 'openai' ]; then
+    release_openai_api_key="$fitback_ai_openai_api_key"
+    if [ -z "$release_openai_api_key" ]; then
+      release_openai_api_key="$(get_parameter 'openai-api-key')"
+    fi
+    compose_environment+=(FITBACK_AI_OPENAI_API_KEY="$release_openai_api_key")
+  fi
+
+  env "${compose_environment[@]}" \
     docker compose \
     --project-directory "$release_dir" \
     --env-file "$release_dir/.env" \
