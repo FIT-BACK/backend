@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
+import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
+import com.fitback.backend.domain.lookbook.service.LookbookService;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.tag.entity.Tag;
@@ -43,6 +45,9 @@ class TrendServiceTest {
 
     @Mock
     private ClosetSaveRepository closetSaveRepository;
+
+    @Mock
+    private LookbookService lookbookService;
 
     @InjectMocks
     private TrendService trendService;
@@ -102,6 +107,38 @@ class TrendServiceTest {
     }
 
     @Test
+    void getRelatedLookbooksDelegatesAfterCheckingTrend() {
+        LookbookResponse.LookbookList serviceResponse = LookbookResponse.LookbookList.builder()
+                .items(List.of())
+                .nextCursor(null)
+                .hasNext(false)
+                .pageSize(3)
+                .build();
+        when(trendContentRepository.existsById(1L)).thenReturn(true);
+        when(lookbookService.getRelatedLookbooks(1L, 10L, member))
+                .thenReturn(serviceResponse);
+
+        LookbookResponse.LookbookList response = trendService.getRelatedLookbooks(
+                1L,
+                10L,
+                member
+        );
+
+        assertThat(response).isEqualTo(serviceResponse);
+        verify(lookbookService).getRelatedLookbooks(1L, 10L, member);
+    }
+
+    @Test
+    void getRelatedLookbooksFailsWhenTrendDoesNotExist() {
+        when(trendContentRepository.existsById(999L)).thenReturn(false);
+
+        assertThatThrownBy(() -> trendService.getRelatedLookbooks(999L, null, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TREND_NOT_FOUND)
+                );
+    }
+
+    @Test
     void getTrendsReturnsTenItemsAndNextCursor() {
         LocalDateTime latestCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
         List<TrendContent> trendPage = IntStream.range(0, 11)
@@ -143,6 +180,81 @@ class TrendServiceTest {
         assertThat(response.items()).hasSize(1);
         assertThat(response.nextCursor()).isNull();
         assertThat(response.hasNext()).isFalse();
+    }
+
+    @Test
+    void getTrendsUsesMemberTagPriorityForAuthenticatedMember() {
+        TrendContent matchedTrend = createTrend(
+                90L,
+                LocalDateTime.of(2026, 7, 15, 12, 0)
+        );
+        TrendContent unmatchedTrend = createTrend(
+                100L,
+                LocalDateTime.of(2026, 7, 16, 12, 0)
+        );
+        when(trendContentRepository.findAllPrioritizingMemberTags(
+                eq(1L),
+                any(Pageable.class)
+        )).thenReturn(List.of(matchedTrend, unmatchedTrend));
+        when(trendTagRepository.findAllByTrendIdInOrderByIdAsc(List.of(90L, 100L)))
+                .thenReturn(List.of(TrendTag.create(matchedTrend, minimalTag)));
+
+        TrendResponse.TrendList response = trendService.getTrends(null, null, member);
+
+        assertThat(response.items())
+                .extracting(TrendResponse.TrendItem::trendId)
+                .containsExactly(90L, 100L);
+        verify(trendContentRepository).findAllPrioritizingMemberTags(
+                eq(1L),
+                any(Pageable.class)
+        );
+    }
+
+    @Test
+    void getTrendsUsesPersonalizedCursorForAuthenticatedMember() {
+        LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        TrendContent cursorTrend = createTrend(100L, cursorCreatedAt);
+        TrendContent nextTrend = createTrend(99L, cursorCreatedAt.minusMinutes(1));
+        when(trendContentRepository.findById(100L)).thenReturn(Optional.of(cursorTrend));
+        when(trendTagRepository.existsMemberInterestMatch(100L, 1L)).thenReturn(true);
+        when(trendContentRepository.findNextPagePrioritizingMemberTags(
+                eq(1L),
+                eq(true),
+                eq(cursorCreatedAt),
+                eq(100L),
+                any(Pageable.class)
+        )).thenReturn(List.of(nextTrend));
+        when(trendTagRepository.findAllByTrendIdInOrderByIdAsc(List.of(99L)))
+                .thenReturn(List.of());
+
+        TrendResponse.TrendList response = trendService.getTrends(100L, null, member);
+
+        assertThat(response.items())
+                .extracting(TrendResponse.TrendItem::trendId)
+                .containsExactly(99L);
+    }
+
+    @Test
+    void getTrendsKeepsExplicitTagFilterForAuthenticatedMember() {
+        TrendContent trend = createTrend(100L, LocalDateTime.of(2026, 7, 16, 12, 0));
+        when(trendContentRepository.findAllByTagName(eq("미니멀"), any(Pageable.class)))
+                .thenReturn(List.of(trend));
+        when(trendTagRepository.findAllByTrendIdInOrderByIdAsc(List.of(100L)))
+                .thenReturn(List.of(TrendTag.create(trend, minimalTag)));
+
+        TrendResponse.TrendList response = trendService.getTrends(
+                null,
+                " 미니멀 ",
+                member
+        );
+
+        assertThat(response.items())
+                .extracting(TrendResponse.TrendItem::trendId)
+                .containsExactly(100L);
+        verify(trendContentRepository).findAllByTagName(
+                eq("미니멀"),
+                any(Pageable.class)
+        );
     }
 
     @Test

@@ -297,6 +297,7 @@ similarityScore DESC
 | DELETE | `/api/v1/notifications/{notificationId}` | 알림 삭제 | 필수 |
 | GET | `/api/v1/content-search` | 트렌드·룩북 통합 검색 | 선택(익명 허용) |
 | GET | `/api/v1/trends`, `/api/v1/trends/{trendId}` | 트렌드 목록·상세 | 선택(익명 허용) |
+| GET | `/api/v1/trends/{trendId}/lookbooks` | 트렌드 관련 룩북 | 선택(익명 허용) |
 | GET | `/api/v1/tags` | 태그 목록 | 불필요 |
 | POST/GET/DELETE | `/api/v1/closet-saves...` | 통합 클로젯 저장·목록·삭제 | 필수 |
 
@@ -1199,12 +1200,23 @@ DTO를 반환한다. `isSaved`, `isLiked` 필드는 항상 포함하며 익명 �
 
 ### `GET /api/v1/trends`
 
-비로그인 조회를 허용하며 최신순으로 최대 10개의 트렌드를 반환한다. `cursor`와 `tag`를
-선택적으로 전달할 수 있다. `isSaved`는 항상 포함하며 익명 요청에서는 `false`다.
+비로그인 조회를 허용하며 최대 10개의 트렌드를 커서 기반으로 반환한다. `cursor`와 `tag`를
+선택적으로 전달할 수 있다. `tag`를 전달하면 해당 태그가 등록된 트렌드만 최신순으로 조회한다.
+`tag` 없이 로그인한 회원은 관심 태그와 일치하는 트렌드를 우선 노출하고 각 그룹 안에서 최신순으로
+정렬하며, 비로그인 또는 관심 태그 미설정 회원은 전체를 최신순으로 조회한다. `isSaved`는 항상
+포함하며 익명 요청에서는 `false`다.
 
 ### `GET /api/v1/trends/{trendId}`
 
 트렌드 제목, 이미지, 설명, 태그와 로그인 회원의 `isSaved`를 반환한다.
+
+### `GET /api/v1/trends/{trendId}/lookbooks`
+
+트렌드 태그와 룩북 태그의 관련도 점수를 기준으로 관련 룩북을 3개씩 커서 기반으로 반환한다.
+비로그인 조회를 허용하며 삭제·숨김 룩북은 제외한다. 응답은 룩북 목록 카드 DTO이며 `isLiked`는
+항상 포함하고 익명 요청에서는 `false`다. 존재하지 않는 `trendId`는 `TREND404_1`이다.
+`cursor`가 존재하지 않거나 해당 트렌드와 관련 없는 룩북이면 `COMMON404_1`이다. 페이지 조회 사이에
+커서 룩북이 삭제·숨김 처리되어도 해당 정렬 위치 다음부터 조회하며 응답 목록에서는 제외한다.
 
 ### `GET /api/v1/tags`
 

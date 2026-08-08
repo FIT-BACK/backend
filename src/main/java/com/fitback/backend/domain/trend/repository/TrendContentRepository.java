@@ -13,6 +13,29 @@ public interface TrendContentRepository extends JpaRepository<TrendContent, Long
 
     List<TrendContent> findAllByOrderByCreatedAtDescIdDesc(Pageable pageable);
 
+    // 회원 관심 태그와 일치하는 트렌드를 앞에 배치하고 각 그룹은 최신순 조회
+    @Query("""
+            SELECT trend
+            FROM TrendContent trend
+            ORDER BY CASE WHEN EXISTS (
+                SELECT trendTag.id
+                FROM TrendTag trendTag
+                WHERE trendTag.trend = trend
+                  AND EXISTS (
+                      SELECT memberTag.id
+                      FROM MemberTag memberTag
+                      WHERE memberTag.member.id = :memberId
+                        AND memberTag.tag = trendTag.tag
+                  )
+            ) THEN 0 ELSE 1 END,
+            trend.createdAt DESC,
+            trend.id DESC
+            """)
+    List<TrendContent> findAllPrioritizingMemberTags(
+            @Param("memberId") Long memberId,
+            Pageable pageable
+    );
+
     @Query("""
             SELECT trend
             FROM TrendContent trend
@@ -39,6 +62,82 @@ public interface TrendContentRepository extends JpaRepository<TrendContent, Long
             ORDER BY trend.createdAt DESC, trend.id DESC
             """)
     List<TrendContent> findNextPage(
+            @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable
+    );
+
+    // 관심 커서 뒤에는 남은 관심·비관심 그룹을, 비관심 커서 뒤에는 남은 비관심 그룹만 조회
+    @Query("""
+            SELECT trend
+            FROM TrendContent trend
+            WHERE (
+                :cursorMatchesInterest = true
+                AND (
+                    NOT EXISTS (
+                        SELECT trendTag.id
+                        FROM TrendTag trendTag
+                        WHERE trendTag.trend = trend
+                          AND EXISTS (
+                              SELECT memberTag.id
+                              FROM MemberTag memberTag
+                              WHERE memberTag.member.id = :memberId
+                                AND memberTag.tag = trendTag.tag
+                          )
+                    )
+                    OR (
+                        EXISTS (
+                            SELECT trendTag.id
+                            FROM TrendTag trendTag
+                            WHERE trendTag.trend = trend
+                              AND EXISTS (
+                                  SELECT memberTag.id
+                                  FROM MemberTag memberTag
+                                  WHERE memberTag.member.id = :memberId
+                                    AND memberTag.tag = trendTag.tag
+                              )
+                        )
+                        AND (
+                            trend.createdAt < :cursorCreatedAt
+                            OR (trend.createdAt = :cursorCreatedAt AND trend.id < :cursorId)
+                        )
+                    )
+                )
+            ) OR (
+                :cursorMatchesInterest = false
+                AND NOT EXISTS (
+                    SELECT trendTag.id
+                    FROM TrendTag trendTag
+                    WHERE trendTag.trend = trend
+                      AND EXISTS (
+                          SELECT memberTag.id
+                          FROM MemberTag memberTag
+                          WHERE memberTag.member.id = :memberId
+                            AND memberTag.tag = trendTag.tag
+                      )
+                )
+                AND (
+                    trend.createdAt < :cursorCreatedAt
+                    OR (trend.createdAt = :cursorCreatedAt AND trend.id < :cursorId)
+                )
+            )
+            ORDER BY CASE WHEN EXISTS (
+                SELECT trendTag.id
+                FROM TrendTag trendTag
+                WHERE trendTag.trend = trend
+                  AND EXISTS (
+                      SELECT memberTag.id
+                      FROM MemberTag memberTag
+                      WHERE memberTag.member.id = :memberId
+                        AND memberTag.tag = trendTag.tag
+                  )
+            ) THEN 0 ELSE 1 END,
+            trend.createdAt DESC,
+            trend.id DESC
+            """)
+    List<TrendContent> findNextPagePrioritizingMemberTags(
+            @Param("memberId") Long memberId,
+            @Param("cursorMatchesInterest") boolean cursorMatchesInterest,
             @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
             @Param("cursorId") Long cursorId,
             Pageable pageable

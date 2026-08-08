@@ -15,6 +15,7 @@ import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.notification.event.LookbookLikedEvent;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.util.Optional;
@@ -25,6 +26,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,6 +37,9 @@ class LookbookLikeCommandServiceTest {
 
     @Mock
     private LookbookLikeRepository lookbookLikeRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private LookbookLikeCommandService lookbookLikeCommandService;
@@ -82,6 +87,23 @@ class LookbookLikeCommandServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND)
                 );
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void createLikePublishesLookbookLikedEventWithRecipientAndActor() {
+        Member liker = Member.create("liker@fitback.com", "liker", "password", LoginProvider.EMAIL);
+        ReflectionTestUtils.setField(liker, "id", 2L);
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.incrementLikeCount(100L)).thenReturn(1);
+        when(lookbookRepository.findLikeCountByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(1));
+
+        lookbookLikeCommandService.createLike(100L, liker);
+
+        //수신자는 룩북 작성자, 행위자는 좋아요를 누른 회원
+        verify(eventPublisher).publishEvent(new LookbookLikedEvent(100L, 1L, 2L, "liker"));
     }
 
     @Test

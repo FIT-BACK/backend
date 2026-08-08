@@ -14,6 +14,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -26,21 +27,22 @@ class OpenAiTagModelClientTest {
     @Test
     void sendsImageWithStrictSchemaAndParsesCanonicalTags() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
-        String outputText = objectMapper.writeValueAsString(Map.of(
-                "garments", List.of(Map.of(
-                        "piece", "BOTTOM",
-                        "canonicalTags", List.of(Map.of(
-                                "type", "MATERIAL",
-                                "name", "데님"
-                        )),
-                        "suggestedTags", List.of(Map.of(
-                                "type", "COLOR",
-                                "name", "인디고 블루",
-                                "confidence", 0.94,
-                                "evidence", "하의의 짙은 청색 표면"
-                        ))
+        Map<String, Object> garments = new LinkedHashMap<>();
+        garments.put("TOP", null);
+        garments.put("BOTTOM", Map.of(
+                "canonicalTags", List.of(Map.of(
+                        "type", "MATERIAL",
+                        "name", "데님"
+                )),
+                "suggestedTags", List.of(Map.of(
+                        "type", "COLOR",
+                        "name", "인디고 블루",
+                        "confidence", 0.94,
+                        "evidence", "하의의 짙은 청색 표면"
                 ))
         ));
+        garments.put("SHOES", null);
+        String outputText = objectMapper.writeValueAsString(Map.of("garments", garments));
         String responseBody = objectMapper.writeValueAsString(Map.of(
                 "output", List.of(Map.of(
                         "content", List.of(Map.of(
@@ -146,9 +148,238 @@ class OpenAiTagModelClientTest {
 
             String message = appender.list.getFirst().getFormattedMessage();
             assertThat(message)
-                    .contains("provider=openai", "model=test-model")
-                    .contains("responseParsingCategory=INVALID_OR_MISSING_OUTPUT", "elapsedMillis=")
+                    .contains("provider=openai", "model=test-model", "responseStatus=200")
+                    .contains("responseParsingCategory=INVALID_RESPONSE_JSON", "elapsedMillis=")
                     .doesNotContain("provider-secret-response", "test-key");
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void logsResponseMetadataAndMissingOutputStageWithoutSensitiveValues() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String responseSecret = "provider-response-secret";
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "incomplete_details", Map.of("reason", "max_output_tokens"),
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of(
+                                "type", "refusal",
+                                "refusal", responseSecret
+                        ))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, responseBody);
+
+            assertAnalysisNotReady(client);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "responseStatus=200",
+                                    "incompleteDetailsReason=max_output_tokens",
+                                    "outputTypes=[message]",
+                                    "contentTypes=[refusal]",
+                                    "responseParsingCategory=MISSING_OUTPUT_TEXT"
+                            )
+                            .doesNotContain(
+                                    responseSecret,
+                                    "test-key",
+                                    "data:image"
+                            ));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void logsInvalidModelOutputJsonWithoutOutputTextOrResponseBody() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String responseSecret = "provider-response-secret";
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "incomplete_details", Map.of("reason", "content_filter"),
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of(
+                                "type", "output_text",
+                                "text", responseSecret
+                        ))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, responseBody);
+
+            assertAnalysisNotReady(client);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "responseStatus=200",
+                                    "incompleteDetailsReason=content_filter",
+                                    "outputTypes=[message]",
+                                    "contentTypes=[output_text]",
+                                    "responseParsingCategory=INVALID_MODEL_OUTPUT_JSON"
+                            )
+                            .doesNotContain(
+                                    responseSecret,
+                                    "test-key",
+                                    "data:image"
+                            ));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void classifiesGarmentWithTwoEmptyTagArraysAsInvalidModelOutputSchema() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String outputText = objectMapper.writeValueAsString(Map.of(
+                "garments", List.of(Map.of(
+                        "piece", "TOP",
+                        "canonicalTags", List.of(),
+                        "suggestedTags", List.of()
+                ))
+        ));
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of(
+                                "type", "output_text",
+                                "text", outputText
+                        ))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, responseBody);
+
+            assertAnalysisNotReady(client);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "responseStatus=200",
+                                    "outputTypes=[message]",
+                                    "contentTypes=[output_text]",
+                                    "responseParsingCategory=INVALID_MODEL_OUTPUT_SCHEMA:EMPTY_GARMENT_TAGS"
+                            )
+                    .doesNotContain(outputText, "test-key", "data:image"));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void logsFixedSchemaCategoryWithoutLoggingInvalidModelFieldValue() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String invalidPiece = "MODEL_ONLY_PIECE_VALUE";
+        String outputText = objectMapper.writeValueAsString(Map.of(
+                "garments", List.of(Map.of(
+                        "piece", invalidPiece,
+                        "canonicalTags", List.of(Map.of("type", "STYLE", "name", "캐주얼")),
+                        "suggestedTags", List.of()
+                ))
+        ));
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of("type", "output_text", "text", outputText))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            assertAnalysisNotReady(clientReturning(200, responseBody));
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains("responseParsingCategory=INVALID_MODEL_OUTPUT_SCHEMA:INVALID_GARMENT_PIECE")
+                            .doesNotContain(invalidPiece, outputText, "test-key", "data:image"));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void redactsNonStringResponseMetadataValues() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "incomplete_details", Map.of("reason", 7),
+                "output", List.of(Map.of(
+                        "type", true,
+                        "content", List.of(Map.of("type", 9))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, responseBody);
+
+            assertAnalysisNotReady(client);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "incompleteDetailsReason=<redacted>",
+                                    "outputTypes=[<redacted>]",
+                                    "contentTypes=[<redacted>]",
+                                    "responseParsingCategory=MISSING_OUTPUT_TEXT"
+                            )
+                            .doesNotContain("provider-secret-response", "test-key"));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void classifiesNonArrayContentAsInvalidResponseShape() throws Exception {
+        String responseBody = "{\"output\":[{\"type\":\"message\",\"content\":\"provider-secret-response\"}]}";
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, responseBody);
+
+            assertAnalysisNotReady(client);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "outputTypes=[message]",
+                                    "contentTypes=[]",
+                                    "responseParsingCategory=INVALID_RESPONSE_SHAPE"
+                            )
+                            .doesNotContain("provider-secret-response", "test-key"));
         } finally {
             logger.detachAppender(appender);
             appender.stop();

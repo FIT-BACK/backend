@@ -15,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,6 +28,8 @@ import tools.jackson.databind.ObjectMapper;
 public final class OpenAiTagModelClient implements AiTagModelClient {
 
     private static final String ENDPOINT = "https://api.openai.com/v1/responses";
+    private static final int MAX_LOGGED_TYPE_COUNT = 20;
+    private static final int MAX_LOGGED_TYPE_LENGTH = 64;
     private static final Logger log = LoggerFactory.getLogger(OpenAiTagModelClient.class);
 
     private final AiTagProperties.OpenAi properties;
@@ -99,18 +102,69 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             throw notReady();
         }
         if (response.statusCode() >= 400) {
+            ResponseMetadata metadata = responseMetadata(response.body());
             log.warn(
-                    "AI tag provider returned an error. provider=openai model={} httpStatus={} providerErrorCategory={} elapsedMillis={}",
+                    "AI tag provider returned an error. provider=openai model={} httpStatus={} "
+                            + "responseStatus={} incompleteDetailsReason={} outputTypes={} contentTypes={} "
+                            + "providerErrorCategory={} elapsedMillis={}",
                     properties.model(),
                     response.statusCode(),
+                    response.statusCode(),
+                    metadata.incompleteDetailsReason(),
+                    metadata.outputTypes(),
+                    metadata.contentTypes(),
                     providerErrorCategory(response.statusCode()),
                     elapsedMillis(startedAt)
             );
             throw notReady();
         }
+        JsonNode root;
         try {
-            JsonNode root = objectMapper.readTree(response.body());
-            String outputJson = outputText(root);
+            root = objectMapper.readTree(response.body());
+        } catch (Exception exception) {
+            logResponseParsingFailure(
+                    response,
+                    ResponseMetadata.unavailable(),
+                    "INVALID_RESPONSE_JSON",
+                    startedAt
+            );
+            throw notReady();
+        }
+        if (root == null || !root.isObject()) {
+            logResponseParsingFailure(
+                    response,
+                    responseMetadata(root),
+                    "INVALID_RESPONSE_SHAPE",
+                    startedAt
+            );
+            throw notReady();
+        }
+
+        ResponseMetadata metadata = responseMetadata(root);
+        String outputJson;
+        try {
+            outputJson = outputText(root);
+        } catch (ResponseParsingException exception) {
+            logResponseParsingFailure(response, metadata, exception.category(), startedAt);
+            throw notReady();
+        }
+
+        try {
+            JsonNode modelOutputRoot = objectMapper.readTree(outputJson);
+            if (modelOutputRoot == null) {
+                throw new IllegalArgumentException("model output is empty");
+            }
+        } catch (Exception exception) {
+            logResponseParsingFailure(
+                    response,
+                    metadata,
+                    "INVALID_MODEL_OUTPUT_JSON",
+                    startedAt
+            );
+            throw notReady();
+        }
+
+        try {
             AiTagModelOutput output = responseParser.parse(outputJson);
             return new AiTagModelResult(
                     "openai",
@@ -123,10 +177,11 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
-            log.warn(
-                    "AI tag provider response parsing failed. provider=openai model={} responseParsingCategory=INVALID_OR_MISSING_OUTPUT elapsedMillis={}",
-                    properties.model(),
-                    elapsedMillis(startedAt)
+            logResponseParsingFailure(
+                    response,
+                    metadata,
+                    "INVALID_MODEL_OUTPUT_SCHEMA:" + schemaFailureCategory(exception),
+                    startedAt
             );
             throw notReady();
         }
@@ -162,18 +217,175 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     }
 
     private static String outputText(JsonNode root) {
-        for (JsonNode output : root.path("output")) {
-            for (JsonNode content : output.path("content")) {
+        JsonNode outputs = root.path("output");
+        if (!outputs.isArray()) {
+            throw new ResponseParsingException("MISSING_OUTPUT");
+        }
+        for (JsonNode output : outputs) {
+            JsonNode contents = output.path("content");
+            if (!contents.isArray()) {
+                throw new ResponseParsingException("INVALID_RESPONSE_SHAPE");
+            }
+            for (JsonNode content : contents) {
                 if ("output_text".equals(content.path("type").asText())) {
-                    return content.path("text").asText();
+                    String text = content.path("text").asText();
+                    if (text.isBlank()) {
+                        throw new ResponseParsingException("EMPTY_OUTPUT_TEXT");
+                    }
+                    return text;
                 }
             }
         }
-        throw new IllegalArgumentException("OpenAI response has no output_text");
+        throw new ResponseParsingException("MISSING_OUTPUT_TEXT");
+    }
+
+    private ResponseMetadata responseMetadata(String responseBody) {
+        try {
+            return responseMetadata(objectMapper.readTree(responseBody));
+        } catch (Exception exception) {
+            return ResponseMetadata.unavailable();
+        }
+    }
+
+    private static ResponseMetadata responseMetadata(JsonNode root) {
+        if (root == null || !root.isObject()) {
+            return ResponseMetadata.unavailable();
+        }
+        return new ResponseMetadata(
+                safeToken(root.path("incomplete_details").path("reason")),
+                typeNames(root.path("output")),
+                contentTypeNames(root.path("output"))
+        );
+    }
+
+    private static List<String> typeNames(JsonNode outputs) {
+        List<String> types = new ArrayList<>();
+        if (!outputs.isArray()) {
+            return types;
+        }
+        for (JsonNode output : outputs) {
+            addBoundedType(types, output.path("type"));
+        }
+        return List.copyOf(types);
+    }
+
+    private static List<String> contentTypeNames(JsonNode outputs) {
+        List<String> types = new ArrayList<>();
+        if (!outputs.isArray()) {
+            return types;
+        }
+        for (JsonNode output : outputs) {
+            JsonNode contents = output.path("content");
+            if (!contents.isArray()) {
+                continue;
+            }
+            for (JsonNode content : contents) {
+                addBoundedType(types, content.path("type"));
+            }
+        }
+        return List.copyOf(types);
+    }
+
+    private static void addBoundedType(List<String> types, JsonNode type) {
+        if (types.size() < MAX_LOGGED_TYPE_COUNT) {
+            types.add(safeToken(type));
+        }
+    }
+
+    private static String safeToken(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return "UNKNOWN";
+        }
+        if (!node.isTextual()) {
+            return "<redacted>";
+        }
+        String value = node.asText();
+        if (value == null || value.isBlank() || value.length() > MAX_LOGGED_TYPE_LENGTH) {
+            return "UNKNOWN";
+        }
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (!(character == '_' || character == '-' || character == '.'
+                    || character >= 'a' && character <= 'z'
+                    || character >= 'A' && character <= 'Z'
+                    || character >= '0' && character <= '9')) {
+                return "<redacted>";
+            }
+        }
+        return value;
+    }
+
+    private void logResponseParsingFailure(
+            TransportResponse response,
+            ResponseMetadata metadata,
+            String category,
+            long startedAt
+    ) {
+        log.warn(
+                "AI tag provider response parsing failed. provider=openai model={} responseStatus={} "
+                        + "incompleteDetailsReason={} outputTypes={} contentTypes={} "
+                        + "responseParsingCategory={} elapsedMillis={}",
+                properties.model(),
+                response.statusCode(),
+                metadata.incompleteDetailsReason(),
+                metadata.outputTypes(),
+                metadata.contentTypes(),
+                category,
+                elapsedMillis(startedAt)
+        );
     }
 
     private static Integer nullableInt(JsonNode node) {
         return node.isIntegralNumber() ? node.asInt() : null;
+    }
+
+    private static String schemaFailureCategory(Exception exception) {
+        String message = exception.getMessage();
+        if ("garment tags must not be empty".equals(message)) {
+            return "EMPTY_GARMENT_TAGS";
+        }
+        if ("garment tag limit exceeded".equals(message)) {
+            return "GARMENT_TAG_LIMIT_EXCEEDED";
+        }
+        if ("canonical garment tags must be unique".equals(message)) {
+            return "DUPLICATE_CANONICAL_TAGS";
+        }
+        if ("garments must contain between 1 and 3 items".equals(message)) {
+            return "GARMENT_COUNT_OUT_OF_RANGE";
+        }
+        if ("garment pieces must be unique".equals(message)) {
+            return "DUPLICATE_GARMENT_PIECE";
+        }
+        if ("canonicalTags must be an array".equals(message)) {
+            return "CANONICAL_TAGS_NOT_ARRAY";
+        }
+        if ("suggestedTags must be an array".equals(message)) {
+            return "SUGGESTED_TAGS_NOT_ARRAY";
+        }
+        if ("garments must be an array".equals(message)) {
+            return "GARMENTS_NOT_ARRAY";
+        }
+        if ("tag name must not be blank".equals(message)) {
+            return "CANONICAL_TAG_NAME_BLANK";
+        }
+        if ("suggested tag name must not be blank".equals(message)) {
+            return "SUGGESTED_TAG_NAME_BLANK";
+        }
+        if ("suggested tag confidence must be between 0 and 1".equals(message)) {
+            return "SUGGESTED_TAG_CONFIDENCE_OUT_OF_RANGE";
+        }
+        if ("suggested tag evidence must not be blank".equals(message)) {
+            return "SUGGESTED_TAG_EVIDENCE_BLANK";
+        }
+        if (message != null && message.startsWith("No enum constant "
+                + "com.fitback.backend.external.aitag.GarmentPiece.")) {
+            return "INVALID_GARMENT_PIECE";
+        }
+        if (message != null && message.startsWith("No enum constant "
+                + "com.fitback.backend.domain.tag.entity.TagType.")) {
+            return "INVALID_TAG_TYPE";
+        }
+        return "UNKNOWN";
     }
 
     private static String providerErrorCategory(int statusCode) {
@@ -197,6 +409,30 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
 
     private static long elapsedMillis(long startedAt) {
         return (System.nanoTime() - startedAt) / 1_000_000L;
+    }
+
+    private record ResponseMetadata(
+            String incompleteDetailsReason,
+            List<String> outputTypes,
+            List<String> contentTypes
+    ) {
+
+        private static ResponseMetadata unavailable() {
+            return new ResponseMetadata("UNKNOWN", List.of(), List.of());
+        }
+    }
+
+    private static final class ResponseParsingException extends RuntimeException {
+
+        private final String category;
+
+        private ResponseParsingException(String category) {
+            this.category = category;
+        }
+
+        private String category() {
+            return category;
+        }
     }
 
     private static BusinessException notReady() {
