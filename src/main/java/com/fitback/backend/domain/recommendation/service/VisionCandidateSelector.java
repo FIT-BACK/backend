@@ -62,14 +62,14 @@ public class VisionCandidateSelector {
                         "candidate must not be null"
                 );
 
-                // 검색 응답의 이미지 URL만 사용하는 후보 선별 단계의 원격 이미지 접근 방지
-                if (candidate.imageUrl() == null) {
-                    continue;
-                }
-
                 // 추천 상품 저장 단계에서 사용할 수 없는 불안정 공급자 식별자 제외
                 if (!candidate.providerRef().stable()) {
                     unsupportedReferenceSkipped = true;
+                    continue;
+                }
+
+                // 검색 응답의 이미지 URL만 사용하는 후보 선별 단계의 원격 이미지 접근 방지
+                if (candidate.imageUrl() == null) {
                     continue;
                 }
 

@@ -48,7 +48,7 @@ class VisionCandidateSelectorTest {
     }
 
     @Test
-    void reportsSkippedUnsupportedReference() {
+    void reportsSkippedUnsupportedReferenceEvenWhenImageIsMissing() {
         VisionCandidateSelector selector = new VisionCandidateSelector(2);
         List<List<ExternalProductCandidate>> batches = List.of(
                 List.of(unstableCandidate(), candidate(1))
@@ -114,7 +114,7 @@ class VisionCandidateSelectorTest {
                 null,
                 "tops/shirts",
                 null,
-                URI.create("https://example.com/products/unstable.jpg"),
+                null,
                 null,
                 Instant.parse("2026-08-09T00:00:00Z")
         );
