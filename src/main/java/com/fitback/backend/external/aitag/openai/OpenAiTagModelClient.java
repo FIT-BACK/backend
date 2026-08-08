@@ -222,7 +222,11 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             throw new ResponseParsingException("MISSING_OUTPUT");
         }
         for (JsonNode output : outputs) {
-            for (JsonNode content : output.path("content")) {
+            JsonNode contents = output.path("content");
+            if (!contents.isArray()) {
+                throw new ResponseParsingException("INVALID_RESPONSE_SHAPE");
+            }
+            for (JsonNode content : contents) {
                 if ("output_text".equals(content.path("type").asText())) {
                     String text = content.path("text").asText();
                     if (text.isBlank()) {
@@ -248,7 +252,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             return ResponseMetadata.unavailable();
         }
         return new ResponseMetadata(
-                safeToken(root.path("incomplete_details").path("reason").asText()),
+                safeToken(root.path("incomplete_details").path("reason")),
                 typeNames(root.path("output")),
                 contentTypeNames(root.path("output"))
         );
@@ -260,7 +264,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             return types;
         }
         for (JsonNode output : outputs) {
-            addBoundedType(types, output.path("type").asText());
+            addBoundedType(types, output.path("type"));
         }
         return List.copyOf(types);
     }
@@ -276,19 +280,26 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                 continue;
             }
             for (JsonNode content : contents) {
-                addBoundedType(types, content.path("type").asText());
+                addBoundedType(types, content.path("type"));
             }
         }
         return List.copyOf(types);
     }
 
-    private static void addBoundedType(List<String> types, String type) {
+    private static void addBoundedType(List<String> types, JsonNode type) {
         if (types.size() < MAX_LOGGED_TYPE_COUNT) {
             types.add(safeToken(type));
         }
     }
 
-    private static String safeToken(String value) {
+    private static String safeToken(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return "UNKNOWN";
+        }
+        if (!node.isTextual()) {
+            return "<redacted>";
+        }
+        String value = node.asText();
         if (value == null || value.isBlank() || value.length() > MAX_LOGGED_TYPE_LENGTH) {
             return "UNKNOWN";
         }

@@ -244,6 +244,68 @@ class OpenAiTagModelClientTest {
     }
 
     @Test
+    void redactsNonStringResponseMetadataValues() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "incomplete_details", Map.of("reason", 7),
+                "output", List.of(Map.of(
+                        "type", true,
+                        "content", List.of(Map.of("type", 9))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, responseBody);
+
+            assertAnalysisNotReady(client);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "incompleteDetailsReason=<redacted>",
+                                    "outputTypes=[<redacted>]",
+                                    "contentTypes=[<redacted>]",
+                                    "responseParsingCategory=MISSING_OUTPUT_TEXT"
+                            )
+                            .doesNotContain("provider-secret-response", "test-key"));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void classifiesNonArrayContentAsInvalidResponseShape() throws Exception {
+        String responseBody = "{\"output\":[{\"type\":\"message\",\"content\":\"provider-secret-response\"}]}";
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, responseBody);
+
+            assertAnalysisNotReady(client);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "outputTypes=[message]",
+                                    "contentTypes=[]",
+                                    "responseParsingCategory=INVALID_RESPONSE_SHAPE"
+                            )
+                            .doesNotContain("provider-secret-response", "test-key"));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
     void translatesMissingOutputTextToAnalysisNotReady() throws Exception {
         String responseBody = new ObjectMapper().writeValueAsString(Map.of(
                 "output", List.of(Map.of(
