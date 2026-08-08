@@ -53,6 +53,11 @@ FITBACK_AI_REQUEST_TIMEOUT=PT30S \
 기본 결과 파일은 `build/openai-tag-evaluation/openai-tag-evaluation.json`이며,
 `AI_TAG_EVALUATION_OUTPUT_DIR`로 변경할 수 있다.
 
+평가 runner는 동일한 prompt/request를 유지한 채 provider HTTP `500`, `502`, `503`, `504`에만
+최대 2회 추가 시도한다. 첫 retry는 `250–500ms`, 두 번째 retry는 `500–1000ms`의 짧은
+exponential backoff+jitter를 사용한다. 4xx/429, timeout·transport, response parsing·schema·canonical
+실패는 자동 retry하지 않는다. production `OpenAiTagModelClient` 호출 경로에는 이 정책이 적용되지 않는다.
+
 ## 결과 해석
 
 - `summary.micro`와 `summary.macro`는 canonical tag set 기준 precision, recall, F1이다. 실패한
@@ -66,5 +71,8 @@ FITBACK_AI_REQUEST_TIMEOUT=PT30S \
   category만 기록한다. raw 요청·응답·예외 메시지는 기록하지 않는다. 실패 사례는 baseline의
   tag precision/recall/F1 및 exact match 계산에는 예측이 없는 사례로 포함한다. latency와 token
   집계는 실제 OpenAI 응답을 받은 성공 호출만 사용한다.
+- 각 사례에는 총 호출 횟수 `attemptCount`와 최종 평가 상태 `finalStatus`(`SUCCESS` 또는 `FAILED`)를
+  기록한다. provider 실패 시 `providerHttpStatus`, `providerErrorCategory`, `responseParsingCategory`는
+  최종 시도의 안전한 메타데이터만 보존하며, raw response·API key·image bytes/data URL은 기록하지 않는다.
 
 추천 rank 및 reasonCode 평가는 이 runner의 범위에 포함하지 않는다.

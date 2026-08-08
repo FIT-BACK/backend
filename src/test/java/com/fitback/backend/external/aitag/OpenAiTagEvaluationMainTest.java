@@ -3,10 +3,12 @@ package com.fitback.backend.external.aitag;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fitback.backend.domain.tag.entity.TagType;
+import java.util.ArrayList;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
@@ -99,6 +101,137 @@ class OpenAiTagEvaluationMainTest {
         assertThat(result.responseParsingCategory()).isNull();
         assertThat(result.base64ImageLength()).isEqualTo(8L);
         assertThat(result.error()).isEqualTo("ANALYSIS409_1");
+        assertThat(result.attemptCount()).isEqualTo(1);
+        assertThat(result.finalStatus()).isEqualTo("FAILED");
+    }
+
+    @Test
+    void retries500OnceThenReturnsSuccessWithSingleFinalCase() {
+        List<Long> delays = new ArrayList<>();
+        AiTagModelResult result = modelResult();
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(500, "SERVER_ERROR"),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(result)
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(2);
+        assertThat(retryResult.result()).isSameAs(result);
+        assertThat(delays).containsExactly(250L);
+    }
+
+    @Test
+    void retries502Then503BeforeReturningSuccess() {
+        List<Long> delays = new ArrayList<>();
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(502, "SERVER_ERROR"),
+                        providerFailure(503, "SERVER_ERROR"),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(3);
+        assertThat(delays).containsExactly(250L, 500L);
+    }
+
+    @Test
+    void keepsJitteredBackoffWithinConfiguredBounds() {
+        assertThat(OpenAiTagEvaluationMain.retryDelayMillis(1, bound -> bound - 1L))
+                .isEqualTo(500L);
+        assertThat(OpenAiTagEvaluationMain.retryDelayMillis(2, bound -> bound - 1L))
+                .isEqualTo(1_000L);
+    }
+
+    @Test
+    void stopsAfterThree504FailuresAndKeepsFinalProviderMetadata() {
+        List<Long> delays = new ArrayList<>();
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(504, "SERVER_ERROR"),
+                        providerFailure(504, "SERVER_ERROR"),
+                        providerFailure(504, "SERVER_ERROR")
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isFalse();
+        assertThat(retryResult.attemptCount()).isEqualTo(3);
+        assertThat(retryResult.failure().providerHttpStatus()).isEqualTo(504);
+        assertThat(retryResult.failure().providerErrorCategory()).isEqualTo("SERVER_ERROR");
+        assertThat(delays).containsExactly(250L, 500L);
+    }
+
+    @Test
+    void doesNotRetryNonTransientProviderOrParsingFailures() {
+        List<OpenAiTagEvaluationMain.EvaluationFailure> failures = List.of(
+                new OpenAiTagEvaluationMain.EvaluationFailure("ANALYSIS409_1", 1L, 400, "CLIENT_ERROR", null),
+                new OpenAiTagEvaluationMain.EvaluationFailure("ANALYSIS409_1", 1L, 429, "RATE_LIMIT", null),
+                new OpenAiTagEvaluationMain.EvaluationFailure("ANALYSIS409_1", 1L, null, "TIMEOUT", null),
+                new OpenAiTagEvaluationMain.EvaluationFailure("ANALYSIS409_1", 1L, null, "TRANSPORT_ERROR", null),
+                new OpenAiTagEvaluationMain.EvaluationFailure(
+                        "ANALYSIS409_1", 1L, 200, null, "INVALID_RESPONSE_JSON"),
+                new OpenAiTagEvaluationMain.EvaluationFailure(
+                        "ANALYSIS409_1", 1L, 200, null, "INVALID_MODEL_OUTPUT_SCHEMA")
+        );
+
+        for (OpenAiTagEvaluationMain.EvaluationFailure failure : failures) {
+            AtomicInteger calls = new AtomicInteger();
+            OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                    () -> {
+                        calls.incrementAndGet();
+                        return OpenAiTagEvaluationMain.EvaluationAttempt.failure(failure);
+                    },
+                    ignoredDelay -> {
+                        throw new AssertionError("non-transient failure must not sleep");
+                    },
+                    ignoredBound -> 0L
+            );
+
+            assertThat(calls).hasValue(1);
+            assertThat(retryResult.attemptCount()).isEqualTo(1);
+            assertThat(retryResult.failure()).isEqualTo(failure);
+        }
+    }
+
+    @Test
+    void recordsAttemptCountAndFinalStatusWithoutDuplicatingSummaryCases() {
+        OpenAiTagEvaluationMain.EvaluationCase evaluationCase = new OpenAiTagEvaluationMain.EvaluationCase(
+                "top-01", "images/top-01.jpeg", List.of(
+                        new AiTagPrediction(TagType.STYLE, "캐주얼")));
+        OpenAiTagEvaluationMain.CaseResult result = OpenAiTagEvaluationMain.successfulCase(
+                evaluationCase, modelResult(), Set.<OpenAiTagEvaluationMain.TagKey>of(), 2L, 2);
+
+        assertThat(result.attemptCount()).isEqualTo(2);
+        assertThat(result.finalStatus()).isEqualTo("SUCCESS");
+        assertThat(OpenAiTagEvaluationMain.summarize(List.of(result)).totalCases()).isEqualTo(1);
+        assertThat(OpenAiTagEvaluationMain.summarize(List.of(result)).successfulCases()).isEqualTo(1);
+    }
+
+    @Test
+    void serializesOnlySafeRetryMetadata() throws Exception {
+        OpenAiTagEvaluationMain.EvaluationCase evaluationCase = new OpenAiTagEvaluationMain.EvaluationCase(
+                "top-01", "images/top-01.jpeg", List.of(
+                        new AiTagPrediction(TagType.STYLE, "캐주얼")));
+        OpenAiTagEvaluationMain.CaseResult result = OpenAiTagEvaluationMain.CaseResult.failed(
+                evaluationCase, "ANALYSIS409_1", 10L, 500, "SERVER_ERROR", null, 8L, 3);
+
+        String serialized = new ObjectMapper().writeValueAsString(result);
+
+        assertThat(serialized)
+                .contains("attemptCount", "finalStatus", "SERVER_ERROR")
+                .doesNotContain("provider-response", "test-key", "data:image", "imageBytes");
     }
 
     @Test
@@ -149,5 +282,31 @@ class OpenAiTagEvaluationMainTest {
         assertThat(new ObjectMapper().readTree(Files.readString(schema))
                 .path("properties").path("cases").path("items").path("properties")
                 .path("expectedCanonicalTags").path("uniqueItems").asBoolean()).isTrue();
+    }
+
+    private static OpenAiTagEvaluationMain.EvaluationCall sequence(
+            OpenAiTagEvaluationMain.EvaluationAttempt... attempts
+    ) {
+        AtomicInteger index = new AtomicInteger();
+        return () -> attempts[index.getAndIncrement()];
+    }
+
+    private static OpenAiTagEvaluationMain.EvaluationAttempt providerFailure(
+            int status, String category
+    ) {
+        return OpenAiTagEvaluationMain.EvaluationAttempt.failure(
+                new OpenAiTagEvaluationMain.EvaluationFailure(
+                        "ANALYSIS409_1", 1L, status, category, null));
+    }
+
+    private static AiTagModelResult modelResult() {
+        return new AiTagModelResult(
+                "openai", "gpt-5.6-luna", List.of(new AiTagGarment(
+                        GarmentPiece.TOP,
+                        List.of(new AiTagPrediction(TagType.STYLE, "캐주얼")),
+                        List.of()
+                )),
+                10, 5, 100
+        );
     }
 }
