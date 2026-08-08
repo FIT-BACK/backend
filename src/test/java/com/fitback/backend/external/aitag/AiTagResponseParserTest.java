@@ -12,6 +12,49 @@ class AiTagResponseParserTest {
     private final AiTagResponseParser parser = new AiTagResponseParser(new ObjectMapper());
 
     @Test
+    void parsesPieceKeyedGarmentsWithoutAllowingDuplicatePieces() {
+        String json = """
+                {
+                  "garments": {
+                    "TOP": {
+                      "canonicalTags": [{"type": "STYLE", "name": "캐주얼"}],
+                      "suggestedTags": []
+                    },
+                    "BOTTOM": null,
+                    "SHOES": {
+                      "canonicalTags": [{"type": "MATERIAL", "name": "가죽"}],
+                      "suggestedTags": []
+                    }
+                  }
+                }
+                """;
+
+        AiTagModelOutput output = parser.parse(json);
+
+        assertThat(output.garments())
+                .extracting(AiTagGarment::piece)
+                .containsExactly(GarmentPiece.TOP, GarmentPiece.SHOES);
+    }
+
+    @Test
+    void rejectsUnknownPieceKeyInPieceKeyedGarments() {
+        String json = """
+                {
+                  "garments": {
+                    "TOP": {"canonicalTags": [{"type": "STYLE", "name": "캐주얼"}], "suggestedTags": []},
+                    "BOTTOM": null,
+                    "SHOES": null,
+                    "ACCESSORY": {"canonicalTags": [{"type": "STYLE", "name": "캐주얼"}], "suggestedTags": []}
+                  }
+                }
+                """;
+
+        assertThatThrownBy(() -> parser.parse(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("garments must contain only piece keys");
+    }
+
+    @Test
     void parsesCanonicalTagsAndFreeFormSuggestionsByGarment() {
         String json = """
                 {

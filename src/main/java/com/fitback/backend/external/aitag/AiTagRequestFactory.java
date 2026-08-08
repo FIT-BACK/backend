@@ -2,7 +2,6 @@ package com.fitback.backend.external.aitag;
 
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,8 +33,9 @@ public final class AiTagRequestFactory {
 
         String prompt = """
                 Analyze the visible fashion item or outfit in the image. The image may show a
-                person-worn outfit or a product-only fashion image. Return one garment object for
-                each visible TOP, BOTTOM, and SHOES piece. Do not merge tags from different pieces.
+                person-worn outfit or a product-only fashion image. Return one garment object in
+                the TOP, BOTTOM, or SHOES field for each visible piece, and null for each
+                non-visible piece. Do not merge tags from different pieces.
 
                 For every garment, inspect all five dimensions independently: SILHOUETTE, COLOR,
                 DETAIL, STYLE, and MATERIAL. A dimension may have no result when it is not visibly
@@ -99,12 +99,6 @@ public final class AiTagRequestFactory {
         garmentItem.put("type", "object");
         garmentItem.put("additionalProperties", false);
         Map<String, Object> garmentProperties = new LinkedHashMap<>();
-        garmentProperties.put("piece", Map.of(
-                "type", "string",
-                "enum", Arrays.stream(GarmentPiece.values())
-                        .map(Enum::name)
-                        .toList()
-        ));
         garmentProperties.put("canonicalTags", tagArray(canonicalItem));
         garmentProperties.put("suggestedTags", tagArray(suggestionItem));
         garmentItem.put("properties", garmentProperties);
@@ -114,15 +108,24 @@ public final class AiTagRequestFactory {
                 garmentSchemaWithTagMinimum(garmentProperties, "suggestedTags")
         ));
 
+        Map<String, Object> garmentsProperties = new LinkedHashMap<>();
+        for (GarmentPiece piece : GarmentPiece.values()) {
+            garmentsProperties.put(piece.name(), Map.of(
+                    "anyOf", List.of(
+                            Map.of("type", "null"),
+                            garmentItem
+                    )
+            ));
+        }
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("additionalProperties", false);
         schema.put("properties", Map.of(
                 "garments", Map.of(
-                        "type", "array",
-                        "minItems", 1,
-                        "maxItems", MAX_GARMENTS,
-                        "items", garmentItem
+                        "type", "object",
+                        "additionalProperties", false,
+                        "properties", garmentsProperties,
+                        "required", List.of(GarmentPiece.values()).stream().map(Enum::name).toList()
                 )
         ));
         schema.put("required", List.of("garments"));
@@ -160,6 +163,6 @@ public final class AiTagRequestFactory {
     }
 
     private static List<String> requiredGarmentFields() {
-        return List.of("piece", "canonicalTags", "suggestedTags");
+        return List.of("canonicalTags", "suggestedTags");
     }
 }
