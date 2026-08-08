@@ -35,11 +35,13 @@ import org.springframework.stereotype.Service;
 @Service
 public class RecommendationService {
 
-    static final String SCORE_VERSION = "TAG_MATCH_RATIO_V1";
-    static final String THRESHOLD_SCORE_VERSION = "TAG_MATCH_RATIO_THRESHOLD_V1";
+    static final String SCORE_VERSION = "IMAGE_TAG_WEIGHTED_V1";
+    static final String THRESHOLD_SCORE_VERSION = "IMAGE_TAG_WEIGHTED_THR_V1";
 
     private static final int SEARCH_PAGE_SIZE = 20;
     private static final int MAX_ITEMS_PER_CATEGORY = 10;
+    private static final BigDecimal TEMPORARY_IMAGE_SIMILARITY_SCORE =
+            new BigDecimal("70");
     private static final String PROVIDER_PARTIAL_FAILURE = "PROVIDER_PARTIAL_FAILURE";
     private static final String MATERIALIZATION_SKIPPED = "MATERIALIZATION_SKIPPED";
 
@@ -162,7 +164,11 @@ public class RecommendationService {
         return candidates.stream()
                 .map(candidate -> new ScoredCandidate(
                         candidate,
-                        scorer.score(input.tags(), candidate)
+                        scorer.score(
+                                input.tags(),
+                                TEMPORARY_IMAGE_SIMILARITY_SCORE,
+                                candidate
+                        )
                 ))
                 .filter(candidate -> !applyThreshold
                         || candidate.score().similarityScore().compareTo(threshold) >= 0)
