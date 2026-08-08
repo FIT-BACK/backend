@@ -19,6 +19,11 @@ public interface AnalysisReportRepository extends JpaRepository<AnalysisReport, 
 
     long countByMemberIdAndDeletedAtIsNull(Long memberId);
 
+    // 마이페이지 "분석 완료" 통계용 — 위 카운트는 이미지 업로드 직후(recommendationGeneratedAt이
+    // 아직 null인, 즉 태그 확인/추천 결과 생성 전) row도 그대로 세버려서 "분석 완료" 문구와
+    // 어긋났다. 실제로 추천까지 끝난(recommendationGeneratedAt이 채워진) 리포트만 센다.
+    long countByMemberIdAndDeletedAtIsNullAndRecommendationGeneratedAtIsNotNull(Long memberId);
+
     @Modifying(flushAutomatically = true)
     @Query("delete from AnalysisReport report where report.member.id = :memberId")
     void deleteAllByMemberId(@Param("memberId") Long memberId);
