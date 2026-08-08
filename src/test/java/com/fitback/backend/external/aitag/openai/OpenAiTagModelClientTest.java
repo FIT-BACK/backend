@@ -278,9 +278,44 @@ class OpenAiTagModelClientTest {
                                     "responseStatus=200",
                                     "outputTypes=[message]",
                                     "contentTypes=[output_text]",
-                                    "responseParsingCategory=INVALID_MODEL_OUTPUT_SCHEMA"
+                                    "responseParsingCategory=INVALID_MODEL_OUTPUT_SCHEMA:EMPTY_GARMENT_TAGS"
                             )
-                            .doesNotContain(outputText, "test-key", "data:image"));
+                    .doesNotContain(outputText, "test-key", "data:image"));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void logsFixedSchemaCategoryWithoutLoggingInvalidModelFieldValue() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String invalidPiece = "MODEL_ONLY_PIECE_VALUE";
+        String outputText = objectMapper.writeValueAsString(Map.of(
+                "garments", List.of(Map.of(
+                        "piece", invalidPiece,
+                        "canonicalTags", List.of(Map.of("type", "STYLE", "name", "캐주얼")),
+                        "suggestedTags", List.of()
+                ))
+        ));
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of("type", "output_text", "text", outputText))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            assertAnalysisNotReady(clientReturning(200, responseBody));
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains("responseParsingCategory=INVALID_MODEL_OUTPUT_SCHEMA:INVALID_GARMENT_PIECE")
+                            .doesNotContain(invalidPiece, outputText, "test-key", "data:image"));
         } finally {
             logger.detachAppender(appender);
             appender.stop();

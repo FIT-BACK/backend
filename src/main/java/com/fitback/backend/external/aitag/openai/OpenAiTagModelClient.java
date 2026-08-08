@@ -180,7 +180,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             logResponseParsingFailure(
                     response,
                     metadata,
-                    "INVALID_MODEL_OUTPUT_SCHEMA",
+                    "INVALID_MODEL_OUTPUT_SCHEMA:" + schemaFailureCategory(exception),
                     startedAt
             );
             throw notReady();
@@ -337,6 +337,55 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
 
     private static Integer nullableInt(JsonNode node) {
         return node.isIntegralNumber() ? node.asInt() : null;
+    }
+
+    private static String schemaFailureCategory(Exception exception) {
+        String message = exception.getMessage();
+        if ("garment tags must not be empty".equals(message)) {
+            return "EMPTY_GARMENT_TAGS";
+        }
+        if ("garment tag limit exceeded".equals(message)) {
+            return "GARMENT_TAG_LIMIT_EXCEEDED";
+        }
+        if ("canonical garment tags must be unique".equals(message)) {
+            return "DUPLICATE_CANONICAL_TAGS";
+        }
+        if ("garments must contain between 1 and 3 items".equals(message)) {
+            return "GARMENT_COUNT_OUT_OF_RANGE";
+        }
+        if ("garment pieces must be unique".equals(message)) {
+            return "DUPLICATE_GARMENT_PIECE";
+        }
+        if ("canonicalTags must be an array".equals(message)) {
+            return "CANONICAL_TAGS_NOT_ARRAY";
+        }
+        if ("suggestedTags must be an array".equals(message)) {
+            return "SUGGESTED_TAGS_NOT_ARRAY";
+        }
+        if ("garments must be an array".equals(message)) {
+            return "GARMENTS_NOT_ARRAY";
+        }
+        if ("tag name must not be blank".equals(message)) {
+            return "CANONICAL_TAG_NAME_BLANK";
+        }
+        if ("suggested tag name must not be blank".equals(message)) {
+            return "SUGGESTED_TAG_NAME_BLANK";
+        }
+        if ("suggested tag confidence must be between 0 and 1".equals(message)) {
+            return "SUGGESTED_TAG_CONFIDENCE_OUT_OF_RANGE";
+        }
+        if ("suggested tag evidence must not be blank".equals(message)) {
+            return "SUGGESTED_TAG_EVIDENCE_BLANK";
+        }
+        if (message != null && message.startsWith("No enum constant "
+                + "com.fitback.backend.external.aitag.GarmentPiece.")) {
+            return "INVALID_GARMENT_PIECE";
+        }
+        if (message != null && message.startsWith("No enum constant "
+                + "com.fitback.backend.domain.tag.entity.TagType.")) {
+            return "INVALID_TAG_TYPE";
+        }
+        return "UNKNOWN";
     }
 
     private static String providerErrorCategory(int statusCode) {
