@@ -158,15 +158,19 @@ OTHER
 - 상품 가격은 검색·상세·찜 화면 표시용이며 추천 점수나 가성비 문구에 사용하지 않는다.
 - 공급자 raw score를 그대로 내부 점수로 저장하지 않는다.
 - `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 타입 분석 태그 중 상품명·브랜드·카테고리에
-  포함된 태그의 비율을 0~100 점수로 계산하고 소수 둘째 자리에서 `HALF_UP`으로 저장한다.
+  포함된 태그의 비율을 0~100의 `tagMatchScore`로 계산한다.
 - `STYLE` 타입과 직접 입력 태그는 점수 계산의 분자와 분모에서 제외한다.
-- 점수 계산 대상 태그가 없으면 100점으로 계산한다. 공급자 raw score는 점수에 사용하지 않는다.
+- 태그 점수 계산 대상이 없으면 `tagMatchScore`는 100점이다.
+- 실제 이미지 유사도 연동 전까지 `temporaryImageSimilarityScore`는 70점으로 고정한다. 향후 이미지
+  유사도 계산이 구현되면 이 임시값을 실제 계산 결과로 교체한다.
+- 최종 `similarityScore`는 `temporaryImageSimilarityScore * 0.7 + tagMatchScore * 0.3`이며,
+  소수 둘째 자리에서 `HALF_UP`으로 저장한다.
 - 계산 대상 태그가 모두 일치하면 `FULL_ATTRIBUTE_MATCH`, 일부만 일치하면
   `PARTIAL_ATTRIBUTE_MATCH`, 하나도 일치하지 않으면 `NO_ATTRIBUTE_MATCH`를 사용한다.
-- 계산 대상 태그가 없으면 `NO_SCORABLE_TAGS`를 사용한다. 이때 계산 점수는 100점이지만
+- 계산 대상 태그가 없으면 `NO_SCORABLE_TAGS`를 사용한다. 이때 태그 점수는 100점이지만
   실제 매칭 결과가 아니므로 `HIGH_SIMILARITY`를 추가하지 않는다.
-- 계산 대상 태그가 있고 점수가 80점 이상이면 `HIGH_SIMILARITY`를 추가한다.
-- `TAG_MATCH_RATIO_V1`과 `TAG_MATCH_RATIO_THRESHOLD_V1`로 새로 생성되는 모든 추천 상품은
+- 계산 대상 태그가 있고 `tagMatchScore`가 80점 이상이면 `HIGH_SIMILARITY`를 추가한다.
+- `IMAGE_TAG_WEIGHTED_V1`과 `IMAGE_TAG_WEIGHTED_THR_V1`로 새로 생성되는 모든 추천 상품은
   최소 하나의 reason code를 가지며 code 목록은 정렬해 저장한다.
 - 레거시 추천 항목의 `reason_codes` 저장값이 빈 문자열이면 조회 응답의 `reasonCodes`는 빈 배열이다.
 
@@ -498,7 +502,7 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
     "reportId": 501,
     "analysisTags": ["미니멀", "와이드핏", "베이지"],
     "matchPercentage": 70,
-    "scoreVersion": "TAG_MATCH_RATIO_THRESHOLD_V1",
+    "scoreVersion": "IMAGE_TAG_WEIGHTED_THR_V1",
     "recommendationStatus": "CURRENT",
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
@@ -518,8 +522,8 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
               "observedAt": "2026-07-18T03:00:00Z"
             },
             "purchaseUrl": "https://mall.example/products/100",
-            "similarityScore": 100.00,
-            "finalScore": 100.00,
+            "similarityScore": 79.00,
+            "finalScore": 79.00,
             "reasonCodes": ["FULL_ATTRIBUTE_MATCH", "HIGH_SIMILARITY"],
             "availability": "AVAILABLE",
             "isSaved": false
@@ -554,8 +558,8 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
 - 새 세트 저장에 성공하기 전 기존 세트를 삭제하지 않는다.
 - 입력 revision, 태그 key 또는 매칭값이 달라지면 `RECOMMENDATION409_1`을 반환하고 기존 세트를 유지한다.
 - body 요청은 `matchPercentage` 미만 후보를 materialization 전에 제외하고
-  `TAG_MATCH_RATIO_THRESHOLD_V1`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
-- body 없는 하위 호환 요청은 임계값 필터 없이 `TAG_MATCH_RATIO_V1`로 저장한다.
+  `IMAGE_TAG_WEIGHTED_THR_V1`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
+- body 없는 하위 호환 요청은 임계값 필터 없이 `IMAGE_TAG_WEIGHTED_V1`로 저장한다.
 - 외부 공급자가 모두 실패하면 대표 실패 원인에 따라 malformed response는 `PRODUCT502_1`,
   timeout/auth/unavailable은 `PRODUCT503_1`, quota는 `PRODUCT503_2`이며 기존 세트를 유지한다.
 - materialize할 수 없는 후보는 현재 세트에서 제외하고 warning을 남긴다.
@@ -584,7 +588,7 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
     "reportId": 501,
     "tags": ["미니멀", "와이드핏", "베이지"],
     "recommendationStatus": "CURRENT",
-    "scoreVersion": "TAG_MATCH_RATIO_V1",
+    "scoreVersion": "IMAGE_TAG_WEIGHTED_V1",
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
       {"category": "TOP", "items": []},

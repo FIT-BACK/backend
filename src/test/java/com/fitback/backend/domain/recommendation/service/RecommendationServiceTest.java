@@ -39,6 +39,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -65,6 +66,9 @@ class RecommendationServiceTest {
     @Mock
     private RecommendationQueryService queryService;
 
+    @Spy
+    private RecommendationScorer scorer = new RecommendationScorer();
+
     private RecommendationService recommendationService;
 
     @BeforeEach
@@ -75,7 +79,7 @@ class RecommendationServiceTest {
                 productCatalogPort,
                 candidateMapper,
                 materializationService,
-                new RecommendationScorer(),
+                scorer,
                 setWriter,
                 queryService
         );
@@ -119,7 +123,7 @@ class RecommendationServiceTest {
                 ArgumentCaptor.forClass(List.class);
         verify(setWriter).replaceCurrentSet(
                 org.mockito.ArgumentMatchers.eq(input),
-                org.mockito.ArgumentMatchers.eq("TAG_MATCH_RATIO_V1"),
+                org.mockito.ArgumentMatchers.eq("IMAGE_TAG_WEIGHTED_V1"),
                 selectionsCaptor.capture()
         );
         assertThat(selectionsCaptor.getValue())
@@ -141,6 +145,73 @@ class RecommendationServiceTest {
                 );
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
         assertThat(response.partial()).isFalse();
+    }
+
+    @Test
+    void ranksCandidatesByWeightedSimilarityScore() {
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                1,
+                List.of(
+                        new TagInput(10L, "Fixture", TagType.DETAIL),
+                        new TagInput(20L, "Perfect", TagType.COLOR)
+                )
+        );
+        ExternalProductCandidate partial = candidate(
+                1,
+                null,
+                true,
+                "Fixture Product"
+        );
+        ExternalProductCandidate full = candidate(
+                2,
+                null,
+                true,
+                "Fixture Perfect Product"
+        );
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenReturn(new ProductSearchResult(List.of(partial, full), null));
+        when(candidateMapper.category(any())).thenReturn(ProductCategory.TOP);
+        when(materializationService.materializeForRecommendation(any()))
+                .thenAnswer(invocation -> {
+                    ExternalProductCandidate candidate = invocation.getArgument(0);
+                    return new RecommendationMaterializationResult(
+                            Long.parseLong(candidate.providerRef().externalProductId()),
+                            true
+                    );
+                });
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<RecommendationSelection>> selectionsCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(setWriter).replaceCurrentSet(
+                org.mockito.ArgumentMatchers.eq(input),
+                org.mockito.ArgumentMatchers.eq("IMAGE_TAG_WEIGHTED_V1"),
+                selectionsCaptor.capture()
+        );
+        assertThat(selectionsCaptor.getValue())
+                .extracting(
+                        RecommendationSelection::productId,
+                        RecommendationSelection::rankNo,
+                        RecommendationSelection::similarityScore
+                )
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                2L,
+                                1,
+                                new BigDecimal("79.00")
+                        ),
+                        org.assertj.core.groups.Tuple.tuple(
+                                1L,
+                                2,
+                                new BigDecimal("64.00")
+                        )
+                );
     }
 
     @Test
@@ -191,7 +262,7 @@ class RecommendationServiceTest {
 
         RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
 
-        verify(setWriter).replaceCurrentSet(input, "TAG_MATCH_RATIO_V1", List.of());
+        verify(setWriter).replaceCurrentSet(input, "IMAGE_TAG_WEIGHTED_V1", List.of());
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
     }
 
@@ -225,11 +296,13 @@ class RecommendationServiceTest {
                 ArgumentCaptor.forClass(List.class);
         verify(setWriter).replaceCurrentSet(
                 org.mockito.ArgumentMatchers.eq(input),
-                org.mockito.ArgumentMatchers.eq("TAG_MATCH_RATIO_V1"),
+                org.mockito.ArgumentMatchers.eq("IMAGE_TAG_WEIGHTED_V1"),
                 selectionsCaptor.capture()
         );
+        verify(scorer).score(input.tags(), new BigDecimal("70"), candidate);
         assertThat(selectionsCaptor.getValue()).singleElement().satisfies(selection -> {
-            assertThat(selection.similarityScore()).isEqualByComparingTo("100.00");
+            assertThat(selection.similarityScore()).isEqualByComparingTo("79.00");
+            assertThat(selection.finalScore()).isEqualByComparingTo("79.00");
             assertThat(selection.reasonCodes()).containsExactly("NO_SCORABLE_TAGS");
         });
     }
@@ -273,11 +346,12 @@ class RecommendationServiceTest {
                 ArgumentCaptor.forClass(List.class);
         verify(setWriter).replaceCurrentSet(
                 org.mockito.ArgumentMatchers.eq(input),
-                org.mockito.ArgumentMatchers.eq("TAG_MATCH_RATIO_V1"),
+                org.mockito.ArgumentMatchers.eq("IMAGE_TAG_WEIGHTED_V1"),
                 selectionsCaptor.capture()
         );
         assertThat(selectionsCaptor.getValue()).singleElement().satisfies(selection -> {
-            assertThat(selection.similarityScore()).isEqualByComparingTo("0.00");
+            assertThat(selection.similarityScore()).isEqualByComparingTo("49.00");
+            assertThat(selection.finalScore()).isEqualByComparingTo("49.00");
             assertThat(selection.reasonCodes()).containsExactly("NO_ATTRIBUTE_MATCH");
         });
     }
@@ -329,7 +403,7 @@ class RecommendationServiceTest {
         RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
 
         verify(productCatalogPort, never()).search(any(ProductSearchQuery.class));
-        verify(setWriter).replaceCurrentSet(input, "TAG_MATCH_RATIO_V1", List.of());
+        verify(setWriter).replaceCurrentSet(input, "IMAGE_TAG_WEIGHTED_V1", List.of());
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
     }
 
@@ -367,25 +441,25 @@ class RecommendationServiceTest {
         verify(materializationService, never()).materializeForRecommendation(any());
         verify(setWriter).replaceCurrentSet(
                 input,
-                "TAG_MATCH_RATIO_THRESHOLD_V1",
+                "IMAGE_TAG_WEIGHTED_THR_V1",
                 List.of()
         );
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
-        assertThat(response.scoreVersion()).isEqualTo("TAG_MATCH_RATIO_THRESHOLD_V1");
+        assertThat(response.scoreVersion()).isEqualTo("IMAGE_TAG_WEIGHTED_THR_V1");
     }
 
     @Test
-    void thresholdOneHundredIncludesOnlyPerfectScoreCandidate() {
+    void thresholdUsesWeightedScoreAndIncludesOnlyCandidateAtSeventyNine() {
         RecommendationGenerateRequest request = new RecommendationGenerateRequest(
                 List.of(10L, 20L),
                 List.of(),
-                100
+                79
         );
         RecommendationInputSnapshot input = new RecommendationInputSnapshot(
                 501L,
                 1L,
                 2,
-                100,
+                79,
                 List.of(
                         new TagInput(10L, "Fixture", TagType.DETAIL),
                         new TagInput(20L, "Perfect", TagType.COLOR)
@@ -432,7 +506,7 @@ class RecommendationServiceTest {
                 .toList();
         return new RecommendationResultResponse(
                 RecommendationStatus.CURRENT,
-                "TAG_MATCH_RATIO_V1",
+                "IMAGE_TAG_WEIGHTED_V1",
                 groups,
                 false,
                 List.of()
