@@ -1,11 +1,13 @@
 package com.fitback.backend.domain.closet.service;
 
+import com.fitback.backend.domain.analysis.service.AnalysisReportSaveService;
 import com.fitback.backend.domain.closet.dto.ClosetSaveRequest;
 import com.fitback.backend.domain.closet.dto.ClosetSaveResponse;
 import com.fitback.backend.domain.closet.entity.ClosetSave;
 import com.fitback.backend.domain.closet.entity.ClosetTargetType;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
+import com.fitback.backend.domain.lookbook.service.LookbookService;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.trend.entity.TrendContent;
@@ -15,6 +17,7 @@ import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +38,8 @@ public class ClosetSaveService {
     private final LookbookRepository lookbookRepository;
     private final TrendContentRepository trendContentRepository;
     private final TrendTagRepository trendTagRepository;
+    private final LookbookService lookbookService;
+    private final AnalysisReportSaveService analysisReportSaveService;
 
     // 마이 클로젯 저장
     @Transactional
@@ -103,28 +108,8 @@ public class ClosetSaveService {
                 Math.min(closetSavePage.size(), CLOSET_SAVE_PAGE_SIZE)
         );
 
-        // TREND 저장 항목의 썸네일/태그 조회 (LOOKBOOK/ANALYSIS_REPORT는 각 도메인 작업에서 연동 예정)
-        List<Long> trendTargetIds = closetSaves.stream()
-                .filter(closetSave -> closetSave.getTargetType() == ClosetTargetType.TREND)
-                .map(ClosetSave::getTargetId)
-                .toList();
-        Map<Long, TrendContent> trendsById = findTrendsById(trendTargetIds);
-        Map<Long, List<String>> tagsByTrendId = findTagsByTrendIds(trendTargetIds);
-
         // responseDTO 로 변환
-        List<ClosetSaveResponse.ClosetSaveItem> items = closetSaves.stream()
-                .map(closetSave -> {
-                    if (closetSave.getTargetType() != ClosetTargetType.TREND) {
-                        return ClosetSaveResponse.ClosetSaveItem.toClosetSaveItem(closetSave, null, List.of());
-                    }
-                    TrendContent trend = trendsById.get(closetSave.getTargetId());
-                    return ClosetSaveResponse.ClosetSaveItem.toClosetSaveItem(
-                            closetSave,
-                            trend == null ? null : trend.getImageUrl(),
-                            tagsByTrendId.getOrDefault(closetSave.getTargetId(), List.of())
-                    );
-                })
-                .toList();
+        List<ClosetSaveResponse.ClosetSaveItem> items = toClosetSaveItems(closetSaves, memberId);
 
         // 다음 cursor 계산
         Long nextCursor = hasNext && !closetSaves.isEmpty()
@@ -132,6 +117,94 @@ public class ClosetSaveService {
                 : null;
 
         return ClosetSaveResponse.ClosetSaveList.toClosetSaveList(items, nextCursor, hasNext, CLOSET_SAVE_PAGE_SIZE);
+    }
+
+    // 저장 대상 타입별 썸네일/태그 조립
+    private List<ClosetSaveResponse.ClosetSaveItem> toClosetSaveItems(
+            List<ClosetSave> closetSaves,
+            Long memberId
+    ) {
+        List<Long> trendIds = targetIdsOf(closetSaves, ClosetTargetType.TREND);
+        Map<Long, TrendContent> trendsById = findTrendsById(trendIds);
+        Map<Long, List<String>> tagsByTrendId = findTagsByTrendIds(trendIds);
+        Map<Long, LookbookService.ClosetLookbookView> lookbookViews = lookbookService.findClosetViews(
+                targetIdsOf(closetSaves, ClosetTargetType.LOOKBOOK)
+        );
+        Map<Long, AnalysisReportSaveService.ClosetReportView> reportViews =
+                analysisReportSaveService.findClosetViews(
+                        targetIdsOf(closetSaves, ClosetTargetType.ANALYSIS_REPORT),
+                        memberId
+                );
+
+        // 타입 추가 시 switch 가 컴파일 에러로 누락을 잡아줌
+        return closetSaves.stream()
+                .map(closetSave -> switch (closetSave.getTargetType()) {
+                    case TREND -> toTrendItem(closetSave, trendsById, tagsByTrendId);
+                    case LOOKBOOK -> toLookbookItem(closetSave, lookbookViews);
+                    case ANALYSIS_REPORT -> toReportItem(closetSave, reportViews);
+                })
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    // 타입별 대상 id 추출
+    private List<Long> targetIdsOf(List<ClosetSave> closetSaves, ClosetTargetType targetType) {
+        return closetSaves.stream()
+                .filter(closetSave -> closetSave.getTargetType() == targetType)
+                .map(ClosetSave::getTargetId)
+                .toList();
+    }
+
+    // 대상이 삭제되었으면 null 반환해 목록에서 제외
+    private ClosetSaveResponse.ClosetSaveItem toTrendItem(
+            ClosetSave closetSave,
+            Map<Long, TrendContent> trendsById,
+            Map<Long, List<String>> tagsByTrendId
+    ) {
+        TrendContent trend = trendsById.get(closetSave.getTargetId());
+        if (trend == null) {
+            return null;
+        }
+        return ClosetSaveResponse.ClosetSaveItem.toClosetSaveItem(
+                closetSave,
+                trend.getImageUrl(),
+                null,
+                tagsByTrendId.getOrDefault(closetSave.getTargetId(), List.of())
+        );
+    }
+
+    // 대상이 삭제되었으면 null 반환해 목록에서 제외
+    private ClosetSaveResponse.ClosetSaveItem toLookbookItem(
+            ClosetSave closetSave,
+            Map<Long, LookbookService.ClosetLookbookView> lookbookViews
+    ) {
+        LookbookService.ClosetLookbookView view = lookbookViews.get(closetSave.getTargetId());
+        if (view == null) {
+            return null;
+        }
+        return ClosetSaveResponse.ClosetSaveItem.toClosetSaveItem(
+                closetSave,
+                view.thumbnailUrl(),
+                view.matchedImageUrl(),
+                view.tags()
+        );
+    }
+
+    // 대상이 삭제되었으면 null 반환해 목록에서 제외
+    private ClosetSaveResponse.ClosetSaveItem toReportItem(
+            ClosetSave closetSave,
+            Map<Long, AnalysisReportSaveService.ClosetReportView> reportViews
+    ) {
+        AnalysisReportSaveService.ClosetReportView view = reportViews.get(closetSave.getTargetId());
+        if (view == null) {
+            return null;
+        }
+        return ClosetSaveResponse.ClosetSaveItem.toClosetSaveItem(
+                closetSave,
+                view.thumbnailUrl(),
+                null,
+                view.tags()
+        );
     }
 
     // cursor, targetType 기준 저장 목록 조회

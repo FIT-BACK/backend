@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fitback.backend.domain.analysis.service.AnalysisReportSaveService;
 import com.fitback.backend.domain.closet.dto.ClosetSaveRequest;
 import com.fitback.backend.domain.closet.dto.ClosetSaveResponse;
 import com.fitback.backend.domain.closet.entity.ClosetSave;
@@ -16,6 +17,7 @@ import com.fitback.backend.domain.closet.entity.ClosetTargetType;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.lookbook.entity.Lookbook;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
+import com.fitback.backend.domain.lookbook.service.LookbookService;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
@@ -29,6 +31,7 @@ import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,6 +60,12 @@ class ClosetSaveServiceTest {
 
     @Mock
     private TrendTagRepository trendTagRepository;
+
+    @Mock
+    private LookbookService lookbookService;
+
+    @Mock
+    private AnalysisReportSaveService analysisReportSaveService;
 
     @InjectMocks
     private ClosetSaveService closetSaveService;
@@ -218,13 +227,12 @@ class ClosetSaveServiceTest {
                 .toList();
         when(closetSaveRepository.findAllByMemberIdOrderByCreatedAtDescIdDesc(eq(1L), any(Pageable.class)))
                 .thenReturn(page);
+        when(lookbookService.findClosetViews(any())).thenReturn(Map.of(1L, lookbookView()));
 
         ClosetSaveResponse.ClosetSaveList response = closetSaveService.getClosetSaves(1L, null, null);
 
         assertThat(response.items()).hasSize(10);
         assertThat(response.items().get(0).saveId()).isEqualTo(100L);
-        assertThat(response.items().get(0).thumbnailUrl()).isNull();
-        assertThat(response.items().get(0).tags()).isEmpty();
         assertThat(response.nextCursor()).isEqualTo(91L);
         assertThat(response.hasNext()).isTrue();
         assertThat(response.pageSize()).isEqualTo(10);
@@ -235,6 +243,8 @@ class ClosetSaveServiceTest {
         ClosetSave closetSave = createClosetSave(100L, ClosetTargetType.ANALYSIS_REPORT, 1L, LocalDateTime.now());
         when(closetSaveRepository.findAllByMemberIdOrderByCreatedAtDescIdDesc(eq(1L), any(Pageable.class)))
                 .thenReturn(List.of(closetSave));
+        when(analysisReportSaveService.findClosetViews(any(), eq(1L)))
+                .thenReturn(Map.of(1L, reportView()));
 
         ClosetSaveResponse.ClosetSaveList response = closetSaveService.getClosetSaves(1L, null, null);
 
@@ -249,6 +259,7 @@ class ClosetSaveServiceTest {
         when(closetSaveRepository.findAllByMemberIdAndTargetTypeOrderByCreatedAtDescIdDesc(
                 eq(1L), eq(ClosetTargetType.TREND), any(Pageable.class)))
                 .thenReturn(List.of(closetSave));
+        when(trendContentRepository.findAllById(List.of(1L))).thenReturn(List.of(createTrend(1L)));
 
         ClosetSaveResponse.ClosetSaveList response = closetSaveService.getClosetSaves(1L, ClosetTargetType.TREND, null);
 
@@ -286,16 +297,52 @@ class ClosetSaveServiceTest {
     }
 
     @Test
-    void getClosetSavesLeavesNonTrendItemsUnenriched() {
+    void getClosetSavesEnrichesLookbookItemsWithBothImagesAndTags() {
         ClosetSave closetSave = createClosetSave(100L, ClosetTargetType.LOOKBOOK, 12L, LocalDateTime.now());
         when(closetSaveRepository.findAllByMemberIdOrderByCreatedAtDescIdDesc(eq(1L), any(Pageable.class)))
                 .thenReturn(List.of(closetSave));
+        when(lookbookService.findClosetViews(List.of(12L))).thenReturn(Map.of(12L, lookbookView()));
 
         ClosetSaveResponse.ClosetSaveList response = closetSaveService.getClosetSaves(1L, null, null);
 
-        assertThat(response.items().get(0).thumbnailUrl()).isNull();
-        assertThat(response.items().get(0).tags()).isEmpty();
+        assertThat(response.items().get(0).thumbnailUrl())
+                .isEqualTo("https://cdn.fitback.app/lookbooks/original.jpg");
+        assertThat(response.items().get(0).matchedImageUrl())
+                .isEqualTo("https://cdn.fitback.app/lookbooks/matched.jpg");
+        assertThat(response.items().get(0).tags()).containsExactly("스트릿");
         verify(trendContentRepository, never()).findAllById(any());
+    }
+
+    @Test
+    void getClosetSavesEnrichesReportItemsWithoutMatchedImage() {
+        ClosetSave closetSave = createClosetSave(100L, ClosetTargetType.ANALYSIS_REPORT, 33L, LocalDateTime.now());
+        when(closetSaveRepository.findAllByMemberIdOrderByCreatedAtDescIdDesc(eq(1L), any(Pageable.class)))
+                .thenReturn(List.of(closetSave));
+        when(analysisReportSaveService.findClosetViews(List.of(33L), 1L))
+                .thenReturn(Map.of(33L, reportView()));
+
+        ClosetSaveResponse.ClosetSaveList response = closetSaveService.getClosetSaves(1L, null, null);
+
+        assertThat(response.items().get(0).thumbnailUrl())
+                .isEqualTo("https://cdn.fitback.app/analyses/original.jpg");
+        assertThat(response.items().get(0).matchedImageUrl()).isNull();
+        assertThat(response.items().get(0).tags()).containsExactly("미니멀", "와이드핏");
+    }
+
+    // 저장 후 대상이 삭제되면 조회 결과에 없어 목록에서 빠짐
+    @Test
+    void getClosetSavesExcludesItemsWhoseTargetIsDeleted() {
+        ClosetSave deletedLookbook = createClosetSave(100L, ClosetTargetType.LOOKBOOK, 12L, LocalDateTime.now());
+        ClosetSave trendSave = createClosetSave(99L, ClosetTargetType.TREND, 1L, LocalDateTime.now());
+        when(closetSaveRepository.findAllByMemberIdOrderByCreatedAtDescIdDesc(eq(1L), any(Pageable.class)))
+                .thenReturn(List.of(deletedLookbook, trendSave));
+        when(lookbookService.findClosetViews(List.of(12L))).thenReturn(Map.of());
+        when(trendContentRepository.findAllById(List.of(1L))).thenReturn(List.of(createTrend(1L)));
+
+        ClosetSaveResponse.ClosetSaveList response = closetSaveService.getClosetSaves(1L, null, null);
+
+        assertThat(response.items()).extracting(ClosetSaveResponse.ClosetSaveItem::saveId)
+                .containsExactly(99L);
     }
 
     @Test
@@ -306,6 +353,7 @@ class ClosetSaveServiceTest {
         when(closetSaveRepository.findByIdAndMemberId(100L, 1L)).thenReturn(Optional.of(cursorClosetSave));
         when(closetSaveRepository.findNextPage(eq(1L), eq(cursorCreatedAt), eq(100L), any(Pageable.class)))
                 .thenReturn(List.of(nextClosetSave));
+        when(lookbookService.findClosetViews(List.of(99L))).thenReturn(Map.of(99L, lookbookView()));
 
         ClosetSaveResponse.ClosetSaveList response = closetSaveService.getClosetSaves(1L, null, 100L);
 
@@ -323,6 +371,7 @@ class ClosetSaveServiceTest {
         when(closetSaveRepository.findNextPageByTargetType(
                 eq(1L), eq(ClosetTargetType.TREND), eq(cursorCreatedAt), eq(100L), any(Pageable.class)))
                 .thenReturn(List.of(nextClosetSave));
+        when(trendContentRepository.findAllById(List.of(99L))).thenReturn(List.of(createTrend(99L)));
 
         ClosetSaveResponse.ClosetSaveList response =
                 closetSaveService.getClosetSaves(1L, ClosetTargetType.TREND, 100L);
@@ -352,5 +401,31 @@ class ClosetSaveServiceTest {
         ReflectionTestUtils.setField(closetSave, "id", id);
         ReflectionTestUtils.setField(closetSave, "createdAt", createdAt);
         return closetSave;
+    }
+
+    private TrendContent createTrend(Long id) {
+        TrendContent trend = TrendContent.create(
+                "미니멀룩",
+                "https://cdn.fitback.app/trends/" + id + ".jpg",
+                "설명",
+                member
+        );
+        ReflectionTestUtils.setField(trend, "id", id);
+        return trend;
+    }
+
+    private LookbookService.ClosetLookbookView lookbookView() {
+        return new LookbookService.ClosetLookbookView(
+                "https://cdn.fitback.app/lookbooks/original.jpg",
+                "https://cdn.fitback.app/lookbooks/matched.jpg",
+                List.of("스트릿")
+        );
+    }
+
+    private AnalysisReportSaveService.ClosetReportView reportView() {
+        return new AnalysisReportSaveService.ClosetReportView(
+                "https://cdn.fitback.app/analyses/original.jpg",
+                List.of("미니멀", "와이드핏")
+        );
     }
 }

@@ -1289,8 +1289,20 @@ DTO를 반환한다. `isSaved`, `isLiked` 필드는 항상 포함하며 익명 �
 ### `GET /api/v1/closet-saves?target_type=&cursor=`
 
 인증 회원의 통합 저장 목록을 최신 저장순으로 최대 10개 반환한다. 각 항목은 삭제에 사용할
-`saveId`, `targetType`, `targetId`를 포함한다. 현재 `TREND` 항목은 `thumbnailUrl`, `tags`를
-보강하지만 `LOOKBOOK` 항목은 `thumbnailUrl=null`, `tags=[]`로 반환한다.
+`saveId`, `targetType`, `targetId`와 표시용 `thumbnailUrl`, `matchedImageUrl`, `tags`를
+포함한다. 저장 대상 타입별 표시 값은 다음과 같다.
+
+| `targetType` | `thumbnailUrl` | `matchedImageUrl` | `tags` |
+| --- | --- | --- | --- |
+| `TREND` | 트렌드 이미지 | `null` | 트렌드 태그 |
+| `LOOKBOOK` | 원본 이미지 | 매칭 이미지 또는 매칭 상품 이미지 | 룩북 태그 |
+| `ANALYSIS_REPORT` | 분석 원본 이미지 | `null` | 기본 태그와 커스텀 태그 |
+
+`matchedImageUrl`은 원본과 매칭 이미지를 나란히 표시하는 `LOOKBOOK`에만 값이 있으며 다른
+타입에서는 키를 유지한 채 `null`이다. 저장 이후 대상이 삭제된 항목은 목록에서 제외한다.
+룩북의 업로드 이미지와 `originalImage`가 연결된 분석 리포트는 응답 시점에 발급하는 signed
+URL이고, 트렌드 이미지와 룩북의 매칭 상품 이미지는 외부 URL을 그대로 반환한다. 이미지 업로드
+도입 전에 만들어진 분석 리포트는 저장된 `imageUrl`을 그대로 반환하므로 signed URL이 아니다.
 
 ### `DELETE /api/v1/closet-saves/{saveId}`
 

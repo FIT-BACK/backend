@@ -45,6 +45,12 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
     )
     Optional<Lookbook> findByIdAndDeletedAtIsNull(Long id);
 
+    //마이 클로젯 목록용 배치 조회, 신고 숨김 룩북은 본인 저장 목록이라 제외하지 않음
+    //createReadUrl 이 objectKey 를 읽으므로 두 이미지는 EntityGraph 필수,
+    //matchedProduct 는 null 체크와 snapshot 컬럼만 사용해 조인 불필요
+    @EntityGraph(attributePaths = {"originalImage", "matchedImage"})
+    List<Lookbook> findAllByIdInAndDeletedAtIsNull(List<Long> lookbookIds);
+
     @EntityGraph(
             attributePaths = {
                 "member", "matchedProduct", "matchedImage", "originalImage"

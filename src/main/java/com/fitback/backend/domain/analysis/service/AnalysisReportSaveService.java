@@ -157,6 +157,28 @@ public class AnalysisReportSaveService {
                 .orElseGet(SavedState::unsaved);
     }
 
+    // 마이 클로젯 목록에 표시할 분석 리포트 정보 조회
+    @Transactional(readOnly = true)
+    public Map<Long, ClosetReportView> findClosetViews(List<Long> reportIds, Long memberId) {
+
+        if (reportIds.isEmpty()) {
+            return Map.of();
+        }
+
+        // 저장 후 삭제된 리포트는 조회되지 않아 호출측 목록에서 빠짐
+        // 전용 목록 getSavedReports 와 달리 통합 목록이라 예외 대신 제외 처리
+        return analysisReportRepository
+                .findByIdInAndMemberIdAndDeletedAtIsNull(reportIds, memberId)
+                .stream()
+                .collect(Collectors.toMap(
+                        AnalysisReport::getId,
+                        report -> new ClosetReportView(
+                                resolveImageUrl(report),
+                                recommendationTagNames(report)
+                        )
+                ));
+    }
+
     private SaveOutcome createSave(
             AnalysisReport report,
             AnalysisReportSaveRequest request
@@ -319,6 +341,13 @@ public class AnalysisReportSaveService {
         private static SavedState unsaved() {
             return new SavedState(false, null, List.of());
         }
+    }
+
+    // 마이 클로젯 목록 전달용, API 응답 DTO 아님
+    public record ClosetReportView(
+            String thumbnailUrl,
+            List<String> tags
+    ) {
     }
 
     private record SelectionKey(ProductCategory category, Long productId) {

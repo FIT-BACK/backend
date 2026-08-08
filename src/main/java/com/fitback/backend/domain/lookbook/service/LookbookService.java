@@ -409,6 +409,34 @@ public class LookbookService {
         return LookbookResponse.LookbookUnlike.toLookbookUnlike(likeCount);
     }
 
+    // 마이 클로젯 목록에 표시할 룩북 정보 조회
+    @Transactional(readOnly = true)
+    public Map<Long, ClosetLookbookView> findClosetViews(List<Long> lookbookIds) {
+
+        if (lookbookIds.isEmpty()) {
+            return Map.of();
+        }
+
+        // 저장 후 삭제된 룩북은 조회되지 않아 호출측 목록에서 빠짐
+        List<Lookbook> lookbooks = lookbookRepository.findAllByIdInAndDeletedAtIsNull(lookbookIds);
+
+        // 삭제 룩북의 태그는 남아있으므로 조회된 id 로만 태그 조회
+        List<Long> foundIds = lookbooks.stream()
+                .map(Lookbook::getId)
+                .toList();
+        Map<Long, List<String>> tagNamesByLookbookId = findTagNamesByLookbookId(foundIds);
+
+        return lookbooks.stream()
+                .collect(Collectors.toMap(
+                        Lookbook::getId,
+                        lookbook -> new ClosetLookbookView(
+                                imageAccessUrlProvider.createReadUrl(lookbook.getOriginalImage()),
+                                resolveMatchedImageUrl(lookbook),
+                                tagNamesByLookbookId.getOrDefault(lookbook.getId(), List.of())
+                        )
+                ));
+    }
+
     // cursor 기준 룩북 조회
     private List<Lookbook> findLookbookPage(
             Long cursor,
@@ -824,6 +852,14 @@ public class LookbookService {
             Image originalImage,
             Image matchedImage,
             Product matchedProduct
+    ) {
+    }
+
+    // 마이 클로젯 목록 전달용, API 응답 DTO 아님
+    public record ClosetLookbookView(
+            String thumbnailUrl,
+            String matchedImageUrl,
+            List<String> tags
     ) {
     }
 }
