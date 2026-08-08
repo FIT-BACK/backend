@@ -33,6 +33,9 @@ public final class AiTagResponseParser {
     }
 
     private List<AiTagGarment> parsePieceKeyedGarments(JsonNode garments) {
+        if (garments.size() != GarmentPiece.values().length) {
+            throw new IllegalArgumentException("garments must contain only piece keys");
+        }
         List<AiTagGarment> results = new ArrayList<>();
         for (GarmentPiece piece : GarmentPiece.values()) {
             JsonNode garment = garments.path(piece.name());

@@ -37,6 +37,24 @@ class AiTagResponseParserTest {
     }
 
     @Test
+    void rejectsUnknownPieceKeyInPieceKeyedGarments() {
+        String json = """
+                {
+                  "garments": {
+                    "TOP": {"canonicalTags": [{"type": "STYLE", "name": "캐주얼"}], "suggestedTags": []},
+                    "BOTTOM": null,
+                    "SHOES": null,
+                    "ACCESSORY": {"canonicalTags": [{"type": "STYLE", "name": "캐주얼"}], "suggestedTags": []}
+                  }
+                }
+                """;
+
+        assertThatThrownBy(() -> parser.parse(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("garments must contain only piece keys");
+    }
+
+    @Test
     void parsesCanonicalTagsAndFreeFormSuggestionsByGarment() {
         String json = """
                 {
