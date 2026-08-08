@@ -12,6 +12,31 @@ class AiTagResponseParserTest {
     private final AiTagResponseParser parser = new AiTagResponseParser(new ObjectMapper());
 
     @Test
+    void parsesPieceKeyedGarmentsWithoutAllowingDuplicatePieces() {
+        String json = """
+                {
+                  "garments": {
+                    "TOP": {
+                      "canonicalTags": [{"type": "STYLE", "name": "캐주얼"}],
+                      "suggestedTags": []
+                    },
+                    "BOTTOM": null,
+                    "SHOES": {
+                      "canonicalTags": [{"type": "MATERIAL", "name": "가죽"}],
+                      "suggestedTags": []
+                    }
+                  }
+                }
+                """;
+
+        AiTagModelOutput output = parser.parse(json);
+
+        assertThat(output.garments())
+                .extracting(AiTagGarment::piece)
+                .containsExactly(GarmentPiece.TOP, GarmentPiece.SHOES);
+    }
+
+    @Test
     void parsesCanonicalTagsAndFreeFormSuggestionsByGarment() {
         String json = """
                 {
