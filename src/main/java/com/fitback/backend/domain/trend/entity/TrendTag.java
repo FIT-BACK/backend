@@ -30,6 +30,8 @@ import org.hibernate.annotations.OnDeleteAction;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TrendTag extends BaseCreateTimeEntity {
 
+    private static final int DEFAULT_RELEVANCE_WEIGHT = 1;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "trend_tag_id")
@@ -44,13 +46,28 @@ public class TrendTag extends BaseCreateTimeEntity {
     @JoinColumn(name = "tag_id", nullable = false)
     private Tag tag;
 
+    // 트렌드와 공통 태그를 가진 룩북의 관련도 합산 점수로 사용
+    @Column(name = "relevance_weight", nullable = false)
+    private int relevanceWeight = DEFAULT_RELEVANCE_WEIGHT;
 
     private TrendTag(TrendContent trend, Tag tag) {
+        this(trend, tag, DEFAULT_RELEVANCE_WEIGHT);
+    }
+
+    private TrendTag(TrendContent trend, Tag tag, int relevanceWeight) {
+        if (relevanceWeight <= 0) {
+            throw new IllegalArgumentException("relevanceWeight must be positive");
+        }
         this.trend = trend;
         this.tag = tag;
+        this.relevanceWeight = relevanceWeight;
     }
 
     public static TrendTag create(TrendContent trend, Tag tag) {
         return new TrendTag(trend, tag);
+    }
+
+    public static TrendTag create(TrendContent trend, Tag tag, int relevanceWeight) {
+        return new TrendTag(trend, tag, relevanceWeight);
     }
 }

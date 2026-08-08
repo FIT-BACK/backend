@@ -17,6 +17,7 @@ import com.fitback.backend.domain.lookbook.repository.LookbookImageRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookLikeRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookReportRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookRepository.RelatedLookbookRank;
 import com.fitback.backend.domain.lookbook.repository.LookbookTagRepository;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.entity.MemberRole;
@@ -51,6 +52,9 @@ public class LookbookService {
 
     private static final int DEFAULT_LOOKBOOK_PAGE_SIZE = 20;
     private static final int MAX_LOOKBOOK_PAGE_SIZE = 20;
+    private static final int RELATED_LOOKBOOK_PAGE_SIZE = 3;
+    private static final Pageable RELATED_LOOKBOOK_PAGE_REQUEST =
+            PageRequest.of(0, RELATED_LOOKBOOK_PAGE_SIZE + 1);
     private static final Pageable SEARCH_PAGE_REQUEST = PageRequest.of(0, 10);
 
     private final LookbookRepository lookbookRepository;
@@ -232,6 +236,65 @@ public class LookbookService {
         );
     }
 
+    // 트렌드 태그 관련도 기준 룩북 목록 조회
+    @Transactional(readOnly = true)
+    public LookbookResponse.LookbookList getRelatedLookbooks(
+            Long trendId,
+            Long cursor,
+            Member member
+    ) {
+        List<RelatedLookbookRank> rankedPage = findRelatedLookbookPage(trendId, cursor);
+
+        // 한 개를 더 조회한 결과로 다음 페이지 존재 여부 계산
+        boolean hasNext = rankedPage.size() > RELATED_LOOKBOOK_PAGE_SIZE;
+
+        // 실제 화면에 반환할 룩북 3개 선택
+        List<RelatedLookbookRank> displayedRanks = rankedPage.subList(
+                0,
+                Math.min(rankedPage.size(), RELATED_LOOKBOOK_PAGE_SIZE)
+        );
+
+        // 공통 태그가 없으면 추가 조회 없이 빈 목록 반환
+        if (displayedRanks.isEmpty()) {
+            return LookbookResponse.LookbookList.toLookbookList(
+                    List.of(),
+                    null,
+                    false,
+                    RELATED_LOOKBOOK_PAGE_SIZE
+            );
+        }
+
+        // IN 조회 결과를 관련도 순서에 맞게 다시 정렬
+        List<Long> lookbookIds = displayedRanks.stream()
+                .map(RelatedLookbookRank::getLookbookId)
+                .toList();
+        Map<Long, Lookbook> lookbooksById = lookbookRepository
+                .findAllByIdInAndDeletedAtIsNullAndModerationStatus(
+                        lookbookIds,
+                        LookbookModerationStatus.VISIBLE
+                )
+                .stream()
+                .collect(Collectors.toMap(Lookbook::getId, Function.identity()));
+        List<Lookbook> lookbooks = lookbookIds.stream()
+                .map(lookbookId -> Optional.ofNullable(lookbooksById.get(lookbookId))
+                        .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND)))
+                .toList();
+
+        List<LookbookResponse.LookbookItem> items = toLookbookItems(lookbooks, member);
+
+        // 다음 페이지가 있으면 마지막 룩북 id를 다음 cursor로 반환
+        Long nextCursor = hasNext && !displayedRanks.isEmpty()
+                ? displayedRanks.get(displayedRanks.size() - 1).getLookbookId()
+                : null;
+
+        return LookbookResponse.LookbookList.toLookbookList(
+                items,
+                nextCursor,
+                hasNext,
+                RELATED_LOOKBOOK_PAGE_SIZE
+        );
+    }
+
     @Transactional(readOnly = true)
     public List<LookbookResponse.LookbookItem> searchLookbooks(
             String keyword,
@@ -395,6 +458,36 @@ public class LookbookService {
                 cursorLookbook.getCreatedAt(),
                 cursorLookbook.getId(),
                 pageRequest
+        );
+    }
+
+    // 관련도 점수, 생성 시간, id 순서로 다음 룩북 페이지 조회
+    private List<RelatedLookbookRank> findRelatedLookbookPage(Long trendId, Long cursor) {
+        // 첫 페이지는 공통 태그 가중치 합계가 높은 룩북부터 조회
+        if (cursor == null) {
+            return lookbookRepository.findRelatedLookbookRanks(
+                    trendId,
+                    LookbookModerationStatus.VISIBLE,
+                    RELATED_LOOKBOOK_PAGE_REQUEST
+            );
+        }
+
+        // id만으로 정렬 위치를 알 수 없으므로 커서 룩북의 점수와 생성 시간을 함께 복원
+        RelatedLookbookRank cursorRank = lookbookRepository.findRelatedLookbookRank(
+                        trendId,
+                        cursor
+                )
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.NOT_FOUND,
+                        "커서에 해당하는 관련 룩북을 찾을 수 없습니다."
+                ));
+        return lookbookRepository.findNextRelatedLookbookRanks(
+                trendId,
+                LookbookModerationStatus.VISIBLE,
+                cursorRank.getRelevanceScore(),
+                cursorRank.getCreatedAt(),
+                cursorRank.getLookbookId(),
+                RELATED_LOOKBOOK_PAGE_REQUEST
         );
     }
 
