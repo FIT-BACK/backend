@@ -21,6 +21,7 @@
 
 **Files:**
 - Create: `scripts/poc/ai-tag-evaluation/canonical-catalog.v25.json`
+- Create: `scripts/poc/ai-tag-evaluation/gold-label-review.template.json`
 - Verify: `src/main/resources/db/migration/V25__seed_tag_master_taxonomy.sql`
 
 **Interfaces:**
@@ -40,7 +41,7 @@ Expected: the command exits with status 0.
 - [ ] **Step 3: Commit the snapshot with the labeling handoff**
 
 ```bash
-git add scripts/poc/ai-tag-evaluation/canonical-catalog.v25.json docs/OPENAI_TAG_BASELINE_EVALUATION.md docs/OPENAI_TAG_GOLD_DATASET_LABELING.md docs/superpowers/plans/2026-08-08-openai-gold-dataset.md
+git add scripts/poc/ai-tag-evaluation/canonical-catalog.v25.json scripts/poc/ai-tag-evaluation/gold-label-review.template.json docs/OPENAI_TAG_BASELINE_EVALUATION.md docs/OPENAI_TAG_GOLD_DATASET_LABELING.md docs/superpowers/plans/2026-08-08-openai-gold-dataset.md
 git commit -m "docs: OpenAI gold dataset 준비 기준 추가"
 ```
 
@@ -66,11 +67,13 @@ Require a single principal garment, rights-cleared image provenance, visible-onl
 
 Update the evaluation documentation so `AI_TAG_EVALUATION_CATALOG` points to the committed V25 snapshot and `AI_TAG_EVALUATION_DATASET` remains outside Git.
 
-- [x] **Step 4: Run the focused runner tests**
+- [x] **Step 4: Run the focused runner tests and clean build**
 
 Run: `./gradlew test --tests '*OpenAiTagEvaluationMainTest'`
 
-Expected: all focused tests pass.
+Run: `./gradlew clean build`
+
+Expected: all focused tests and the clean build pass; record both results in the PR.
 
 ## Self-Review
 
