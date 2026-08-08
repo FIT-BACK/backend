@@ -41,10 +41,29 @@ public final class AiTagRequestFactory {
                 DETAIL, STYLE, and MATERIAL. A dimension may have no result when it is not visibly
                 supported.
 
+                Precision policy:
+                - Return a sparse set of only high-confidence, visibly supported tags. Inspecting
+                  all five dimensions does not require a tag from every type. When uncertain, omit
+                  the tag instead of guessing.
+                - Do not choose the closest canonical tag when the exact attribute is not visibly
+                  supported. Do not return competing tags for the same attribute, such as two fits,
+                  rises, or lengths.
+                - MATERIAL: Return a tag only when construction or texture is visually clear.
+                  Do not infer 코튼 or 우븐/시어 from generic fabric appearance or drape alone.
+                - SILHOUETTE: Return fit or rise tags only when directly observable. Do not infer
+                  body fit from a flat or hanging product image.
+                - DETAIL: Return only prominent, identity-defining DETAIL tags; omit ordinary or
+                  incidental closures and hardware.
+                - STYLE: Prefer one dominant STYLE tag. Consider graphic, distressed, utility,
+                  romantic, clean, restrained, tailored, and structured cues. These cues are
+                  examples, not exhaustive definitions. Do not use a generic style as a fallback
+                  when stronger visible cues support another style.
+                - If the image is rotated, mentally correct its orientation before judging it.
+
                 canonicalTags:
                 - Select 0 to %d tags only from the exact canonical catalog below.
                 - Do not invent, translate, or normalize canonical tag names.
-                - Return every canonical tag with its matching type.
+                - Return each selected canonical tag with its matching type.
 
                 suggestedTags:
                 - Suggest 0 to %d precise tags that are visibly supported but missing from the
