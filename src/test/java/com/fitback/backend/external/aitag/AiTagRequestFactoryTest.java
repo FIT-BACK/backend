@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagTargetClothing;
 import com.fitback.backend.domain.tag.entity.TagType;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -24,7 +25,8 @@ class AiTagRequestFactoryTest {
 
         Map<String, Object> rootProperties = map(request.jsonSchema().get("properties"));
         Map<String, Object> garments = map(rootProperties.get("garments"));
-        Map<String, Object> top = map(map(garments.get("properties")).get("TOP"));
+        Map<String, Object> garmentsProperties = map(garments.get("properties"));
+        Map<String, Object> top = map(garmentsProperties.get("TOP"));
         List<Map<String, Object>> topOptions = maps(top.get("anyOf"));
         Map<String, Object> topGarment = topOptions.stream()
                 .filter(option -> "object".equals(option.get("type")))
@@ -49,7 +51,7 @@ class AiTagRequestFactoryTest {
                 .containsEntry("type", "object")
                 .containsEntry("additionalProperties", false)
                 .containsEntry("required", List.of("TOP", "BOTTOM", "SHOES"));
-        assertThat(map(garments.get("properties"))).containsOnlyKeys("TOP", "BOTTOM", "SHOES");
+        assertThat(garmentsProperties).containsOnlyKeys("TOP", "BOTTOM", "SHOES");
         assertThat(topOptions).anySatisfy(option -> assertThat(option).containsEntry("type", "null"));
         assertThat(topGarment.get("required"))
                 .isEqualTo(List.of("canonicalTags", "suggestedTags"));
@@ -91,6 +93,52 @@ class AiTagRequestFactoryTest {
     }
 
     @Test
+    void requiresAtLeastOneNonNullGarmentWhileRetainingNullablePieceChoices() {
+        AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
+                Tag.create("베이지", TagType.COLOR, List.of(TagTargetClothing.ALL))
+        ));
+
+        Map<String, Object> garments = map(map(request.jsonSchema().get("properties")).get("garments"));
+        Map<String, Object> garmentsProperties = map(garments.get("properties"));
+        List<Map<String, Object>> nonNullGarmentAlternatives = maps(garments.get("anyOf"));
+        Map<GarmentPiece, Boolean> allNullPieces = Map.of(
+                GarmentPiece.TOP, false,
+                GarmentPiece.BOTTOM, false,
+                GarmentPiece.SHOES, false
+        );
+
+        for (GarmentPiece piece : GarmentPiece.values()) {
+            List<Map<String, Object>> pieceOptions = maps(
+                    map(garmentsProperties.get(piece.name())).get("anyOf")
+            );
+            assertThat(pieceOptions)
+                    .anySatisfy(option -> assertThat(option).containsEntry("type", "null"))
+                    .anySatisfy(option -> assertThat(option).containsEntry("type", "object"));
+        }
+        assertThat(nonNullGarmentAlternatives).hasSize(GarmentPiece.values().length);
+        for (GarmentPiece nonNullPiece : GarmentPiece.values()) {
+            assertThat(nonNullGarmentAlternatives).anySatisfy(alternative -> {
+                assertThat(alternative)
+                        .containsEntry("type", "object")
+                        .containsEntry("additionalProperties", false)
+                        .containsEntry("required", List.of("TOP", "BOTTOM", "SHOES"));
+                assertThat(map(map(alternative.get("properties")).get(nonNullPiece.name())))
+                        .containsEntry("type", "object");
+            });
+        }
+        assertThat(allowsGarmentPieceCombination(nonNullGarmentAlternatives, allNullPieces)).isFalse();
+        for (GarmentPiece nonNullPiece : GarmentPiece.values()) {
+            Map<GarmentPiece, Boolean> singleNonNullPiece = new HashMap<>(allNullPieces);
+            singleNonNullPiece.put(nonNullPiece, true);
+
+            assertThat(allowsGarmentPieceCombination(
+                    nonNullGarmentAlternatives,
+                    singleNonNullPiece
+            )).isTrue();
+        }
+    }
+
+    @Test
     void rejectsEmptyCatalogBeforeBuildingSchema() {
         assertThatThrownBy(() -> new AiTagRequestFactory().create(List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -110,6 +158,19 @@ class AiTagRequestFactoryTest {
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> maps(Object value) {
         return (List<Map<String, Object>>) value;
+    }
+
+    private static boolean allowsGarmentPieceCombination(
+            List<Map<String, Object>> alternatives,
+            Map<GarmentPiece, Boolean> nonNullPieces
+    ) {
+        return alternatives.stream().anyMatch(alternative -> List.of(GarmentPiece.values()).stream()
+                .allMatch(piece -> {
+                    Map<String, Object> pieceSchema = map(
+                            map(alternative.get("properties")).get(piece.name())
+                    );
+                    return !"object".equals(pieceSchema.get("type")) || nonNullPieces.get(piece);
+                }));
     }
 
     private static Map<String, Object> itemProperty(
