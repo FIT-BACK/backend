@@ -122,6 +122,7 @@ public final class LookbookResponse {
     // 룩북 상세 조회
     @Builder
     public record LookbookDetail(
+            Long saveId,
             String originalImageUrl,
             String matchedImageUrl,
             Long matchedProductId,
@@ -138,6 +139,7 @@ public final class LookbookResponse {
 
         public static LookbookDetail toLookbookDetail(
                 Lookbook lookbook,
+                Long saveId,
                 String originalImageUrl,
                 String matchedImageUrl,
                 String authorProfileImageUrl,
@@ -146,6 +148,7 @@ public final class LookbookResponse {
                 boolean isOwner
         ) {
             return LookbookDetail.builder()
+                    .saveId(saveId)
                     .originalImageUrl(originalImageUrl)
                     .matchedImageUrl(matchedImageUrl)
                     .matchedProductId(lookbook.getMatchedProduct() == null

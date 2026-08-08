@@ -297,6 +297,7 @@ similarityScore DESC
 | DELETE | `/api/v1/notifications/{notificationId}` | 알림 삭제 | 필수 |
 | GET | `/api/v1/content-search` | 트렌드·룩북 통합 검색 | 선택(익명 허용) |
 | GET | `/api/v1/trends`, `/api/v1/trends/{trendId}` | 트렌드 목록·상세 | 선택(익명 허용) |
+| GET | `/api/v1/trends/{trendId}/lookbooks` | 트렌드 관련 룩북 | 선택(익명 허용) |
 | GET | `/api/v1/tags` | 태그 목록 | 불필요 |
 | POST/GET/DELETE | `/api/v1/closet-saves...` | 통합 클로젯 저장·목록·삭제 | 필수 |
 
@@ -1166,6 +1167,10 @@ URL을 받아야 한다.
 비로그인 조회를 허용한다. 원본·매칭 이미지, 작성자·프로필 이미지, 작성 시각, 구매 링크,
 코멘트, 태그, 좋아요 수를 반환한다. 익명 요청의 `isLiked`, `isOwner`는 `false`다.
 
+로그인 회원이 해당 룩북을 마이 클로젯에 저장한 경우 `saveId`에 저장 취소(`DELETE
+/api/v1/closet-saves/{saveId}`)에 사용할 `ClosetSave` ID를 반환한다. 저장하지 않았거나
+익명 요청인 경우 `saveId`는 `null`이다.
+
 ### 오류
 
 | 조건 | HTTP | code |
@@ -1199,12 +1204,23 @@ DTO를 반환한다. `isSaved`, `isLiked` 필드는 항상 포함하며 익명 �
 
 ### `GET /api/v1/trends`
 
-비로그인 조회를 허용하며 최신순으로 최대 10개의 트렌드를 반환한다. `cursor`와 `tag`를
-선택적으로 전달할 수 있다. `isSaved`는 항상 포함하며 익명 요청에서는 `false`다.
+비로그인 조회를 허용하며 최대 10개의 트렌드를 커서 기반으로 반환한다. `cursor`와 `tag`를
+선택적으로 전달할 수 있다. `tag`를 전달하면 해당 태그가 등록된 트렌드만 최신순으로 조회한다.
+`tag` 없이 로그인한 회원은 관심 태그와 일치하는 트렌드를 우선 노출하고 각 그룹 안에서 최신순으로
+정렬하며, 비로그인 또는 관심 태그 미설정 회원은 전체를 최신순으로 조회한다. `isSaved`는 항상
+포함하며 익명 요청에서는 `false`다.
 
 ### `GET /api/v1/trends/{trendId}`
 
 트렌드 제목, 이미지, 설명, 태그와 로그인 회원의 `isSaved`를 반환한다.
+
+### `GET /api/v1/trends/{trendId}/lookbooks`
+
+트렌드 태그와 룩북 태그의 관련도 점수를 기준으로 관련 룩북을 3개씩 커서 기반으로 반환한다.
+비로그인 조회를 허용하며 삭제·숨김 룩북은 제외한다. 응답은 룩북 목록 카드 DTO이며 `isLiked`는
+항상 포함하고 익명 요청에서는 `false`다. 존재하지 않는 `trendId`는 `TREND404_1`이다.
+`cursor`가 존재하지 않거나 해당 트렌드와 관련 없는 룩북이면 `COMMON404_1`이다. 페이지 조회 사이에
+커서 룩북이 삭제·숨김 처리되어도 해당 정렬 위치 다음부터 조회하며 응답 목록에서는 제외한다.
 
 ### `GET /api/v1/tags`
 
@@ -1277,8 +1293,20 @@ DTO를 반환한다. `isSaved`, `isLiked` 필드는 항상 포함하며 익명 �
 ### `GET /api/v1/closet-saves?target_type=&cursor=`
 
 인증 회원의 통합 저장 목록을 최신 저장순으로 최대 10개 반환한다. 각 항목은 삭제에 사용할
-`saveId`, `targetType`, `targetId`를 포함한다. 현재 `TREND` 항목은 `thumbnailUrl`, `tags`를
-보강하지만 `LOOKBOOK` 항목은 `thumbnailUrl=null`, `tags=[]`로 반환한다.
+`saveId`, `targetType`, `targetId`와 표시용 `thumbnailUrl`, `matchedImageUrl`, `tags`를
+포함한다. 저장 대상 타입별 표시 값은 다음과 같다.
+
+| `targetType` | `thumbnailUrl` | `matchedImageUrl` | `tags` |
+| --- | --- | --- | --- |
+| `TREND` | 트렌드 이미지 | `null` | 트렌드 태그 |
+| `LOOKBOOK` | 원본 이미지 | 매칭 이미지 또는 매칭 상품 이미지 | 룩북 태그 |
+| `ANALYSIS_REPORT` | 분석 원본 이미지 | `null` | 기본 태그와 커스텀 태그 |
+
+`matchedImageUrl`은 원본과 매칭 이미지를 나란히 표시하는 `LOOKBOOK`에만 값이 있으며 다른
+타입에서는 키를 유지한 채 `null`이다. 저장 이후 대상이 삭제된 항목은 목록에서 제외한다.
+룩북의 업로드 이미지와 `originalImage`가 연결된 분석 리포트는 응답 시점에 발급하는 signed
+URL이고, 트렌드 이미지와 룩북의 매칭 상품 이미지는 외부 URL을 그대로 반환한다. 이미지 업로드
+도입 전에 만들어진 분석 리포트는 저장된 `imageUrl`을 그대로 반환하므로 signed URL이 아니다.
 
 ### `DELETE /api/v1/closet-saves/{saveId}`
 

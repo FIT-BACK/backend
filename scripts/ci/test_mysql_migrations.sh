@@ -38,9 +38,10 @@ seed_baseline_schema() {
   local database="$1"
   local member_columns="$2"
 
+  # V17이 legacy trend_tag 중복을 정리한 뒤 UNIQUE 제약을 생성하는지 검증한다.
   printf '%s\n' \
     "CREATE TABLE member (${member_columns});" \
-    'INSERT INTO member (member_id) VALUES (1), (8001);' \
+    "INSERT INTO member (member_id, email) VALUES (1, NULL), (8001, 'fitback.demo+content@gmail.com');" \
     'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL, CONSTRAINT FK_ANALYSIS_REPORT_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     "INSERT INTO analysis_report (report_id, member_id, image_url, match_percentage) VALUES (7001, 8001, 'https://example.com/analysis.jpg', 70);" \
     'CREATE TABLE product (product_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, external_product_id VARCHAR(100) NULL, name VARCHAR(255) NOT NULL, brand_name VARCHAR(100) NULL, seller_name VARCHAR(100) NOT NULL, price INT NOT NULL, average_price INT NULL, category VARCHAR(50) NOT NULL, season VARCHAR(20) NULL, gender VARCHAR(10) NULL, purchase_url VARCHAR(2048) NOT NULL, image_url VARCHAR(2048) NOT NULL, source_api VARCHAR(50) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL);' \
@@ -55,15 +56,15 @@ seed_baseline_schema() {
     'CREATE TABLE closet_save (closet_save_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, target_type VARCHAR(30) NOT NULL, target_id BIGINT NOT NULL, CONSTRAINT FK_CLOSET_SAVE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     'CREATE TABLE lookbook_like (lookbook_like_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, lookbook_id BIGINT NOT NULL, CONSTRAINT FK_LOOKBOOK_LIKE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     'CREATE TABLE lookbook_tag (lookbook_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, lookbook_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL);' \
-    'CREATE TABLE trend_content (trend_id BIGINT NOT NULL PRIMARY KEY, created_by BIGINT NOT NULL, title VARCHAR(100) NOT NULL, CONSTRAINT FK_TREND_CONTENT_MEMBER_OLD FOREIGN KEY (created_by) REFERENCES member (member_id));' \
-    'CREATE TABLE trend_tag (trend_tag_id BIGINT NOT NULL PRIMARY KEY, trend_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_TREND_TAG_TREND_OLD FOREIGN KEY (trend_id) REFERENCES trend_content (trend_id));' \
-    "INSERT INTO trend_content (trend_id, created_by, title) VALUES (7001, 8001, 'Legacy Trend');" \
-    'INSERT INTO trend_tag (trend_tag_id, trend_id, tag_id) VALUES (7001, 7001, 1), (7002, 7001, 1);' \
+    'CREATE TABLE trend_content (trend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, created_by BIGINT NOT NULL, title VARCHAR(100) NOT NULL, image_url VARCHAR(2048) NOT NULL, description TEXT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, CONSTRAINT FK_TREND_CONTENT_MEMBER_OLD FOREIGN KEY (created_by) REFERENCES member (member_id));' \
+    'CREATE TABLE trend_tag (trend_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, trend_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL, CONSTRAINT FK_TREND_TAG_TREND_OLD FOREIGN KEY (trend_id) REFERENCES trend_content (trend_id));' \
+    "INSERT INTO trend_content (trend_id, created_by, title, image_url, created_at) VALUES (7001, 8001, 'Legacy Trend', 'https://example.com/trend.jpg', NOW());" \
+    'INSERT INTO trend_tag (trend_tag_id, trend_id, tag_id, created_at) VALUES (7001, 7001, 1, NOW()), (7002, 7001, 1, NOW());' \
     | docker exec -i "$container_name" mysql -uroot "$database"
 }
 
-seed_baseline_schema fitback "member_id BIGINT NOT NULL PRIMARY KEY, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL'"
-seed_baseline_schema fitback_existing_refresh_token "member_id BIGINT NOT NULL PRIMARY KEY, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL', refresh_token VARCHAR(512) NULL"
+seed_baseline_schema fitback "member_id BIGINT NOT NULL PRIMARY KEY, email VARCHAR(255) NULL, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL'"
+seed_baseline_schema fitback_existing_refresh_token "member_id BIGINT NOT NULL PRIMARY KEY, email VARCHAR(255) NULL, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL', refresh_token VARCHAR(512) NULL"
 
 for database in fitback fitback_existing_refresh_token; do
   while IFS= read -r migration; do
@@ -127,6 +128,77 @@ if docker exec -i "$container_name" mysql -uroot fitback_mismatched_social_uid \
   < src/main/resources/db/migration/V12__add_member_social_uid.sql \
   >/dev/null 2>&1; then
   echo 'V12 accepted a mismatched UK_MEMBER_PROVIDER_UID constraint.' >&2
+  exit 1
+fi
+
+seed_v27_prerequisite_schema() {
+  local database="$1"
+
+  docker exec "$container_name" mysql -uroot -e \
+    "CREATE DATABASE $database;
+     CREATE TABLE $database.member (
+       member_id BIGINT NOT NULL PRIMARY KEY,
+       email VARCHAR(255) NULL
+     );
+     CREATE TABLE $database.tag (
+       tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       tag_name VARCHAR(50) NOT NULL UNIQUE,
+       tag_type VARCHAR(30) NOT NULL,
+       created_at DATETIME(6) NOT NULL,
+       updated_at DATETIME(6) NULL
+     );
+     CREATE TABLE $database.tag_target_clothing (
+       tag_id BIGINT NOT NULL,
+       target_clothing VARCHAR(20) NOT NULL,
+       PRIMARY KEY (tag_id, target_clothing)
+     );
+     CREATE TABLE $database.trend_content (
+       trend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       title VARCHAR(100) NOT NULL,
+       image_url VARCHAR(2048) NOT NULL,
+       description TEXT NULL,
+       created_by BIGINT NOT NULL,
+       created_at DATETIME(6) NOT NULL,
+       updated_at DATETIME(6) NULL
+     );
+     CREATE TABLE $database.trend_tag (
+       trend_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       trend_id BIGINT NOT NULL,
+       tag_id BIGINT NOT NULL,
+       relevance_weight INT NOT NULL DEFAULT 1,
+       created_at DATETIME(6) NOT NULL
+     );"
+}
+
+seed_v27_prerequisite_schema fitback_missing_trend_author
+if missing_author_error="$(docker exec -i "$container_name" mysql -uroot \
+  fitback_missing_trend_author \
+  < src/main/resources/db/migration/V27__seed_trend_contents.sql 2>&1)"; then
+  echo 'V27 accepted a schema without the required content author.' >&2
+  exit 1
+fi
+if [[ "$missing_author_error" != *'V27_CONTENT_AUTHOR_REQUIRED'* ]]; then
+  echo "V27 returned an unexpected missing-author error: $missing_author_error" >&2
+  exit 1
+fi
+
+seed_v27_prerequisite_schema fitback_conflicting_trend_ids
+docker exec "$container_name" mysql -uroot fitback_conflicting_trend_ids -e \
+  "INSERT INTO member (member_id, email)
+   VALUES (8001, 'fitback.demo+content@gmail.com');
+   INSERT INTO trend_content (
+     trend_id, title, image_url, created_by, created_at
+   ) VALUES (
+     1, 'Existing Trend', 'https://example.com/existing.jpg', 8001, NOW()
+   );"
+if conflicting_id_error="$(docker exec -i "$container_name" mysql -uroot \
+  fitback_conflicting_trend_ids \
+  < src/main/resources/db/migration/V27__seed_trend_contents.sql 2>&1)"; then
+  echo 'V27 accepted a schema with a conflicting trend ID.' >&2
+  exit 1
+fi
+if [[ "$conflicting_id_error" != *'V27_TREND_IDS_1_TO_6_MUST_BE_EMPTY'* ]]; then
+  echo "V27 returned an unexpected trend-ID conflict error: $conflicting_id_error" >&2
   exit 1
 fi
 
@@ -1297,7 +1369,7 @@ seeded_tag_contract="$(docker exec "$container_name" mysql -uroot \
       )
       FROM fitback.tag;")"
 
-if [ "$seeded_tag_contract" != '1:1:1:0:1:1:1:1:1:44' ]; then
+if [ "$seeded_tag_contract" != '1:1:1:0:1:1:1:1:1:48' ]; then
   echo "Unexpected seeded tag contract: $seeded_tag_contract" >&2
   exit 1
 fi
@@ -1342,7 +1414,7 @@ tag_taxonomy_contract="$(docker exec "$container_name" mysql -uroot \
       FROM fitback.tag t
       JOIN fitback.tag_target_clothing target ON target.tag_id = t.tag_id;")"
 
-if [ "$tag_taxonomy_contract" != '5:12:8:10:8:43:70' ]; then
+if [ "$tag_taxonomy_contract" != '9:12:8:10:8:47:74' ]; then
   echo "Unexpected tag taxonomy contract: $tag_taxonomy_contract" >&2
   exit 1
 fi
@@ -1367,6 +1439,10 @@ expected_tag_taxonomy="$(printf '%s\n' \
   '러블리|STYLE|ALL' \
   '캐주얼|STYLE|ALL' \
   '포멀|STYLE|ALL' \
+  '뉴트럴|STYLE|ALL' \
+  '페미닌|STYLE|ALL' \
+  '데일리룩|STYLE|ALL' \
+  '오피스룩|STYLE|ALL' \
   '와이드핏|SILHOUETTE|PANTS' \
   '슬림핏|SILHOUETTE|TOP,PANTS,SKIRT,DRESS,OUTER' \
   '오버사이즈|SILHOUETTE|TOP,DRESS,OUTER' \
@@ -1433,6 +1509,58 @@ expected_composite_unique_contract="$(printf '%s\n' \
 if [ "$composite_unique_contract" != "$expected_composite_unique_contract" ]; then
   echo 'Unexpected composite unique contract:' >&2
   printf '%s\n' "$composite_unique_contract" >&2
+  exit 1
+fi
+
+trend_seed_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        COUNT(*), ':',
+        COUNT(DISTINCT title), ':',
+        COUNT(DISTINCT created_by), ':',
+        MIN(created_by), ':',
+        MIN(trend_id), ':',
+        MAX(trend_id)
+      )
+      FROM fitback.trend_content
+      WHERE trend_id BETWEEN 1 AND 6;")"
+
+if [ "$trend_seed_contract" != '6:6:1:8001:1:6' ]; then
+  echo "Unexpected trend seed contract: $trend_seed_contract" >&2
+  exit 1
+fi
+
+trend_tag_seed_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT GROUP_CONCAT(
+        CONCAT(trend_id, ':', tag_count, ':', relevance_score)
+        ORDER BY trend_id
+      )
+      FROM (
+        SELECT
+          trend_id,
+          COUNT(*) AS tag_count,
+          SUM(relevance_weight) AS relevance_score
+        FROM fitback.trend_tag
+        WHERE trend_id BETWEEN 1 AND 6
+        GROUP BY trend_id
+      ) trend_counts;")"
+
+if [ "$trend_tag_seed_contract" != '1:3:111,2:3:111,3:2:110,4:2:110,5:2:110,6:2:200' ]; then
+  echo "Unexpected trend tag seed contract: $trend_tag_seed_contract" >&2
+  exit 1
+fi
+
+trend_tag_relevance_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(DATA_TYPE, ':', IS_NULLABLE, ':', COLUMN_DEFAULT)
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = 'fitback'
+        AND TABLE_NAME = 'trend_tag'
+        AND COLUMN_NAME = 'relevance_weight';")"
+
+if [ "$trend_tag_relevance_contract" != 'int:NO:1' ]; then
+  echo "Unexpected trend tag relevance contract: $trend_tag_relevance_contract" >&2
   exit 1
 fi
 

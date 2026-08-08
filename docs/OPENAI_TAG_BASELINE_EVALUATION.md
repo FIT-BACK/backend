@@ -12,6 +12,8 @@
 실행 가능한 dataset 예시는 아니다. 실제 이미지와
 gold label은 Git 밖의 단일 디렉터리에 둔다. 형식은
 [`gold-labels.schema.json`](../scripts/poc/ai-tag-evaluation/gold-labels.schema.json)을 따른다.
+이미지를 고르고 gold label을 확정하는 기준과 최소 범주 coverage는
+[`OPENAI_TAG_GOLD_DATASET_LABELING.md`](OPENAI_TAG_GOLD_DATASET_LABELING.md)를 따른다.
 
 ```json
 {
@@ -34,13 +36,14 @@ gold label은 Git 밖의 단일 디렉터리에 둔다. 형식은
 
 ## 실행
 
-평가용 catalog는 평가 시점의 승인된 canonical taxonomy snapshot을 사용한다. API key와 실제
-이미지 경로는 쉘의 보안된 환경변수 또는 비밀 관리 도구로만 제공하며, 명령·로그·결과를 Git에
-추가하지 않는다.
+평가용 catalog는 V25 승인 taxonomy를 고정한
+[`canonical-catalog.v25.json`](../scripts/poc/ai-tag-evaluation/canonical-catalog.v25.json)을
+사용한다. API key와 실제 이미지 경로는 쉘의 보안된 환경변수 또는 비밀 관리 도구로만 제공하며,
+명령·로그·결과를 Git에 추가하지 않는다.
 
 ```bash
 AI_TAG_EVALUATION_DATASET=/secure/path/gold-labels.json \
-AI_TAG_EVALUATION_CATALOG=/secure/path/canonical-catalog.json \
+AI_TAG_EVALUATION_CATALOG=scripts/poc/ai-tag-evaluation/canonical-catalog.v25.json \
 FITBACK_AI_OPENAI_API_KEY=... \
 FITBACK_AI_OPENAI_MODEL=gpt-5.6-luna \
 FITBACK_AI_REQUEST_TIMEOUT=PT30S \

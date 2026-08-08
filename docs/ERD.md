@@ -726,6 +726,24 @@ IDX_WITHDRAWAL_EMAIL_BLOCK_BLOCKED_UNTIL(blocked_until)
 
 탈퇴한 `member` row와 FK를 연결하지 않아 회원 삭제 후에도 차단 기간을 유지한다.
 
+### 4.13 `trend_tag` 관련도 가중치와 기본 트렌드
+
+V26은 트렌드 태그가 해당 트렌드를 대표하는 정도를 `relevance_weight`로 저장한다.
+관련 룩북 조회에서는 룩북과 트렌드가 공통으로 가진 태그의 가중치를 합산해 점수가 높은
+룩북부터 반환한다.
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `relevance_weight` | `INT` | N | 양수, 기본값 1. 값이 클수록 관련 룩북 정렬에 크게 반영 |
+
+```text
+CK_TREND_TAG_RELEVANCE_WEIGHT(relevance_weight > 0)
+```
+
+V27은 프론트의 `targetId` 계약에 맞춰 `trend_content.trend_id` 1~6과 연결 태그를 등록한다.
+`created_by`는 사전에 생성된 콘텐츠 계정 `fitback.demo+content@gmail.com`의 회원 ID를 사용하며,
+계정이 없으면 필수 FK 값을 채울 수 없어 마이그레이션이 실패한다.
+
 ---
 
 ## 5. 유사도 점수 영속 근거
@@ -764,7 +782,7 @@ JPA에는 대규모 `CascadeType.ALL`을 기본 적용하지 않는다. 특히 P
 
 ## 7. Entity·migration 상태
 
-현재 운영 migration 계약은 V1~V25이며, 프로덕션에서 Flyway 적용 후
+현재 운영 migration 계약은 V1~V27이며, 프로덕션에서 Flyway 적용 후
 Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
 
 ### 7.1 `Product`
@@ -832,6 +850,11 @@ Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
 - V21은 수신 회원 FK와 scalar 대상 ID를 가진 `notification` 테이블을 추가한다.
 - `member_notification_setting`/`marketing_consent_history`는 V7, 회원 삭제 cascade
   보정은 V8에서 관리한다.
+
+### 7.8 트렌드
+
+- V26은 `trend_tag.relevance_weight`와 양수 CHECK 제약을 추가한다.
+- V27은 프론트에서 참조하는 트렌드 1~6번과 관련 태그 가중치를 등록한다.
 
 ---
 

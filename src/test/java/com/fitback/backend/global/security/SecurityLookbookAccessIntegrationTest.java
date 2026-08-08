@@ -11,10 +11,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.fitback.backend.domain.member.entity.LoginProvider;
-import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
 import com.fitback.backend.domain.lookbook.service.LookbookService;
+import com.fitback.backend.domain.member.entity.LoginProvider;
+import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.trend.service.TrendService;
 import com.fitback.backend.global.exception.GlobalExceptionHandler;
 import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.security.service.CustomUserDetailsService;
@@ -44,6 +45,9 @@ class SecurityLookbookAccessIntegrationTest {
 
     @MockitoBean
     private LookbookService lookbookService;
+
+    @MockitoBean
+    private TrendService trendService;
 
     @MockitoBean
     private CustomUserDetailsService customUserDetailsService;
@@ -84,6 +88,38 @@ class SecurityLookbookAccessIntegrationTest {
                 .andExpect(jsonPath("$.code").value("COMMON200_1"))
                 .andExpect(jsonPath("$.data.isLiked").value(false))
                 .andExpect(jsonPath("$.data.isOwner").value(false));
+    }
+
+    // 비로그인 트렌드 관련 룩북 조회 허용
+    @Test
+    void allowsAnonymousRelatedLookbookRead() throws Exception {
+        LookbookResponse.LookbookList response = LookbookResponse.LookbookList.builder()
+                .items(List.of())
+                .pageSize(3)
+                .hasNext(false)
+                .build();
+        when(trendService.getRelatedLookbooks(1L, null, null)).thenReturn(response);
+
+        mockMvc.perform(get("/api/v1/trends/{trendId}/lookbooks", 1L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("COMMON200_1"))
+                .andExpect(jsonPath("$.data.pageSize").value(3));
+    }
+
+    @Test
+    void rejectsNonPositiveRelatedLookbookTrendId() throws Exception {
+        mockMvc.perform(get("/api/v1/trends/{trendId}/lookbooks", 0L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+    }
+
+    @Test
+    void rejectsNonPositiveRelatedLookbookCursor() throws Exception {
+        mockMvc.perform(get("/api/v1/trends/{trendId}/lookbooks", 1L)
+                        .param("cursor", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
     }
 
     //비로그인 룩북 생성 요청은 인증 필요

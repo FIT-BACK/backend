@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.trend.dto.TrendResponse;
@@ -125,5 +126,25 @@ class TrendControllerTest {
 
         assertThat(response.data().isSaved()).isTrue();
         verify(trendService).getTrendDetail(1L, authMember.getMember());
+    }
+
+    @Test
+    void getRelatedLookbooksPassesCursorAndAuthenticatedMemberToService() {
+        AuthMember authMember = authMemberWithId(7L);
+        LookbookResponse.LookbookList serviceResponse = LookbookResponse.LookbookList.builder()
+                .items(List.of())
+                .nextCursor(null)
+                .hasNext(false)
+                .pageSize(3)
+                .build();
+        when(trendService.getRelatedLookbooks(1L, 10L, authMember.getMember()))
+                .thenReturn(serviceResponse);
+
+        ApiResponse<LookbookResponse.LookbookList> response =
+                trendController.getRelatedLookbooks(1L, 10L, authMember);
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.data()).isEqualTo(serviceResponse);
+        verify(trendService).getRelatedLookbooks(1L, 10L, authMember.getMember());
     }
 }
