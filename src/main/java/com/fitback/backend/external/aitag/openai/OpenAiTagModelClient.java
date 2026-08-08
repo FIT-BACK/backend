@@ -177,11 +177,17 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
+            // 이 시점의 예외는 이미 JSON으로 파싱된 모델 출력을 우리 스키마(가먼트 종류/태그 타입
+            // 등)에 맞춰 매핑하다 실패한 것 — 원문 응답 본문이 아니라 "어떤 필드/값이 왜 안
+            // 맞았는지"를 설명하는 우리 코드의 예외 메시지이므로 로그에 남겨도 안전하다
+            // (예: "No enum constant ...GarmentPiece.XXX").
             logResponseParsingFailure(
                     response,
                     metadata,
                     "INVALID_MODEL_OUTPUT_SCHEMA",
-                    startedAt
+                    startedAt,
+                    exception.getClass().getSimpleName(),
+                    exception.getMessage()
             );
             throw notReady();
         }
@@ -332,6 +338,34 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                 metadata.contentTypes(),
                 category,
                 elapsedMillis(startedAt)
+        );
+    }
+
+    // INVALID_MODEL_OUTPUT_SCHEMA 전용 — 이 단계의 예외는 원문 응답이 아니라 우리 코드가
+    // "어떤 필드/값이 스키마와 안 맞았는지"를 설명하는 메시지라 causeType/causeMessage로
+    // 남겨도 안전하다. 다른 카테고리(응답 자체가 이상한 경우)는 원문이 섞여있을 수 있어
+    // 기존 시그니처를 그대로 쓴다.
+    private void logResponseParsingFailure(
+            TransportResponse response,
+            ResponseMetadata metadata,
+            String category,
+            long startedAt,
+            String causeType,
+            String causeMessage
+    ) {
+        log.warn(
+                "AI tag provider response parsing failed. provider=openai model={} responseStatus={} "
+                        + "incompleteDetailsReason={} outputTypes={} contentTypes={} "
+                        + "responseParsingCategory={} elapsedMillis={} causeType={} causeMessage={}",
+                properties.model(),
+                response.statusCode(),
+                metadata.incompleteDetailsReason(),
+                metadata.outputTypes(),
+                metadata.contentTypes(),
+                category,
+                elapsedMillis(startedAt),
+                causeType,
+                causeMessage
         );
     }
 
