@@ -33,6 +33,16 @@ reasonCode도 이 데이터셋의 정답에 포함하지 않는다.
    [`canonical-catalog.v25.json`](../scripts/poc/ai-tag-evaluation/canonical-catalog.v25.json)의
    정확한 `(type, name)` 쌍만 넣는다. 대소문자·띄어쓰기·슬래시를 포함해 이름을 바꾸거나
    free-form tag을 추가하지 않는다.
+
+### MATERIAL 판정 규칙
+
+Gold label의 `MATERIAL`은 이미지에서 시각적 특성을 신뢰성 있게 판별할 수 있을 때만 사용한다.
+데님, 니트, 가죽, 트위드, 시폰은 시각적 특징이 충분히 명확하면 허용하고, 린넨은 질감 등
+시각적 근거가 명확한 경우에만 허용한다. 코튼처럼 이미지 단독으로 실제 섬유 조성을 신뢰성
+있게 판별하기 어려운 소재는 Gold label에서 제외한다. 천연/인조, 혼방 여부처럼 이미지에서
+확인할 수 없는 소재 속성은 추정하지 않는다. 이 규칙은 Gold 정답 작성 기준이며 V25 canonical
+catalog 자체를 변경하지 않는다.
+
 4. Review provenance는 human Reviewer A, AI-assisted independent Reviewer B, human adjudication으로
    기록한다. Reviewer A는 human review를 수행하고 Reviewer B는 AI-assisted independent review를
    수행하며, 최종 adjudication은 human이 수행한다. A/B 불일치 사례는 human adjudication에서

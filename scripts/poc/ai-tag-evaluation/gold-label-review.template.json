@@ -14,7 +14,10 @@
         {"type": "STYLE", "name": "스트릿"},
         {"type": "MATERIAL", "name": "코튼"}
       ], "note": ""},
-      "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
+      "adjudication": {"status": "APPROVED", "finalExpectedCanonicalTags": [
+        {"type": "COLOR", "name": "그레이"},
+        {"type": "STYLE", "name": "스트릿"}
+      ], "decisionNote": "A/B 일치 태그를 기준으로 하되 이미지 단독으로 섬유 조성을 확정하기 어려운 MATERIAL/코튼은 제외했다."}
     },
     {
       "imageId": "public-bottom-01",
@@ -34,7 +37,12 @@
         {"type": "STYLE", "name": "캐주얼"},
         {"type": "DETAIL", "name": "포켓"}
       ], "note": ""},
-      "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
+      "adjudication": {"status": "APPROVED", "finalExpectedCanonicalTags": [
+        {"type": "COLOR", "name": "카키"},
+        {"type": "SILHOUETTE", "name": "와이드핏"},
+        {"type": "STYLE", "name": "캐주얼"},
+        {"type": "DETAIL", "name": "포켓"}
+      ], "decisionNote": "A/B 일치 태그를 기준으로 하되 이미지 단독으로 섬유 조성을 확정하기 어려운 MATERIAL/코튼은 제외했다."}
     },
     {
       "imageId": "ai-bottom-02",
@@ -53,7 +61,12 @@
         {"type": "SILHOUETTE", "name": "롱기장"},
         {"type": "DETAIL", "name": "턱"}
       ], "note": ""},
-      "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
+      "adjudication": {"status": "APPROVED", "finalExpectedCanonicalTags": [
+        {"type": "COLOR", "name": "베이지"},
+        {"type": "STYLE", "name": "미니멀"},
+        {"type": "SILHOUETTE", "name": "롱기장"},
+        {"type": "DETAIL", "name": "턱"}
+      ], "decisionNote": "이미지 단독으로 코튼 섬유 조성을 신뢰성 있게 확정하기 어려워 MATERIAL/코튼을 제외하고, 나머지 태그는 시각적으로 확인되어 승인했다."}
     },
     {
       "imageId": "ai-dress-01",
@@ -70,7 +83,11 @@
         {"type": "STYLE", "name": "러블리"},
         {"type": "SILHOUETTE", "name": "롱기장"}
       ], "note": ""},
-      "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
+      "adjudication": {"status": "APPROVED", "finalExpectedCanonicalTags": [
+        {"type": "COLOR", "name": "네이비"},
+        {"type": "STYLE", "name": "러블리"},
+        {"type": "SILHOUETTE", "name": "롱기장"}
+      ], "decisionNote": "코튼 소재와 정확한 착용 핏은 이미지 단독 확정이 어려워 제외하고, 롱기장은 시각적으로 명확하여 승인했다."}
     },
     {
       "imageId": "outer-01",
@@ -88,7 +105,12 @@
         {"type": "SILHOUETTE", "name": "레귤러핏"},
         {"type": "DETAIL", "name": "라운드넥"}
       ], "note": ""},
-      "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
+      "adjudication": {"status": "APPROVED", "finalExpectedCanonicalTags": [
+        {"type": "STYLE", "name": "미니멀"},
+        {"type": "MATERIAL", "name": "니트"},
+        {"type": "SILHOUETTE", "name": "레귤러핏"},
+        {"type": "DETAIL", "name": "라운드넥"}
+      ], "decisionNote": "A/B 일치 태그를 승인했으며 MATERIAL/니트는 시각적 특징이 명확해 유지했다."}
     }
   ]
 }
