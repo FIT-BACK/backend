@@ -4,7 +4,11 @@
       "imageId": "top-01",
       "imagePath": ".local/poc/product-provider/images/top-01.jpeg",
       "garmentCategory": "TOP",
-      "reviewerA": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerA": {"status": "ACCEPT", "expectedCanonicalTags": [
+        {"type": "COLOR", "name": "그레이"},
+        {"type": "STYLE", "name": "스트릿"},
+        {"type": "MATERIAL", "name": "코튼"}
+      ], "note": ""},
       "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
     },
@@ -12,7 +16,13 @@
       "imageId": "public-bottom-01",
       "imagePath": ".local/poc/product-provider/images/public-bottom-01.jpeg",
       "garmentCategory": "PANTS",
-      "reviewerA": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerA": {"status": "ACCEPT", "expectedCanonicalTags": [
+        {"type": "COLOR", "name": "카키"},
+        {"type": "MATERIAL", "name": "코튼"},
+        {"type": "SILHOUETTE", "name": "와이드핏"},
+        {"type": "STYLE", "name": "캐주얼"},
+        {"type": "DETAIL", "name": "포켓"}
+      ], "note": ""},
       "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
     },
@@ -20,7 +30,12 @@
       "imageId": "ai-bottom-02",
       "imagePath": ".local/poc/product-provider/images/ai-bottom-02.png",
       "garmentCategory": "SKIRT",
-      "reviewerA": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerA": {"status": "ACCEPT", "expectedCanonicalTags": [
+        {"type": "MATERIAL", "name": "데님"},
+        {"type": "STYLE", "name": "캐주얼"},
+        {"type": "SILHOUETTE", "name": "로우라이즈"},
+        {"type": "SILHOUETTE", "name": "슬림핏"}
+      ], "note": ""},
       "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
     },
@@ -28,7 +43,12 @@
       "imageId": "ai-dress-01",
       "imagePath": ".local/poc/product-provider/images/ai-dress-01.png",
       "garmentCategory": "DRESS",
-      "reviewerA": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerA": {"status": "ACCEPT", "expectedCanonicalTags": [
+        {"type": "COLOR", "name": "네이비"},
+        {"type": "MATERIAL", "name": "코튼"},
+        {"type": "STYLE", "name": "러블리"},
+        {"type": "SILHOUETTE", "name": "레귤러핏"}
+      ], "note": ""},
       "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
     },
@@ -36,7 +56,12 @@
       "imageId": "outer-01",
       "imagePath": ".local/poc/product-provider/images/outer-01.jpeg",
       "garmentCategory": "OUTER",
-      "reviewerA": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerA": {"status": "ACCEPT", "expectedCanonicalTags": [
+        {"type": "MATERIAL", "name": "니트"},
+        {"type": "STYLE", "name": "미니멀"},
+        {"type": "SILHOUETTE", "name": "레귤러핏"},
+        {"type": "DETAIL", "name": "라운드넥"}
+      ], "note": ""},
       "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
     }
