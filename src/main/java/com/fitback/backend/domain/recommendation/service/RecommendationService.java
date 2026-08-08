@@ -24,9 +24,7 @@ import com.fitback.backend.global.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
@@ -48,6 +46,7 @@ public class RecommendationService {
     private final ProductCatalogPort productCatalogPort;
     private final ProductCandidateMapper candidateMapper;
     private final ProductMaterializationService materializationService;
+    private final VisionCandidateSelector visionCandidateSelector;
     private final RecommendationScorer scorer;
     private final RecommendationSetWriter setWriter;
     private final RecommendationQueryService queryService;
@@ -58,6 +57,7 @@ public class RecommendationService {
             ProductCatalogPort productCatalogPort,
             ProductCandidateMapper candidateMapper,
             ProductMaterializationService materializationService,
+            VisionCandidateSelector visionCandidateSelector,
             RecommendationScorer scorer,
             RecommendationSetWriter setWriter,
             RecommendationQueryService queryService
@@ -67,6 +67,7 @@ public class RecommendationService {
         this.productCatalogPort = productCatalogPort;
         this.candidateMapper = candidateMapper;
         this.materializationService = materializationService;
+        this.visionCandidateSelector = visionCandidateSelector;
         this.scorer = scorer;
         this.setWriter = setWriter;
         this.queryService = queryService;
@@ -123,34 +124,55 @@ public class RecommendationService {
             List<TagInput> tags,
             List<String> customTagNames
     ) {
+        // STYLE 태그를 상품 검색과 점수 계산 대상에서 제외하는 기존 추천 정책
         List<String> searchTagNames = Stream.concat(
                 tags.stream()
                         .filter(tag -> tag.tagType() != TagType.STYLE)
                         .map(TagInput::name),
                 customTagNames.stream()
         ).toList();
-        Map<String, ExternalProductCandidate> candidatesByKey = new LinkedHashMap<>();
+
+        // 일부 검색 실패 시 성공한 검색 결과로 추천을 계속하기 위한 배치·실패 분리 수집
+        List<List<ExternalProductCandidate>> candidateBatches = new ArrayList<>();
         List<BusinessException> failures = new ArrayList<>();
         int successfulSearches = 0;
+
+        // 태그 입력 순서를 이후 라운드 로빈의 검색 배치 순서로 유지
         for (String tagName : searchTagNames) {
             try {
                 ProductSearchResult searchResult = productCatalogPort.search(
                         new ProductSearchQuery(tagName, null, null, SEARCH_PAGE_SIZE)
                 );
                 successfulSearches++;
-                searchResult.items().forEach(candidate ->
-                        candidatesByKey.putIfAbsent(candidateKey(candidate), candidate));
+
+                // 검색어 내부의 공급자 상품 순위 보존을 위한 결과 목록 단위 저장
+                candidateBatches.add(searchResult.items());
             } catch (ProductProviderException exception) {
+                // 전체 실패와 부분 실패를 구분하기 위한 공급자 오류 누적
                 failures.add(ProductProviderErrorMapper.toBusinessException(exception));
             }
         }
+
+        // 모든 공급자 검색 실패 시 기존 추천 세트 보존을 위한 즉시 실패
         if (successfulSearches == 0 && !failures.isEmpty()) {
             throw failures.getFirst();
         }
-        List<String> warnings = failures.isEmpty()
-                ? List.of()
-                : List.of(PROVIDER_PARTIAL_FAILURE);
-        return new CandidateCollection(List.copyOf(candidatesByKey.values()), warnings);
+
+        // 점수 계산과 이미지 비교 전에 처리 예산을 제한하기 위한 후보 선별
+        VisionCandidateSelector.SelectionResult selection =
+                visionCandidateSelector.select(candidateBatches);
+        List<String> warnings = new ArrayList<>();
+
+        // 일부 검색 실패를 정상 결과와 함께 전달하기 위한 부분 성공 경고
+        if (!failures.isEmpty()) {
+            warnings.add(PROVIDER_PARTIAL_FAILURE);
+        }
+
+        // 선별 단계로 이동한 불안정 식별자 제외의 기존 경고 계약 유지
+        if (selection.unsupportedReferenceSkipped()) {
+            warnings.add(MATERIALIZATION_SKIPPED);
+        }
+        return new CandidateCollection(selection.candidates(), List.copyOf(warnings));
     }
 
     private List<ScoredCandidate> scoreEligibleCandidates(
@@ -232,21 +254,6 @@ public class RecommendationService {
     private static boolean canSkipMaterialization(ErrorCode errorCode) {
         return errorCode == ErrorCode.PRODUCT_REFERENCE_UNSUPPORTED
                 || errorCode == ErrorCode.PRODUCT_PROVIDER_RESPONSE_INVALID;
-    }
-
-    private static String candidateKey(ExternalProductCandidate candidate) {
-        ProviderProductRef providerRef = candidate.providerRef();
-        if (providerRef.stable()) {
-            return "stable:" + providerIdentity(providerRef);
-        }
-        return String.join(
-                "\u0000",
-                "snapshot",
-                providerRef.provider(),
-                candidate.name(),
-                nullable(candidate.categoryPath()),
-                candidate.observedAt().toString()
-        );
     }
 
     private static String providerIdentity(MaterializedCandidate candidate) {

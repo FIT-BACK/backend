@@ -3,7 +3,6 @@ package com.fitback.backend.domain.recommendation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -31,6 +30,7 @@ import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
@@ -69,12 +69,17 @@ class RecommendationServiceTest {
 
     @BeforeEach
     void setUp() {
-        recommendationService = new RecommendationService(
+        recommendationService = recommendationService(64);
+    }
+
+    private RecommendationService recommendationService(int candidateLimit) {
+        return new RecommendationService(
                 inputReader,
                 inputCommandService,
                 productCatalogPort,
                 candidateMapper,
                 materializationService,
+                new VisionCandidateSelector(candidateLimit),
                 new RecommendationScorer(),
                 setWriter,
                 queryService
@@ -154,13 +159,11 @@ class RecommendationServiceTest {
         when(candidateMapper.category(any())).thenReturn(ProductCategory.TOP);
         when(materializationService.materializeForRecommendation(stable))
                 .thenReturn(new RecommendationMaterializationResult(1L, true));
-        doThrow(new BusinessException(ErrorCode.PRODUCT_REFERENCE_UNSUPPORTED))
-                .when(materializationService)
-                .materializeForRecommendation(unstable);
         when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
 
         RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
 
+        verify(materializationService, never()).materializeForRecommendation(unstable);
         assertThat(response.partial()).isTrue();
         assertThat(response.warnings()).containsExactly("MATERIALIZATION_SKIPPED");
     }
@@ -314,6 +317,70 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void selectsCandidatesAcrossSearchResultsBeforeScoring() {
+        recommendationService = recommendationService(2);
+        RecommendationInputSnapshot input = new RecommendationInputSnapshot(
+                501L,
+                1L,
+                1,
+                70,
+                List.of(
+                        new TagInput(10L, "first", TagType.DETAIL),
+                        new TagInput(20L, "second", TagType.COLOR)
+                ),
+                List.of()
+        );
+        ExternalProductCandidate firstRankFromFirstSearch = candidate(1, null, true);
+        ExternalProductCandidate secondRankFromFirstSearch = candidate(2, null, true);
+        ExternalProductCandidate firstRankFromSecondSearch = candidate(3, null, true);
+        ExternalProductCandidate secondRankFromSecondSearch = candidate(4, null, true);
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "first",
+                null,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(
+                List.of(firstRankFromFirstSearch, secondRankFromFirstSearch),
+                null
+        ));
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "second",
+                null,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(
+                List.of(firstRankFromSecondSearch, secondRankFromSecondSearch),
+                null
+        ));
+        when(candidateMapper.category(any())).thenReturn(ProductCategory.TOP);
+        when(materializationService.materializeForRecommendation(any()))
+                .thenAnswer(invocation -> {
+                    ExternalProductCandidate candidate = invocation.getArgument(0);
+                    return new RecommendationMaterializationResult(
+                            Long.parseLong(candidate.providerRef().externalProductId()),
+                            true
+                    );
+                });
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L);
+
+        verify(materializationService).materializeForRecommendation(
+                firstRankFromFirstSearch
+        );
+        verify(materializationService).materializeForRecommendation(
+                firstRankFromSecondSearch
+        );
+        verify(materializationService, never()).materializeForRecommendation(
+                secondRankFromFirstSearch
+        );
+        verify(materializationService, never()).materializeForRecommendation(
+                secondRankFromSecondSearch
+        );
+    }
+
+    @Test
     void recordsEmptySetWithoutProviderCallWhenOnlyStyleTagsExist() {
         RecommendationInputSnapshot input = new RecommendationInputSnapshot(
                 501L,
@@ -462,7 +529,7 @@ class RecommendationServiceTest {
                 null,
                 "tops/shirts",
                 null,
-                null,
+                URI.create("https://example.com/products/" + id + ".jpg"),
                 score == null ? null : new BigDecimal(score),
                 Instant.parse("2026-07-25T00:00:00Z")
         );

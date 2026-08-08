@@ -7,12 +7,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
+@Component
 public class VisionCandidateSelector {
 
     private final int candidateLimit;
 
-    public VisionCandidateSelector(int candidateLimit) {
+    public VisionCandidateSelector(
+            @Value("${recommendation.vision-candidate-limit:64}") int candidateLimit
+    ) {
+        // 비전 비교 대상이 항상 비어지는 잘못된 운영 설정 차단
         if (candidateLimit < 1) {
             throw new IllegalArgumentException("candidateLimit must be positive");
         }
@@ -27,12 +33,14 @@ public class VisionCandidateSelector {
                 "candidateBatches must not be null"
         );
 
-        // 후보 순서 유지와 공급자 식별자 기준 중복 제거를 위한 별도 자료구조
+        // 채택 순서 유지와 공급자 식별자 기준 중복 제거를 위한 자료구조 분리
         List<ExternalProductCandidate> selectedCandidates = new ArrayList<>();
         Set<ProviderProductRef> selectedProductRefs = new HashSet<>();
+
+        // 선별 단계에서 제외된 불안정 식별자의 기존 경고 계약 전달
         boolean unsupportedReferenceSkipped = false;
 
-        // 검색어별 후보 편중 방지를 위한 동일 순위 교차 선택
+        // 앞쪽 검색어의 후보 점유 방지를 위한 검색 결과별 동일 순위 교차 선택
         for (int rank = 0; selectedCandidates.size() < candidateLimit; rank++) {
             // 가장 긴 검색 결과까지 모두 확인한 시점 판단을 위한 현재 순위 후보 존재 여부
             boolean candidateFoundAtRank = false;
@@ -43,6 +51,7 @@ public class VisionCandidateSelector {
                         "candidate batch must not be null"
                 );
 
+                // 먼저 소진된 검색 결과를 건너뛰고 남은 검색 결과 탐색 유지
                 if (rank >= batch.size()) {
                     continue;
                 }
@@ -69,14 +78,16 @@ public class VisionCandidateSelector {
                     continue;
                 }
 
+                // 모든 제외 조건을 통과한 후보만 비전 비교 처리 예산에 포함
                 selectedCandidates.add(candidate);
 
+                // 최대 후보 수 초과와 불필요한 추가 순회 방지를 위한 즉시 종료
                 if (selectedCandidates.size() == candidateLimit) {
                     break;
                 }
             }
 
-            // 모든 검색 결과에 현재 순위의 후보가 없을 때 라운드 로빈 종료
+            // 모든 검색 결과 소진 후 추가 순위 탐색 방지
             if (!candidateFoundAtRank) {
                 break;
             }
