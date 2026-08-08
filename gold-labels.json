@@ -1,0 +1,102 @@
+{
+  "cases": [
+    {
+      "imageId": "top-01",
+      "imagePath": ".local/poc/product-provider/images/top-01.jpeg",
+      "expectedCanonicalTags": [
+        {
+          "type": "COLOR",
+          "name": "그레이"
+        },
+        {
+          "type": "STYLE",
+          "name": "스트릿"
+        }
+      ]
+    },
+    {
+      "imageId": "public-bottom-01",
+      "imagePath": ".local/poc/product-provider/images/public-bottom-01.jpeg",
+      "expectedCanonicalTags": [
+        {
+          "type": "COLOR",
+          "name": "카키"
+        },
+        {
+          "type": "SILHOUETTE",
+          "name": "와이드핏"
+        },
+        {
+          "type": "STYLE",
+          "name": "캐주얼"
+        },
+        {
+          "type": "DETAIL",
+          "name": "포켓"
+        }
+      ]
+    },
+    {
+      "imageId": "ai-bottom-02",
+      "imagePath": ".local/poc/product-provider/images/ai-bottom-02.png",
+      "expectedCanonicalTags": [
+        {
+          "type": "COLOR",
+          "name": "베이지"
+        },
+        {
+          "type": "STYLE",
+          "name": "미니멀"
+        },
+        {
+          "type": "SILHOUETTE",
+          "name": "롱기장"
+        },
+        {
+          "type": "DETAIL",
+          "name": "턱"
+        }
+      ]
+    },
+    {
+      "imageId": "ai-dress-01",
+      "imagePath": ".local/poc/product-provider/images/ai-dress-01.png",
+      "expectedCanonicalTags": [
+        {
+          "type": "COLOR",
+          "name": "네이비"
+        },
+        {
+          "type": "STYLE",
+          "name": "러블리"
+        },
+        {
+          "type": "SILHOUETTE",
+          "name": "롱기장"
+        }
+      ]
+    },
+    {
+      "imageId": "outer-01",
+      "imagePath": ".local/poc/product-provider/images/outer-01.jpeg",
+      "expectedCanonicalTags": [
+        {
+          "type": "STYLE",
+          "name": "미니멀"
+        },
+        {
+          "type": "MATERIAL",
+          "name": "니트"
+        },
+        {
+          "type": "SILHOUETTE",
+          "name": "레귤러핏"
+        },
+        {
+          "type": "DETAIL",
+          "name": "라운드넥"
+        }
+      ]
+    }
+  ]
+}
