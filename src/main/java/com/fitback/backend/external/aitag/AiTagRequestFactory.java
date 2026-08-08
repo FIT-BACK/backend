@@ -125,7 +125,14 @@ public final class AiTagRequestFactory {
                         "type", "object",
                         "additionalProperties", false,
                         "properties", garmentsProperties,
-                        "required", List.of(GarmentPiece.values()).stream().map(Enum::name).toList()
+                        "required", garmentPieceNames(),
+                        "anyOf", List.of(GarmentPiece.values()).stream()
+                                .map(piece -> garmentsSchemaWithNonNullPiece(
+                                        garmentsProperties,
+                                        garmentItem,
+                                        piece
+                                ))
+                                .toList()
                 )
         ));
         schema.put("required", List.of("garments"));
@@ -157,6 +164,21 @@ public final class AiTagRequestFactory {
         );
     }
 
+    private static Map<String, Object> garmentsSchemaWithNonNullPiece(
+            Map<String, Object> garmentsProperties,
+            Map<String, Object> garmentItem,
+            GarmentPiece nonNullPiece
+    ) {
+        Map<String, Object> properties = new LinkedHashMap<>(garmentsProperties);
+        properties.put(nonNullPiece.name(), garmentItem);
+        return Map.of(
+                "type", "object",
+                "additionalProperties", false,
+                "properties", properties,
+                "required", garmentPieceNames()
+        );
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> asMap(Object value) {
         return (Map<String, Object>) value;
@@ -164,5 +186,9 @@ public final class AiTagRequestFactory {
 
     private static List<String> requiredGarmentFields() {
         return List.of("canonicalTags", "suggestedTags");
+    }
+
+    private static List<String> garmentPieceNames() {
+        return List.of(GarmentPiece.values()).stream().map(Enum::name).toList();
     }
 }
