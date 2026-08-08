@@ -62,13 +62,22 @@ public final class OpenAiTagEvaluationMain {
     static CaseResult successfulCase(
             EvaluationCase evaluationCase, AiTagModelResult result, Set<TagKey> catalogKeys
     ) {
+        return successfulCase(evaluationCase, result, catalogKeys, null);
+    }
+
+    private static CaseResult successfulCase(
+            EvaluationCase evaluationCase,
+            AiTagModelResult result,
+            Set<TagKey> catalogKeys,
+            Long base64ImageLength
+    ) {
         Set<TagKey> expected = tagKeys(evaluationCase.expectedCanonicalTags());
         Set<TagKey> predicted = tagKeys(result.canonicalTags());
         return new CaseResult(
                 evaluationCase.imageId(), evaluationCase.imagePath(), sorted(expected), sorted(predicted),
                 sorted(difference(expected, predicted)), sorted(difference(predicted, expected)),
                 sorted(difference(predicted, catalogKeys)), result.inputTokens(), result.outputTokens(),
-                result.elapsedMillis(), null);
+                result.elapsedMillis(), null, null, null, base64ImageLength, null);
     }
 
     static EvaluationSummary summarize(List<CaseResult> results) {
@@ -98,11 +107,25 @@ public final class OpenAiTagEvaluationMain {
             OpenAiTagModelClient client, AiTagModelRequest request, Path datasetDirectory,
             EvaluationCase evaluationCase, Set<TagKey> catalogKeys
     ) {
+        Long base64ImageLength = null;
         try {
             Path imagePath = resolveImage(datasetDirectory, evaluationCase.imagePath());
-            AiTagModelResult result = client.analyze(new AiTagImage(
-                    Files.readAllBytes(imagePath), contentType(imagePath)), request);
-            return successfulCase(evaluationCase, result, catalogKeys);
+            byte[] imageBytes = Files.readAllBytes(imagePath);
+            base64ImageLength = base64ImageLength(imageBytes.length);
+            AiTagModelResult result = client.analyze(
+                    new AiTagImage(imageBytes, contentType(imagePath)), request
+            );
+            return successfulCase(evaluationCase, result, catalogKeys, base64ImageLength);
+        } catch (OpenAiTagModelClient.ProviderFailure exception) {
+            return CaseResult.failed(
+                    evaluationCase,
+                    exception.getErrorCode().getCode(),
+                    exception.elapsedMillis(),
+                    exception.providerHttpStatus(),
+                    exception.providerErrorCategory(),
+                    exception.responseParsingCategory(),
+                    base64ImageLength
+            );
         } catch (BusinessException exception) {
             return CaseResult.failed(evaluationCase, exception.getErrorCode().getCode());
         } catch (RuntimeException exception) {
@@ -110,6 +133,13 @@ public final class OpenAiTagEvaluationMain {
         } catch (Exception exception) {
             return CaseResult.failed(evaluationCase, "EVALUATION_INPUT_FAILURE");
         }
+    }
+
+    static long base64ImageLength(long imageByteLength) {
+        if (imageByteLength < 0) {
+            throw new IllegalArgumentException("imageByteLength must not be negative");
+        }
+        return 4L * ((imageByteLength + 2L) / 3L);
     }
 
     static Path resolveImage(Path datasetDirectory, String imagePath) throws IOException {
@@ -360,13 +390,28 @@ public final class OpenAiTagEvaluationMain {
             String imageId, String imagePath, List<TagKey> expectedCanonicalTags,
             List<TagKey> predictedCanonicalTags, List<TagKey> falseNegatives,
             List<TagKey> falsePositives, List<TagKey> unknownCanonicalTags,
-            Integer inputTokens, Integer outputTokens, Long elapsedMillis, String error
+            Integer inputTokens, Integer outputTokens, Long elapsedMillis,
+            Integer providerHttpStatus, String providerErrorCategory, String responseParsingCategory,
+            Long base64ImageLength, String error
     ) {
         static CaseResult failed(EvaluationCase evaluationCase, String error) {
+            return failed(evaluationCase, error, null, null, null, null, null);
+        }
+
+        static CaseResult failed(
+                EvaluationCase evaluationCase,
+                String error,
+                Long elapsedMillis,
+                Integer providerHttpStatus,
+                String providerErrorCategory,
+                String responseParsingCategory,
+                Long base64ImageLength
+        ) {
             return new CaseResult(evaluationCase.imageId(), evaluationCase.imagePath(),
                     sorted(tagKeys(evaluationCase.expectedCanonicalTags())), List.of(),
                     sorted(tagKeys(evaluationCase.expectedCanonicalTags())), List.of(), List.of(),
-                    null, null, null, error);
+                    null, null, elapsedMillis, providerHttpStatus, providerErrorCategory,
+                    responseParsingCategory, base64ImageLength, error);
         }
     }
 
