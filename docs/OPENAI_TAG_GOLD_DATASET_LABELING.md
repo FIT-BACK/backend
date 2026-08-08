@@ -33,9 +33,11 @@ reasonCode도 이 데이터셋의 정답에 포함하지 않는다.
    [`canonical-catalog.v25.json`](../scripts/poc/ai-tag-evaluation/canonical-catalog.v25.json)의
    정확한 `(type, name)` 쌍만 넣는다. 대소문자·띄어쓰기·슬래시를 포함해 이름을 바꾸거나
    free-form tag을 추가하지 않는다.
-4. 서로 독립적인 두 명의 라벨러가 각각 모든 tag을 작성하고, 불일치 사례는 검토자가 근거를
-   확인해 합의하지 못하면 제외한다. 라벨 결정 근거와 이미지 사용 승인 기록은 Git 밖의 안전한
-   위치에 보관한다.
+4. Review provenance는 human Reviewer A, AI-assisted independent Reviewer B, human adjudication으로
+   기록한다. Reviewer A는 human review를 수행하고 Reviewer B는 AI-assisted independent review를
+   수행하며, 최종 adjudication은 human이 수행한다. A/B 불일치 사례는 human adjudication에서
+   근거를 확인해 최종 확정하거나 합의하지 못하면 제외한다. 라벨 결정 근거와 이미지 사용 승인
+   기록은 Git 밖의 안전한 위치에 보관한다.
 5. 확정된 case만 Schema의 필드(`imageId`, `imagePath`, `expectedCanonicalTags`)로 옮긴다.
    라벨러·출처·검토 상태 같은 운영 메타데이터는 strict schema에 추가하지 않는다.
 

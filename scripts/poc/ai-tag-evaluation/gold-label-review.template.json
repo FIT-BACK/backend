@@ -9,7 +9,11 @@
         {"type": "STYLE", "name": "스트릿"},
         {"type": "MATERIAL", "name": "코튼"}
       ], "note": ""},
-      "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerB": {"status": "ACCEPT", "expectedCanonicalTags": [
+        {"type": "COLOR", "name": "그레이"},
+        {"type": "STYLE", "name": "스트릿"},
+        {"type": "MATERIAL", "name": "코튼"}
+      ], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
     },
     {
@@ -23,7 +27,13 @@
         {"type": "STYLE", "name": "캐주얼"},
         {"type": "DETAIL", "name": "포켓"}
       ], "note": ""},
-      "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerB": {"status": "ACCEPT", "expectedCanonicalTags": [
+        {"type": "COLOR", "name": "카키"},
+        {"type": "MATERIAL", "name": "코튼"},
+        {"type": "SILHOUETTE", "name": "와이드핏"},
+        {"type": "STYLE", "name": "캐주얼"},
+        {"type": "DETAIL", "name": "포켓"}
+      ], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
     },
     {
@@ -37,7 +47,12 @@
         {"type": "DETAIL", "name": "턱"},
         {"type": "COLOR", "name": "베이지"}
       ], "note": ""},
-      "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerB": {"status": "ACCEPT", "expectedCanonicalTags": [
+        {"type": "COLOR", "name": "베이지"},
+        {"type": "STYLE", "name": "미니멀"},
+        {"type": "SILHOUETTE", "name": "롱기장"},
+        {"type": "DETAIL", "name": "턱"}
+      ], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
     },
     {
@@ -50,7 +65,11 @@
         {"type": "STYLE", "name": "러블리"},
         {"type": "SILHOUETTE", "name": "레귤러핏"}
       ], "note": ""},
-      "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerB": {"status": "ACCEPT", "expectedCanonicalTags": [
+        {"type": "COLOR", "name": "네이비"},
+        {"type": "STYLE", "name": "러블리"},
+        {"type": "SILHOUETTE", "name": "롱기장"}
+      ], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
     },
     {
@@ -63,7 +82,12 @@
         {"type": "SILHOUETTE", "name": "레귤러핏"},
         {"type": "DETAIL", "name": "라운드넥"}
       ], "note": ""},
-      "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerB": {"status": "ACCEPT", "expectedCanonicalTags": [
+        {"type": "STYLE", "name": "미니멀"},
+        {"type": "MATERIAL", "name": "니트"},
+        {"type": "SILHOUETTE", "name": "레귤러핏"},
+        {"type": "DETAIL", "name": "라운드넥"}
+      ], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
     }
   ]
