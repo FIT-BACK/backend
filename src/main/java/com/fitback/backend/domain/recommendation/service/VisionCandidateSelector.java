@@ -16,7 +16,7 @@ public class VisionCandidateSelector {
     private final int candidateLimit;
 
     public VisionCandidateSelector(
-            @Value("${recommendation.vision-candidate-limit:64}") int candidateLimit
+            @Value("${recommendation.vision-candidate-limit}") int candidateLimit
     ) {
         // 비전 비교 대상이 항상 비어지는 잘못된 운영 설정 차단
         if (candidateLimit < 1) {
