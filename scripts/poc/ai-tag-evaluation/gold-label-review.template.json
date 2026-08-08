@@ -31,10 +31,11 @@
       "imagePath": ".local/poc/product-provider/images/ai-bottom-02.png",
       "garmentCategory": "SKIRT",
       "reviewerA": {"status": "ACCEPT", "expectedCanonicalTags": [
-        {"type": "MATERIAL", "name": "데님"},
-        {"type": "STYLE", "name": "캐주얼"},
-        {"type": "SILHOUETTE", "name": "로우라이즈"},
-        {"type": "SILHOUETTE", "name": "슬림핏"}
+        {"type": "STYLE", "name": "미니멀"},
+        {"type": "SILHOUETTE", "name": "롱기장"},
+        {"type": "MATERIAL", "name": "코튼"},
+        {"type": "DETAIL", "name": "턱"},
+        {"type": "COLOR", "name": "베이지"}
       ], "note": ""},
       "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
       "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
