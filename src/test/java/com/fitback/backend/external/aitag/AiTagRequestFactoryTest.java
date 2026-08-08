@@ -24,8 +24,13 @@ class AiTagRequestFactoryTest {
 
         Map<String, Object> rootProperties = map(request.jsonSchema().get("properties"));
         Map<String, Object> garments = map(rootProperties.get("garments"));
-        Map<String, Object> garmentItem = map(garments.get("items"));
-        Map<String, Object> garmentProperties = map(garmentItem.get("properties"));
+        Map<String, Object> top = map(map(garments.get("properties")).get("TOP"));
+        List<Map<String, Object>> topOptions = maps(top.get("anyOf"));
+        Map<String, Object> topGarment = topOptions.stream()
+                .filter(option -> "object".equals(option.get("type")))
+                .findFirst()
+                .orElseThrow();
+        Map<String, Object> garmentProperties = map(topGarment.get("properties"));
         Map<String, Object> canonicalTags = map(garmentProperties.get("canonicalTags"));
         List<Map<String, Object>> canonicalOptions = maps(
                 map(canonicalTags.get("items")).get("anyOf")
@@ -37,16 +42,17 @@ class AiTagRequestFactoryTest {
                 ));
         Map<String, Object> suggestedTags = map(garmentProperties.get("suggestedTags"));
         Map<String, Object> suggestionName = itemProperty(suggestedTags, "name");
-        List<Map<String, Object>> requiredTagAlternatives = maps(garmentItem.get("anyOf"));
+        List<Map<String, Object>> requiredTagAlternatives = maps(topGarment.get("anyOf"));
 
         assertThat(request.jsonSchema().get("required")).isEqualTo(List.of("garments"));
         assertThat(garments)
-                .containsEntry("minItems", 1)
-                .containsEntry("maxItems", 3);
-        assertThat(garmentItem.get("required"))
-                .isEqualTo(List.of("piece", "canonicalTags", "suggestedTags"));
-        assertThat(strings(map(garmentProperties.get("piece")).get("enum")))
-                .containsExactly("TOP", "BOTTOM", "SHOES");
+                .containsEntry("type", "object")
+                .containsEntry("additionalProperties", false)
+                .containsEntry("required", List.of("TOP", "BOTTOM", "SHOES"));
+        assertThat(map(garments.get("properties"))).containsOnlyKeys("TOP", "BOTTOM", "SHOES");
+        assertThat(topOptions).anySatisfy(option -> assertThat(option).containsEntry("type", "null"));
+        assertThat(topGarment.get("required"))
+                .isEqualTo(List.of("canonicalTags", "suggestedTags"));
         assertThat(canonicalNamesByType)
                 .containsEntry("SILHOUETTE", List.of("와이드핏"))
                 .containsEntry("COLOR", List.of("베이지"))
@@ -64,7 +70,7 @@ class AiTagRequestFactoryTest {
                         .containsEntry("additionalProperties", false)
                         .containsEntry(
                                 "required",
-                                List.of("piece", "canonicalTags", "suggestedTags")
+                                List.of("canonicalTags", "suggestedTags")
                         ));
         assertThat(requiredTagAlternatives).anySatisfy(alternative -> assertThat(
                 map(map(alternative.get("properties")).get("canonicalTags"))
@@ -74,7 +80,7 @@ class AiTagRequestFactoryTest {
         ).containsEntry("minItems", 1));
         assertThat(request.prompt()).contains(
                 "product-only fashion image",
-                "TOP, BOTTOM, and SHOES",
+                "TOP, BOTTOM, or SHOES field",
                 "SILHOUETTE, COLOR",
                 "DETAIL, STYLE, and MATERIAL",
                 "Korean",

@@ -14,6 +14,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -26,21 +27,22 @@ class OpenAiTagModelClientTest {
     @Test
     void sendsImageWithStrictSchemaAndParsesCanonicalTags() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
-        String outputText = objectMapper.writeValueAsString(Map.of(
-                "garments", List.of(Map.of(
-                        "piece", "BOTTOM",
-                        "canonicalTags", List.of(Map.of(
-                                "type", "MATERIAL",
-                                "name", "데님"
-                        )),
-                        "suggestedTags", List.of(Map.of(
-                                "type", "COLOR",
-                                "name", "인디고 블루",
-                                "confidence", 0.94,
-                                "evidence", "하의의 짙은 청색 표면"
-                        ))
+        Map<String, Object> garments = new LinkedHashMap<>();
+        garments.put("TOP", null);
+        garments.put("BOTTOM", Map.of(
+                "canonicalTags", List.of(Map.of(
+                        "type", "MATERIAL",
+                        "name", "데님"
+                )),
+                "suggestedTags", List.of(Map.of(
+                        "type", "COLOR",
+                        "name", "인디고 블루",
+                        "confidence", 0.94,
+                        "evidence", "하의의 짙은 청색 표면"
                 ))
         ));
+        garments.put("SHOES", null);
+        String outputText = objectMapper.writeValueAsString(Map.of("garments", garments));
         String responseBody = objectMapper.writeValueAsString(Map.of(
                 "output", List.of(Map.of(
                         "content", List.of(Map.of(
