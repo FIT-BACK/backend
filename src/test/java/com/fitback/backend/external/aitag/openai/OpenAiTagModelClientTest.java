@@ -244,6 +244,50 @@ class OpenAiTagModelClientTest {
     }
 
     @Test
+    void classifiesGarmentWithTwoEmptyTagArraysAsInvalidModelOutputSchema() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String outputText = objectMapper.writeValueAsString(Map.of(
+                "garments", List.of(Map.of(
+                        "piece", "TOP",
+                        "canonicalTags", List.of(),
+                        "suggestedTags", List.of()
+                ))
+        ));
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of(
+                                "type", "output_text",
+                                "text", outputText
+                        ))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, responseBody);
+
+            assertAnalysisNotReady(client);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "responseStatus=200",
+                                    "outputTypes=[message]",
+                                    "contentTypes=[output_text]",
+                                    "responseParsingCategory=INVALID_MODEL_OUTPUT_SCHEMA"
+                            )
+                            .doesNotContain(outputText, "test-key", "data:image"));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
     void redactsNonStringResponseMetadataValues() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         String responseBody = objectMapper.writeValueAsString(Map.of(

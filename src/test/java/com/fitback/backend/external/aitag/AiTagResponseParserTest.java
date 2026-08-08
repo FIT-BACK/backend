@@ -84,6 +84,25 @@ class AiTagResponseParserTest {
     }
 
     @Test
+    void rejectsGarmentWhoseTwoTagArraysAreEmpty() {
+        String json = """
+                {
+                  "garments": [
+                    {
+                      "piece": "TOP",
+                      "canonicalTags": [],
+                      "suggestedTags": []
+                    }
+                  ]
+                }
+                """;
+
+        assertThatThrownBy(() -> parser.parse(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("garment tags must not be empty");
+    }
+
+    @Test
     void rejectsDuplicateGarmentPieces() {
         String json = """
                 {
