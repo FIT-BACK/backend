@@ -3,9 +3,13 @@ package com.fitback.backend.external.aitag;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fitback.backend.domain.tag.entity.TagType;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
 
 class OpenAiTagEvaluationMainTest {
 
@@ -70,5 +74,46 @@ class OpenAiTagEvaluationMainTest {
         assertThat(summary.exactMatchRate()).isZero();
         assertThat(summary.falseNegatives().count()).isEqualTo(1);
         assertThat(summary.latency()).isEqualTo(new OpenAiTagEvaluationMain.Latency(null, null, null));
+    }
+
+    @Test
+    void rejectsDatasetPropertiesOutsideTheGoldLabelSchema(@TempDir Path directory) throws Exception {
+        Path dataset = directory.resolve("gold-labels.json");
+        Files.writeString(dataset, """
+                {
+                  "cases": [{
+                    "imageId": "top-01",
+                    "imagePath": "images/top-01.jpg",
+                    "expectedCanonicalTags": [{"type": "STYLE", "name": "캐주얼"}]
+                  }],
+                  "unexpected": true
+                }
+                """);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> OpenAiTagEvaluationMain.readDataset(dataset)
+        ).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("dataset contains unsupported fields");
+    }
+
+    @Test
+    void rejectsImageSymlinkThatResolvesOutsideTheDataset(@TempDir Path directory) throws Exception {
+        Path datasetDirectory = Files.createDirectory(directory.resolve("dataset"));
+        Path imagesDirectory = Files.createDirectory(datasetDirectory.resolve("images"));
+        Path externalImage = Files.write(directory.resolve("outside.jpg"), new byte[]{1});
+        Files.createSymbolicLink(imagesDirectory.resolve("linked.jpg"), externalImage);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> OpenAiTagEvaluationMain.resolveImage(datasetDirectory, "images/linked.jpg")
+        ).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("imagePath must remain within the dataset directory");
+    }
+
+    @Test
+    void documentsGoldTagUniquenessInTheSchema() throws Exception {
+        Path schema = Path.of("scripts/poc/ai-tag-evaluation/gold-labels.schema.json");
+        assertThat(new ObjectMapper().readTree(Files.readString(schema))
+                .path("properties").path("cases").path("items").path("properties")
+                .path("expectedCanonicalTags").path("uniqueItems").asBoolean()).isTrue();
     }
 }

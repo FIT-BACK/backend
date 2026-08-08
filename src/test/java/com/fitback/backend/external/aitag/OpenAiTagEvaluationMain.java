@@ -5,6 +5,7 @@ import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.external.aitag.config.AiTagProperties;
 import com.fitback.backend.external.aitag.openai.OpenAiTagModelClient;
 import com.fitback.backend.global.exception.BusinessException;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -21,6 +22,11 @@ import tools.jackson.databind.ObjectMapper;
 public final class OpenAiTagEvaluationMain {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Set<String> DATASET_FIELDS = Set.of("cases");
+    private static final Set<String> CASE_FIELDS = Set.of(
+            "imageId", "imagePath", "expectedCanonicalTags"
+    );
+    private static final Set<String> TAG_FIELDS = Set.of("type", "name");
     private static final Comparator<TagKey> TAG_ORDER = Comparator
             .comparing((TagKey key) -> key.type().name()).thenComparing(TagKey::name);
 
@@ -106,7 +112,7 @@ public final class OpenAiTagEvaluationMain {
         }
     }
 
-    private static Path resolveImage(Path datasetDirectory, String imagePath) {
+    static Path resolveImage(Path datasetDirectory, String imagePath) throws IOException {
         Path candidate = Path.of(imagePath);
         if (candidate.isAbsolute()) {
             throw new IllegalArgumentException("imagePath must be relative to the dataset");
@@ -116,23 +122,30 @@ public final class OpenAiTagEvaluationMain {
                 || contentType(resolved) == null) {
             throw new IllegalArgumentException("imagePath must reference a JPEG, PNG, or WEBP file");
         }
-        return resolved;
+        Path datasetRoot = datasetDirectory.toRealPath();
+        Path imageRealPath = resolved.toRealPath();
+        if (!imageRealPath.startsWith(datasetRoot)) {
+            throw new IllegalArgumentException("imagePath must remain within the dataset directory");
+        }
+        return imageRealPath;
     }
 
-    private static void validateImagePaths(Path datasetDirectory, List<EvaluationCase> cases) {
+    private static void validateImagePaths(Path datasetDirectory, List<EvaluationCase> cases) throws IOException {
         for (EvaluationCase evaluationCase : cases) {
             resolveImage(datasetDirectory, evaluationCase.imagePath());
         }
     }
 
-    private static List<EvaluationCase> readDataset(Path path) throws Exception {
+    static List<EvaluationCase> readDataset(Path path) throws Exception {
         JsonNode root = OBJECT_MAPPER.readTree(Files.readString(path));
+        requireOnlyFields(root, DATASET_FIELDS, "dataset");
         if (!root.path("cases").isArray() || root.path("cases").isEmpty()) {
             throw new IllegalArgumentException("dataset cases must not be empty");
         }
         List<EvaluationCase> cases = new ArrayList<>();
         Set<String> imageIds = new LinkedHashSet<>();
         for (JsonNode item : root.path("cases")) {
+            requireOnlyFields(item, CASE_FIELDS, "dataset case");
             String imageId = requiredText(item, "imageId");
             if (!imageIds.add(imageId)) {
                 throw new IllegalArgumentException("dataset imageId values must be unique");
@@ -143,6 +156,7 @@ public final class OpenAiTagEvaluationMain {
             }
             List<AiTagPrediction> tags = new ArrayList<>();
             for (JsonNode tag : expectedTags) {
+                requireOnlyFields(tag, TAG_FIELDS, "expected canonical tag");
                 tags.add(new AiTagPrediction(
                         TagType.valueOf(requiredText(tag, "type")), requiredText(tag, "name")));
             }
@@ -152,6 +166,12 @@ public final class OpenAiTagEvaluationMain {
             cases.add(new EvaluationCase(imageId, requiredText(item, "imagePath"), tags));
         }
         return List.copyOf(cases);
+    }
+
+    private static void requireOnlyFields(JsonNode node, Set<String> allowedFields, String objectName) {
+        if (!node.isObject() || !allowedFields.containsAll(node.propertyNames())) {
+            throw new IllegalArgumentException(objectName + " contains unsupported fields");
+        }
     }
 
     private static List<Tag> readCatalog(Path path) throws Exception {
