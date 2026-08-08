@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "imageId": "top-01",
+      "imagePath": ".local/poc/product-provider/images/top-01.jpeg",
+      "garmentCategory": "TOP",
+      "reviewerA": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
+    },
+    {
+      "imageId": "public-bottom-01",
+      "imagePath": ".local/poc/product-provider/images/public-bottom-01.jpeg",
+      "garmentCategory": "PANTS",
+      "reviewerA": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
+    },
+    {
+      "imageId": "ai-bottom-02",
+      "imagePath": ".local/poc/product-provider/images/ai-bottom-02.png",
+      "garmentCategory": "SKIRT",
+      "reviewerA": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
+    },
+    {
+      "imageId": "ai-dress-01",
+      "imagePath": ".local/poc/product-provider/images/ai-dress-01.png",
+      "garmentCategory": "DRESS",
+      "reviewerA": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
+    },
+    {
+      "imageId": "outer-01",
+      "imagePath": ".local/poc/product-provider/images/outer-01.jpeg",
+      "garmentCategory": "OUTER",
+      "reviewerA": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "reviewerB": {"status": "PENDING", "expectedCanonicalTags": [], "note": ""},
+      "adjudication": {"status": "PENDING", "finalExpectedCanonicalTags": [], "decisionNote": ""}
+    }
+  ]
+}
