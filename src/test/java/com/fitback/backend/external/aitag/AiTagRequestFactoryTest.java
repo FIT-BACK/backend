@@ -37,6 +37,7 @@ class AiTagRequestFactoryTest {
                 ));
         Map<String, Object> suggestedTags = map(garmentProperties.get("suggestedTags"));
         Map<String, Object> suggestionName = itemProperty(suggestedTags, "name");
+        List<Map<String, Object>> requiredTagAlternatives = maps(garmentItem.get("anyOf"));
 
         assertThat(request.jsonSchema().get("required")).isEqualTo(List.of("garments"));
         assertThat(garments)
@@ -57,6 +58,20 @@ class AiTagRequestFactoryTest {
         assertThat(suggestedTags)
                 .containsEntry("minItems", 0)
                 .containsEntry("maxItems", 8);
+        assertThat(requiredTagAlternatives)
+                .allSatisfy(alternative -> assertThat(alternative)
+                        .containsEntry("type", "object")
+                        .containsEntry("additionalProperties", false)
+                        .containsEntry(
+                                "required",
+                                List.of("piece", "canonicalTags", "suggestedTags")
+                        ));
+        assertThat(requiredTagAlternatives).anySatisfy(alternative -> assertThat(
+                map(map(alternative.get("properties")).get("canonicalTags"))
+        ).containsEntry("minItems", 1));
+        assertThat(requiredTagAlternatives).anySatisfy(alternative -> assertThat(
+                map(map(alternative.get("properties")).get("suggestedTags"))
+        ).containsEntry("minItems", 1));
         assertThat(request.prompt()).contains(
                 "product-only fashion image",
                 "TOP, BOTTOM, and SHOES",
@@ -64,6 +79,7 @@ class AiTagRequestFactoryTest {
                 "DETAIL, STYLE, and MATERIAL",
                 "Korean",
                 "Do not copy an exact canonical tag into suggestedTags",
+                "At least one of canonicalTags or suggestedTags must contain a tag",
                 "visible evidence"
         );
     }
