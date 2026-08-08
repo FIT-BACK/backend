@@ -77,6 +77,40 @@ class OpenAiTagEvaluationMainTest {
     }
 
     @Test
+    void recordsOnlySafeFailureMetadataAndBase64ImageLength() {
+        OpenAiTagEvaluationMain.EvaluationCase evaluationCase = new OpenAiTagEvaluationMain.EvaluationCase(
+                "top-01", "images/top-01.jpeg", List.of(
+                        new AiTagPrediction(TagType.STYLE, "캐주얼")
+                ));
+        OpenAiTagEvaluationMain.CaseResult result = OpenAiTagEvaluationMain.CaseResult.failed(
+                evaluationCase,
+                "ANALYSIS409_1",
+                321L,
+                500,
+                "SERVER_ERROR",
+                null,
+                OpenAiTagEvaluationMain.base64ImageLength(4)
+        );
+
+        assertThat(result.imageId()).isEqualTo("top-01");
+        assertThat(result.elapsedMillis()).isEqualTo(321L);
+        assertThat(result.providerHttpStatus()).isEqualTo(500);
+        assertThat(result.providerErrorCategory()).isEqualTo("SERVER_ERROR");
+        assertThat(result.responseParsingCategory()).isNull();
+        assertThat(result.base64ImageLength()).isEqualTo(8L);
+        assertThat(result.error()).isEqualTo("ANALYSIS409_1");
+    }
+
+    @Test
+    void calculatesBase64LengthWithoutEncodingImageBytes() {
+        assertThat(OpenAiTagEvaluationMain.base64ImageLength(0)).isZero();
+        assertThat(OpenAiTagEvaluationMain.base64ImageLength(1)).isEqualTo(4L);
+        assertThat(OpenAiTagEvaluationMain.base64ImageLength(2)).isEqualTo(4L);
+        assertThat(OpenAiTagEvaluationMain.base64ImageLength(3)).isEqualTo(4L);
+        assertThat(OpenAiTagEvaluationMain.base64ImageLength(4)).isEqualTo(8L);
+    }
+
+    @Test
     void rejectsDatasetPropertiesOutsideTheGoldLabelSchema(@TempDir Path directory) throws Exception {
         Path dataset = directory.resolve("gold-labels.json");
         Files.writeString(dataset, """

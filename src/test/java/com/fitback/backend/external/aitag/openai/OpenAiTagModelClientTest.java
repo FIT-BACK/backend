@@ -107,6 +107,37 @@ class OpenAiTagModelClientTest {
     }
 
     @Test
+    void exposesOnlySafeMetadataForProviderHttpFailures() {
+        OpenAiTagModelClient client = clientReturning(500, "provider-secret-response");
+
+        assertThatThrownBy(() -> client.analyze(
+                new AiTagImage(new byte[]{1}, "image/jpeg"),
+                new AiTagModelRequest("analyze", Map.of("type", "object"))
+        )).isInstanceOfSatisfying(OpenAiTagModelClient.ProviderFailure.class, failure -> {
+            assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.ANALYSIS_NOT_READY);
+            assertThat(failure.providerHttpStatus()).isEqualTo(500);
+            assertThat(failure.providerErrorCategory()).isEqualTo("SERVER_ERROR");
+            assertThat(failure.responseParsingCategory()).isNull();
+            assertThat(failure.elapsedMillis()).isNotNegative();
+        });
+    }
+
+    @Test
+    void exposesExistingSafeParsingCategoryWithoutResponseText() {
+        OpenAiTagModelClient client = clientReturning(200, "provider-secret-response");
+
+        assertThatThrownBy(() -> client.analyze(
+                new AiTagImage(new byte[]{1}, "image/jpeg"),
+                new AiTagModelRequest("analyze", Map.of("type", "object"))
+        )).isInstanceOfSatisfying(OpenAiTagModelClient.ProviderFailure.class, failure -> {
+            assertThat(failure.providerHttpStatus()).isEqualTo(200);
+            assertThat(failure.providerErrorCategory()).isNull();
+            assertThat(failure.responseParsingCategory()).isEqualTo("INVALID_RESPONSE_JSON");
+            assertThat(failure.elapsedMillis()).isNotNegative();
+        });
+    }
+
+    @Test
     void logsHttpStatusAndSafeProviderCategoryWithoutSensitiveValues() {
         Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();

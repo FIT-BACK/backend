@@ -78,28 +78,28 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     properties.model(),
                     elapsedMillis(startedAt)
             );
-            throw notReady();
+            throw providerFailure(null, "INTERRUPTED", null, startedAt);
         } catch (HttpTimeoutException exception) {
             log.warn(
                     "AI tag provider call failed. provider=openai model={} providerErrorCategory=TIMEOUT elapsedMillis={}",
                     properties.model(),
                     elapsedMillis(startedAt)
             );
-            throw notReady();
+            throw providerFailure(null, "TIMEOUT", null, startedAt);
         } catch (IOException exception) {
             log.warn(
                     "AI tag provider call failed. provider=openai model={} providerErrorCategory=TRANSPORT_ERROR elapsedMillis={}",
                     properties.model(),
                     elapsedMillis(startedAt)
             );
-            throw notReady();
+            throw providerFailure(null, "TRANSPORT_ERROR", null, startedAt);
         } catch (RuntimeException exception) {
             log.warn(
                     "AI tag provider request failed. provider=openai model={} providerErrorCategory=REQUEST_ERROR elapsedMillis={}",
                     properties.model(),
                     elapsedMillis(startedAt)
             );
-            throw notReady();
+            throw providerFailure(null, "REQUEST_ERROR", null, startedAt);
         }
         if (response.statusCode() >= 400) {
             ResponseMetadata metadata = responseMetadata(response.body());
@@ -116,7 +116,9 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     providerErrorCategory(response.statusCode()),
                     elapsedMillis(startedAt)
             );
-            throw notReady();
+            throw providerFailure(
+                    response.statusCode(), providerErrorCategory(response.statusCode()), null, startedAt
+            );
         }
         JsonNode root;
         try {
@@ -128,7 +130,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     "INVALID_RESPONSE_JSON",
                     startedAt
             );
-            throw notReady();
+            throw providerFailure(response.statusCode(), null, "INVALID_RESPONSE_JSON", startedAt);
         }
         if (root == null || !root.isObject()) {
             logResponseParsingFailure(
@@ -137,7 +139,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     "INVALID_RESPONSE_SHAPE",
                     startedAt
             );
-            throw notReady();
+            throw providerFailure(response.statusCode(), null, "INVALID_RESPONSE_SHAPE", startedAt);
         }
 
         ResponseMetadata metadata = responseMetadata(root);
@@ -146,7 +148,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             outputJson = outputText(root);
         } catch (ResponseParsingException exception) {
             logResponseParsingFailure(response, metadata, exception.category(), startedAt);
-            throw notReady();
+            throw providerFailure(response.statusCode(), null, exception.category(), startedAt);
         }
 
         try {
@@ -161,7 +163,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     "INVALID_MODEL_OUTPUT_JSON",
                     startedAt
             );
-            throw notReady();
+            throw providerFailure(response.statusCode(), null, "INVALID_MODEL_OUTPUT_JSON", startedAt);
         }
 
         try {
@@ -183,7 +185,10 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     "INVALID_MODEL_OUTPUT_SCHEMA:" + schemaFailureCategory(exception),
                     startedAt
             );
-            throw notReady();
+            throw providerFailure(
+                    response.statusCode(), null,
+                    "INVALID_MODEL_OUTPUT_SCHEMA:" + schemaFailureCategory(exception), startedAt
+            );
         }
     }
 
@@ -435,8 +440,55 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         }
     }
 
-    private static BusinessException notReady() {
-        return new BusinessException(ErrorCode.ANALYSIS_NOT_READY);
+    private static ProviderFailure providerFailure(
+            Integer providerHttpStatus,
+            String providerErrorCategory,
+            String responseParsingCategory,
+            long startedAt
+    ) {
+        return new ProviderFailure(
+                providerHttpStatus,
+                providerErrorCategory,
+                responseParsingCategory,
+                elapsedMillis(startedAt)
+        );
+    }
+
+    public static final class ProviderFailure extends BusinessException {
+
+        private final Integer providerHttpStatus;
+        private final String providerErrorCategory;
+        private final String responseParsingCategory;
+        private final long elapsedMillis;
+
+        private ProviderFailure(
+                Integer providerHttpStatus,
+                String providerErrorCategory,
+                String responseParsingCategory,
+                long elapsedMillis
+        ) {
+            super(ErrorCode.ANALYSIS_NOT_READY);
+            this.providerHttpStatus = providerHttpStatus;
+            this.providerErrorCategory = providerErrorCategory;
+            this.responseParsingCategory = responseParsingCategory;
+            this.elapsedMillis = elapsedMillis;
+        }
+
+        public Integer providerHttpStatus() {
+            return providerHttpStatus;
+        }
+
+        public String providerErrorCategory() {
+            return providerErrorCategory;
+        }
+
+        public String responseParsingCategory() {
+            return responseParsingCategory;
+        }
+
+        public long elapsedMillis() {
+            return elapsedMillis;
+        }
     }
 
     @FunctionalInterface
