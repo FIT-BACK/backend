@@ -111,8 +111,11 @@ class AiTagRequestFactoryTest {
                 "Return only prominent, identity-defining DETAIL tags",
                 "Prefer one dominant STYLE tag",
                 "examples, not exhaustive definitions",
-                "mentally correct its orientation"
-        );
+                "mentally correct its orientation",
+                "use a precise, high-confidence suggested",
+                "tag with visible evidence instead of guessing a canonical tag",
+                "must still contain at least one canonical or suggested tag"
+        ).doesNotContain("Return every canonical tag with its matching type");
     }
 
     @Test

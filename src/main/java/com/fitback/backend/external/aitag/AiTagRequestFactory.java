@@ -45,6 +45,9 @@ public final class AiTagRequestFactory {
                 - Return a sparse set of only high-confidence, visibly supported tags. Inspecting
                   all five dimensions does not require a tag from every type. When uncertain, omit
                   the tag instead of guessing.
+                - If no canonical tag is high-confidence, use a precise, high-confidence suggested
+                  tag with visible evidence instead of guessing a canonical tag. Every returned
+                  garment must still contain at least one canonical or suggested tag.
                 - Do not choose the closest canonical tag when the exact attribute is not visibly
                   supported. Do not return competing tags for the same attribute, such as two fits,
                   rises, or lengths.
