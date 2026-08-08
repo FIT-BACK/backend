@@ -82,6 +82,18 @@ public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
             );
             throw notReady();
         }
+        // 최소 사용량 로그 — 아직 별도 대시보드/알람은 없지만, 최소한 호출당 비용 추정이
+        // 가능하도록 provider/모델/토큰/응답시간을 기록한다. (TF 산출물 안정화: API 비용 모니터링)
+        // 검증 실패 시의 첫 로그가 경고(canonicalValidationCategory=...)여야 한다는 기존
+        // 테스트 가정이 있어, 검증을 통과한 뒤(성공 경로)에만 기록한다.
+        log.info(
+                "AI tag analysis call completed. provider={} model={} inputTokens={} outputTokens={} elapsedMs={}",
+                result.provider(),
+                result.model(),
+                result.inputTokens(),
+                result.outputTokens(),
+                result.elapsedMillis()
+        );
         return predictedKeys.stream().map(canonicalTags::get).toList();
     }
 
