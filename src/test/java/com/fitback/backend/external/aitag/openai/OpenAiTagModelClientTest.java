@@ -146,9 +146,97 @@ class OpenAiTagModelClientTest {
 
             String message = appender.list.getFirst().getFormattedMessage();
             assertThat(message)
-                    .contains("provider=openai", "model=test-model")
-                    .contains("responseParsingCategory=INVALID_OR_MISSING_OUTPUT", "elapsedMillis=")
+                    .contains("provider=openai", "model=test-model", "responseStatus=200")
+                    .contains("responseParsingCategory=INVALID_RESPONSE_JSON", "elapsedMillis=")
                     .doesNotContain("provider-secret-response", "test-key");
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void logsResponseMetadataAndMissingOutputStageWithoutSensitiveValues() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String responseSecret = "provider-response-secret";
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "incomplete_details", Map.of("reason", "max_output_tokens"),
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of(
+                                "type", "refusal",
+                                "refusal", responseSecret
+                        ))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, responseBody);
+
+            assertAnalysisNotReady(client);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "responseStatus=200",
+                                    "incompleteDetailsReason=max_output_tokens",
+                                    "outputTypes=[message]",
+                                    "contentTypes=[refusal]",
+                                    "responseParsingCategory=MISSING_OUTPUT_TEXT"
+                            )
+                            .doesNotContain(
+                                    responseSecret,
+                                    "test-key",
+                                    "data:image"
+                            ));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void logsInvalidModelOutputJsonWithoutOutputTextOrResponseBody() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String responseSecret = "provider-response-secret";
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "incomplete_details", Map.of("reason", "content_filter"),
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of(
+                                "type", "output_text",
+                                "text", responseSecret
+                        ))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = clientReturning(200, responseBody);
+
+            assertAnalysisNotReady(client);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "responseStatus=200",
+                                    "incompleteDetailsReason=content_filter",
+                                    "outputTypes=[message]",
+                                    "contentTypes=[output_text]",
+                                    "responseParsingCategory=INVALID_MODEL_OUTPUT_JSON"
+                            )
+                            .doesNotContain(
+                                    responseSecret,
+                                    "test-key",
+                                    "data:image"
+                            ));
         } finally {
             logger.detachAppender(appender);
             appender.stop();
