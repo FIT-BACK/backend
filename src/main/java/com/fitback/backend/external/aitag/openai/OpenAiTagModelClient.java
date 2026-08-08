@@ -123,10 +123,17 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
+            // 실제 실패 원인(예외 타입/메시지)을 남겨야 "응답 자체가 없었는지",
+            // "output_text가 없었는지", "JSON 스키마와 다른 모양으로 왔는지"를 구분할 수 있다 —
+            // 기존엔 원인을 버리고 전부 INVALID_OR_MISSING_OUTPUT 하나로 뭉뚱그려서
+            // 실패 사유를 로그만으로 세분화할 수 없었다. (원문 응답 자체는 민감정보 유출
+            // 우려로 로그에 남기지 않는다 — logsResponseParsingFailureWithoutResponseBody 참고)
             log.warn(
-                    "AI tag provider response parsing failed. provider=openai model={} responseParsingCategory=INVALID_OR_MISSING_OUTPUT elapsedMillis={}",
+                    "AI tag provider response parsing failed. provider=openai model={} responseParsingCategory=INVALID_OR_MISSING_OUTPUT elapsedMillis={} causeType={} causeMessage={}",
                     properties.model(),
-                    elapsedMillis(startedAt)
+                    elapsedMillis(startedAt),
+                    exception.getClass().getSimpleName(),
+                    exception.getMessage()
             );
             throw notReady();
         }
