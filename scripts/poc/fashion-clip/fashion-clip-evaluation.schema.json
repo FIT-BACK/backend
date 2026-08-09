@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FIT-BACK Fashion-CLIP PoC A evaluation dataset",
+  "type": "object",
+  "required": ["query", "candidates"],
+  "properties": {
+    "query": {
+      "type": "object",
+      "required": ["imageId", "imagePath"],
+      "properties": {
+        "imageId": {"type": "string", "minLength": 1},
+        "imagePath": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["imageId", "imagePath", "relationLabel"],
+        "properties": {
+          "imageId": {"type": "string", "minLength": 1},
+          "imagePath": {"type": "string", "minLength": 1},
+          "relationLabel": {
+            "type": "string",
+            "enum": ["NEAR_DUPLICATE", "VISUALLY_SIMILAR", "SAME_CATEGORY_DIFFERENT_DESIGN", "UNRELATED"]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
