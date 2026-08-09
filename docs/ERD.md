@@ -95,7 +95,7 @@ providerIdentityKey = SHA-256(
 | `ProductStorageMode` | `product.storage_mode VARCHAR(20)` | `SNAPSHOT`, `IDENTITY_ONLY` |
 | `ProductAvailability` | `product.availability VARCHAR(30)` | `AVAILABLE`, `UNAVAILABLE`, `TEMPORARILY_UNRESOLVED`, `UNKNOWN` |
 | `ProductCategory` | category 컬럼 `VARCHAR(30)` | `OUTER`, `TOP`, `BOTTOM`, `DRESS`, `SHOES`, `BAG`, `ACCESSORY`, `OTHER` |
-| `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(30)` | `TAG_MATCH_RATIO_V1`, `TAG_MATCH_RATIO_THRESHOLD_V1` (신규 생성), `SIMILARITY_V1`, `SIMILARITY_THRESHOLD_V2` (레거시) |
+| `RecommendationScoreVersion` | `recommended_item.score_version VARCHAR(30)` | `IMAGE_TAG_WEIGHTED_V1`, `IMAGE_TAG_WEIGHTED_THR_V1` (신규 생성), `TAG_MATCH_RATIO_V1`, `TAG_MATCH_RATIO_THRESHOLD_V1`, `SIMILARITY_V1`, `SIMILARITY_THRESHOLD_V2` (레거시) |
 | `ProductTagSource` | `product_tag.source VARCHAR(20)` | `PROVIDER`, `AI`, `RULE`, `MANUAL` |
 | `TagType` | `tag.tag_type VARCHAR(30)` | `STYLE`, `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` |
 | `TagTargetClothing` | `tag_target_clothing.target_clothing VARCHAR(20)` | `TOP`, `PANTS`, `SKIRT`, `DRESS`, `OUTER`, `ALL` |
@@ -418,9 +418,9 @@ CK_PRODUCT_PRICE_VALUE(
 | `input_revision` | `INT` | N | 생성에 사용한 분석 결과 version |
 | `rank_no` | `INT` | N | category 안의 1~10 순위 |
 | `category` | `VARCHAR(30)` | N | 생성 시점 내부 category |
-| `similarity_score` | `DECIMAL(5,2)` | N | 0~100 정규화 점수 |
+| `similarity_score` | `DECIMAL(5,2)` | N | 이미지 70%와 태그 30%를 합산한 0~100 점수 |
 | `final_score` | `DECIMAL(5,2)` | N | 이번 범위에서는 similarity와 동일 |
-| `score_version` | `VARCHAR(30)` | N | 신규 `TAG_MATCH_RATIO_V1`/`TAG_MATCH_RATIO_THRESHOLD_V1`, 레거시 `SIMILARITY_V1`/`SIMILARITY_THRESHOLD_V2` |
+| `score_version` | `VARCHAR(30)` | N | 신규 `IMAGE_TAG_WEIGHTED_V1`/`IMAGE_TAG_WEIGHTED_THR_V1`, 레거시 `TAG_MATCH_RATIO_V1`/`TAG_MATCH_RATIO_THRESHOLD_V1`/`SIMILARITY_V1`/`SIMILARITY_THRESHOLD_V2` |
 | `reason_codes` | `VARCHAR(500)` | N | 정렬된 내부 code 목록. 신규 추천 항목은 최소 1개 필수 |
 | `created_at` | `DATETIME(6)` | N | 생성 시각 |
 
@@ -748,8 +748,13 @@ V27은 프론트의 `targetId` 계약에 맞춰 `trend_content.trend_id` 1~6과 
 
 ## 5. 유사도 점수 영속 근거
 
-- 공급자 raw score를 그대로 저장하지 않고 Adapter 계약으로 0~100에 정규화한다.
+- 공급자 raw score는 추천 점수에 사용하지 않는다.
 - 분석 태그 fallback과 normalization은 쇼핑 API Adapter contract test로 고정한다.
+- `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 태그 일치 비율을 0~100의
+  `tagMatchScore`로 계산하며, 대상 태그가 없으면 100점으로 처리한다.
+- `similarity_score = temporaryImageSimilarityScore * 0.7 + tagMatchScore * 0.3`이다.
+- 실제 이미지 유사도 연동 전까지 `temporaryImageSimilarityScore`는 70점으로 고정하며,
+  이미지 유사도 계산 구현 후 실제 계산 결과로 교체한다.
 - `similarity_score`는 scale 2, `RoundingMode.HALF_UP`으로 저장한다.
 - `final_score = similarity_score`다.
 - 정렬은 `similarity_score DESC -> source_api ASC -> external_product_id ASC ->
