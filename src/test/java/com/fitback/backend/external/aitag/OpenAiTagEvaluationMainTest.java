@@ -174,6 +174,26 @@ class OpenAiTagEvaluationMainTest {
     }
 
     @Test
+    void stopsRetryingAndRestoresInterruptFlagWhenBackoffIsInterrupted() {
+        try {
+            OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                    sequence(providerFailure(500, "SERVER_ERROR")),
+                    ignoredDelay -> {
+                        throw new InterruptedException("interrupted");
+                    },
+                    ignoredBound -> 0L
+            );
+
+            assertThat(retryResult.successful()).isFalse();
+            assertThat(retryResult.attemptCount()).isEqualTo(1);
+            assertThat(retryResult.failure().error()).isEqualTo("EVALUATION_RETRY_INTERRUPTED");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
     void doesNotRetryNonTransientProviderOrParsingFailures() {
         List<OpenAiTagEvaluationMain.EvaluationFailure> failures = List.of(
                 new OpenAiTagEvaluationMain.EvaluationFailure("ANALYSIS409_1", 1L, 400, "CLIENT_ERROR", null),

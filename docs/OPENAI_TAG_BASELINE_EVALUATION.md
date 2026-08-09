@@ -57,6 +57,7 @@ FITBACK_AI_REQUEST_TIMEOUT=PT30S \
 최대 2회 추가 시도한다. 첫 retry는 `250–500ms`, 두 번째 retry는 `500–1000ms`의 짧은
 exponential backoff+jitter를 사용한다. 4xx/429, timeout·transport, response parsing·schema·canonical
 실패는 자동 retry하지 않는다. production `OpenAiTagModelClient` 호출 경로에는 이 정책이 적용되지 않는다.
+backoff 대기 중 인터럽트되면 남은 시도를 중단하고 `EVALUATION_RETRY_INTERRUPTED`를 기록한다.
 
 ## 결과 해석
 
@@ -67,8 +68,8 @@ exponential backoff+jitter를 사용한다. 4xx/429, timeout·transport, respons
 - summary와 각 사례의 `falseNegatives`, `falsePositives`, `unknownCanonicalTags`는 총 개수와
   `(type, name)`별 빈도를 기록한다. unknown 출력은 동시에 false positive로 집계한다.
 - `latency`는 성공한 OpenAI 호출의 밀리초 집계다. `tokens.input`과 `tokens.output`은 OpenAI가 사용량을 반환한 호출만 합산하며, 미보고 사용량은 `null`이다.
-- 실패 사례의 `error`에는 `ANALYSIS409_1` 같은 안전한 도메인 오류 코드 또는 입력/예상 밖 실패
-  category만 기록한다. raw 요청·응답·예외 메시지는 기록하지 않는다. 실패 사례는 baseline의
+- 실패 사례의 `error`에는 `ANALYSIS409_1`, `EVALUATION_RETRY_INTERRUPTED` 같은 안전한 도메인
+  오류 코드 또는 입력/예상 밖 실패 category만 기록한다. raw 요청·응답·예외 메시지는 기록하지 않는다. 실패 사례는 baseline의
   tag precision/recall/F1 및 exact match 계산에는 예측이 없는 사례로 포함한다. latency와 token
   집계는 실제 OpenAI 응답을 받은 성공 호출만 사용한다.
 - 각 사례에는 총 호출 횟수 `attemptCount`와 최종 평가 상태 `finalStatus`(`SUCCESS` 또는 `FAILED`)를
