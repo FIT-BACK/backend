@@ -93,6 +93,32 @@ class AiTagRequestFactoryTest {
     }
 
     @Test
+    void includesPrecisionFirstCanonicalTagSelectionPolicy() {
+        AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
+                Tag.create("와이드핏", TagType.SILHOUETTE, List.of(TagTargetClothing.PANTS)),
+                Tag.create("코튼", TagType.MATERIAL, List.of(TagTargetClothing.ALL)),
+                Tag.create("단추", TagType.DETAIL, List.of(TagTargetClothing.ALL)),
+                Tag.create("캐주얼", TagType.STYLE, List.of(TagTargetClothing.ALL))
+        ));
+
+        assertThat(request.prompt()).contains(
+                "Return a sparse set of only high-confidence, visibly supported tags",
+                "does not require a tag from every type",
+                "Do not choose the closest canonical tag",
+                "Do not return competing tags for the same attribute",
+                "Do not infer 코튼 or 우븐/시어 from generic fabric appearance or drape alone",
+                "Return fit or rise tags only when directly observable",
+                "Return only prominent, identity-defining DETAIL tags",
+                "Prefer one dominant STYLE tag",
+                "examples, not exhaustive definitions",
+                "mentally correct its orientation",
+                "use a precise, high-confidence suggested",
+                "tag with visible evidence instead of guessing a canonical tag",
+                "must still contain at least one canonical or suggested tag"
+        ).doesNotContain("Return every canonical tag with its matching type");
+    }
+
+    @Test
     void requiresAtLeastOneNonNullGarmentWhileRetainingNullablePieceChoices() {
         AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
                 Tag.create("베이지", TagType.COLOR, List.of(TagTargetClothing.ALL))
