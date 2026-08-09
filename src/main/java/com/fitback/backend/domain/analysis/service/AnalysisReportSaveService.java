@@ -238,10 +238,13 @@ public class AnalysisReportSaveService {
             }
         }
 
+        // 카테고리마다 하나씩 고르도록 강제하지 않는다 — 마음에 드는 상품 1개만 골라도
+        // 저장할 수 있어야 하므로, 요청된 카테고리가 추천 결과 안에 실제로 존재하는지만
+        // 검증한다(추천에 없는 카테고리를 요청하면 거부).
         Set<ProductCategory> availableCategories = recommendedItems.stream()
                 .map(RecommendedItem::getCategory)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (!availableCategories.equals(requestedByCategory.keySet())) {
+        if (!availableCategories.containsAll(requestedByCategory.keySet())) {
             throw invalidSelection();
         }
 
@@ -253,13 +256,11 @@ public class AnalysisReportSaveService {
                         ),
                         Function.identity()
                 ));
-        return availableCategories.stream()
-                .map(category -> {
-                    AnalysisReportSaveRequest.SelectedItem requested =
-                            requestedByCategory.get(category);
+        return requestedByCategory.entrySet().stream()
+                .map(entry -> {
                     RecommendedItem selected = itemsBySelection.get(new SelectionKey(
-                            category,
-                            requested.productId()
+                            entry.getKey(),
+                            entry.getValue().productId()
                     ));
                     if (selected == null) {
                         throw invalidSelection();

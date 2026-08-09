@@ -153,7 +153,9 @@ class AnalysisReportSaveServiceTest {
     }
 
     @Test
-    void rejectsSelectionWhenAnAvailableCategoryIsMissing() {
+    void savesPartialSelectionWhenNotEveryAvailableCategoryIsChosen() {
+        // 마음에 드는 상품 1개만 골라도 저장할 수 있어야 한다 — 추천에 잡힌 카테고리를
+        // 전부 채우도록 강제하지 않는다.
         Member member = member(1L);
         AnalysisReport report = currentReport(501L, member);
         Product top = product(101L, ProductCategory.TOP, "셔츠", new BigDecimal("28900"));
@@ -175,11 +177,52 @@ class AnalysisReportSaveServiceTest {
                         recommendation(report, top, ProductCategory.TOP, 1),
                         recommendation(report, bottom, ProductCategory.BOTTOM, 1)
                 ));
+        when(closetSaveRepository.saveAndFlush(any(ClosetSave.class)))
+                .thenAnswer(invocation -> {
+                    ClosetSave save = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(save, "id", 901L);
+                    ReflectionTestUtils.setField(
+                            save,
+                            "createdAt",
+                            LocalDateTime.parse("2026-07-26T09:00:00")
+                    );
+                    return save;
+                });
+        when(savedAnalysisItemRepository.saveAll(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AnalysisReportSaveService.SaveOutcome outcome = service.save(
+                1L,
+                501L,
+                request(selected(ProductCategory.TOP, 101L))
+        );
+
+        assertThat(outcome.created()).isTrue();
+        assertThat(outcome.response().selectedItems())
+                .extracting("category", "productId")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(ProductCategory.TOP, 101L));
+    }
+
+    @Test
+    void rejectsSelectionForCategoryNotInRecommendationResults() {
+        // 추천 결과에 아예 없는 카테고리(SHOES)를 골랐다고 우기면 여전히 거부해야 한다.
+        Member member = member(1L);
+        AnalysisReport report = currentReport(501L, member);
+        Product top = product(101L, ProductCategory.TOP, "셔츠", new BigDecimal("28900"));
+        when(analysisReportRepository.findOwnedReportForSave(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
+                1L,
+                ClosetTargetType.ANALYSIS_REPORT,
+                501L
+        )).thenReturn(Optional.empty());
+        when(recommendedItemRepository.findByReportIdOrderByCategoryAscRankNoAsc(501L))
+                .thenReturn(List.of(recommendation(report, top, ProductCategory.TOP, 1)));
 
         assertThatThrownBy(() -> service.save(
                 1L,
                 501L,
-                request(selected(ProductCategory.TOP, 101L))
+                request(selected(ProductCategory.SHOES, 999L))
         ))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
