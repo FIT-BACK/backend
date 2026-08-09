@@ -8,11 +8,24 @@ public record AiTagModelResult(
         List<AiTagGarment> garments,
         Integer inputTokens,
         Integer outputTokens,
-        long elapsedMillis
+        long elapsedMillis,
+        String xRequestId
 ) {
+
+    public AiTagModelResult(
+            String provider,
+            String model,
+            List<AiTagGarment> garments,
+            Integer inputTokens,
+            Integer outputTokens,
+            long elapsedMillis
+    ) {
+        this(provider, model, garments, inputTokens, outputTokens, elapsedMillis, "UNAVAILABLE");
+    }
 
     public AiTagModelResult {
         garments = AiTagResults.validateGarments(garments);
+        xRequestId = AiTagRequestIdSanitizer.sanitize(xRequestId);
     }
 
     public List<AiTagPrediction> canonicalTags() {

@@ -82,7 +82,7 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(jsonPath("$.code").value("COMMON200_1"))
                 .andExpect(jsonPath("$.data.reportId").value(report.getId()))
                 .andExpect(jsonPath("$.data.analysisTags[0]").value("Fixture"))
-                .andExpect(jsonPath("$.data.scoreVersion").value("TAG_MATCH_RATIO_V1"))
+                .andExpect(jsonPath("$.data.scoreVersion").value("IMAGE_TAG_WEIGHTED_V1"))
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
                 .andExpect(jsonPath("$.data.recommendationGroups.length()").value(8))
                 .andExpect(jsonPath(
@@ -96,7 +96,7 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.recommendationGroups[1].items[0].name")
                         .value("Fixture Minimal Shirt"))
                 .andExpect(jsonPath("$.data.recommendationGroups[1].items[0].similarityScore")
-                        .value(100.00))
+                        .value(79.00))
                 .andExpect(jsonPath(
                         "$.data.recommendationGroups[1].items[0].reasonCodes[0]"
                 ).value("FULL_ATTRIBUTE_MATCH"))
@@ -111,11 +111,12 @@ class RecommendationControllerIntegrationTest {
         assertThat(recommendedItemRepository.count()).isEqualTo(1);
         assertThat(recommendedItemRepository.findAll())
                 .allSatisfy(item -> {
-                    assertThat(item.getScoreVersion()).isEqualTo("TAG_MATCH_RATIO_V1");
-                    assertThat(item.getSimilarityScore()).isEqualByComparingTo("100.00");
+                    assertThat(item.getScoreVersion()).isEqualTo("IMAGE_TAG_WEIGHTED_V1");
+                    assertThat(item.getSimilarityScore()).isEqualByComparingTo("79.00");
+                    assertThat(item.getFinalScore()).isEqualByComparingTo("79.00");
                 });
         assertThat(analysisReportRepository.findById(report.getId()).orElseThrow()
-                .getResultScoreVersion()).isEqualTo("TAG_MATCH_RATIO_V1");
+                .getResultScoreVersion()).isEqualTo("IMAGE_TAG_WEIGHTED_V1");
 
         mockMvc.perform(post(
                                 "/api/v1/analyses/{reportId}/recommendations",
@@ -134,7 +135,7 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.tags[0]").value("Fixture"))
                 .andExpect(jsonPath("$.data.matchPercentage").value(70))
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
-                .andExpect(jsonPath("$.data.scoreVersion").value("TAG_MATCH_RATIO_V1"))
+                .andExpect(jsonPath("$.data.scoreVersion").value("IMAGE_TAG_WEIGHTED_V1"))
                 .andExpect(jsonPath("$.data.recommendationGroups.length()").value(8));
     }
 
@@ -181,7 +182,7 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.analysisTags[1]").value("고프코어"))
                 .andExpect(jsonPath("$.data.matchPercentage").value(70))
                 .andExpect(jsonPath("$.data.scoreVersion")
-                        .value("TAG_MATCH_RATIO_THRESHOLD_V1"));
+                        .value("IMAGE_TAG_WEIGHTED_THR_V1"));
     }
 
     @Test
@@ -204,10 +205,10 @@ class RecommendationControllerIntegrationTest {
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.scoreVersion")
-                        .value("TAG_MATCH_RATIO_THRESHOLD_V1"))
+                        .value("IMAGE_TAG_WEIGHTED_THR_V1"))
                 .andExpect(jsonPath(
                         "$.data.recommendationGroups[1].items[0].similarityScore"
-                ).value(0.00))
+                ).value(49.00))
                 .andExpect(jsonPath(
                         "$.data.recommendationGroups[1].items[0].reasonCodes.length()"
                 ).value(1))
@@ -219,12 +220,12 @@ class RecommendationControllerIntegrationTest {
                 .isNotEmpty()
                 .allSatisfy(item -> {
                     assertThat(item.getScoreVersion())
-                            .isEqualTo("TAG_MATCH_RATIO_THRESHOLD_V1");
+                            .isEqualTo("IMAGE_TAG_WEIGHTED_THR_V1");
                     assertThat(item.getReasonCodeList())
                             .containsExactly("NO_ATTRIBUTE_MATCH");
                 });
         assertThat(analysisReportRepository.findById(report.getId()).orElseThrow()
-                .getResultScoreVersion()).isEqualTo("TAG_MATCH_RATIO_THRESHOLD_V1");
+                .getResultScoreVersion()).isEqualTo("IMAGE_TAG_WEIGHTED_THR_V1");
     }
 
     @Test
@@ -352,11 +353,11 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
                 .andExpect(jsonPath("$.data.scoreVersion")
-                        .value("TAG_MATCH_RATIO_THRESHOLD_V1"));
+                        .value("IMAGE_TAG_WEIGHTED_THR_V1"));
 
         assertThat(recommendedItemRepository.count()).isZero();
         assertThat(analysisReportRepository.findById(report.getId()).orElseThrow()
-                .getResultScoreVersion()).isEqualTo("TAG_MATCH_RATIO_THRESHOLD_V1");
+                .getResultScoreVersion()).isEqualTo("IMAGE_TAG_WEIGHTED_THR_V1");
     }
 
     @Test
