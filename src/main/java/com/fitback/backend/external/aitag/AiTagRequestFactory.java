@@ -51,12 +51,17 @@ public final class AiTagRequestFactory {
                 - Do not choose the closest canonical tag when the exact attribute is not visibly
                   supported. Do not return competing tags for the same attribute, such as two fits,
                   rises, or lengths.
-                - MATERIAL: Return a tag only when construction or texture is visually clear.
-                  Do not infer 코튼 or 우븐/시어 from generic fabric appearance or drape alone.
+                - MATERIAL: Return a tag only when positive surface evidence distinguishes it from
+                  other canonical materials. Do not infer composition from color, drape, opacity,
+                  garment category, or generic fabric appearance. 우븐/시어 is not a fallback for
+                  non-knit fabric; regular knit loops or ribs support 니트, not a coarse woven
+                  material. If multiple materials remain plausible, omit MATERIAL.
                 - SILHOUETTE: Return fit or rise tags only when directly observable. Do not infer
                   body fit from a flat or hanging product image.
-                - DETAIL: Return only prominent, identity-defining DETAIL tags; omit ordinary or
-                  incidental closures and hardware.
+                - DETAIL: Mere visibility is insufficient. Return a DETAIL only when it is a
+                  dominant, discriminative design cue. Omit routine functional fastenings,
+                  closures, or hardware even when clearly visible; standard waist or neckline
+                  construction is not identity-defining by itself.
                 - STYLE: Prefer one dominant STYLE tag. Consider graphic, distressed, utility,
                   romantic, clean, restrained, tailored, and structured cues. These cues are
                   examples, not exhaustive definitions. Do not use a generic style as a fallback
