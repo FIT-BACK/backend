@@ -8,6 +8,7 @@ import com.fitback.backend.domain.product.service.model.ProviderProductRef;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class ImageComparisonCandidateSelectorTest {
@@ -73,9 +74,25 @@ class ImageComparisonCandidateSelectorTest {
                 .hasMessage("candidateLimit must be positive");
     }
 
+    @Test
+    void assignsOneThirdOfCandidateLimitToMultiTagPriorityOrdering() {
+        AtomicInteger receivedPriorityLimit = new AtomicInteger(-1);
+        ImageComparisonCandidateSelector selector = new ImageComparisonCandidateSelector(
+                (candidateBatches, multiTagPriorityLimit) -> {
+                    receivedPriorityLimit.set(multiTagPriorityLimit);
+                    return candidateBatches.stream().flatMap(List::stream).toList();
+                },
+                30
+        );
+
+        selector.select(List.of(List.of(candidate(1))));
+
+        assertThat(receivedPriorityLimit).hasValue(10);
+    }
+
     private static ImageComparisonCandidateSelector selector(int candidateLimit) {
         return new ImageComparisonCandidateSelector(
-                candidateBatches -> candidateBatches.stream()
+                (candidateBatches, multiTagPriorityLimit) -> candidateBatches.stream()
                         .flatMap(List::stream)
                         .toList(),
                 candidateLimit

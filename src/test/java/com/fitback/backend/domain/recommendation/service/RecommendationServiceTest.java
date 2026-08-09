@@ -80,7 +80,7 @@ class RecommendationServiceTest {
                 candidateMapper,
                 materializationService,
                 new ImageComparisonCandidateSelector(
-                        new RoundRobinImageComparisonCandidateOrderingPolicy(),
+                        new MultiTagPriorityImageComparisonCandidateOrderingPolicy(),
                         candidateLimit
                 ),
                 new RecommendationScorer(),

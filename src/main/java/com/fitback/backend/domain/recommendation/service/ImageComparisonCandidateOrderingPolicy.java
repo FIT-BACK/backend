@@ -6,6 +6,7 @@ import java.util.List;
 public interface ImageComparisonCandidateOrderingPolicy {
 
     List<ExternalProductCandidate> order(
-            List<List<ExternalProductCandidate>> candidateBatches
+            List<List<ExternalProductCandidate>> candidateBatches,
+            int multiTagPriorityLimit
     );
 }
