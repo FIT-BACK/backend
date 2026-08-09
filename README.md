@@ -55,7 +55,7 @@ SHOPIFY_LANGUAGE=ko
 SHOPIFY_CURRENCY=KRW
 SHOPPING_CANDIDATE_TOKEN_TTL=PT10M
 SHOPPING_PROVIDER=fixture
-RECOMMENDATION_VISION_CANDIDATE_LIMIT=64
+RECOMMENDATION_VISION_CANDIDATE_LIMIT=30
 APP_CORS_ALLOWED_ORIGINS=https://frontend-chi-one-35.vercel.app,http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173
 KAKAO_REST_API_KEY=team_kakao_rest_api_key
 KAKAO_REST_API_SECRET=team_kakao_client_secret
@@ -66,8 +66,9 @@ FRONT_PASSWORD_RESET_URL=http://localhost:3000/reset-password
 ```
 
 `RECOMMENDATION_VISION_CANDIDATE_LIMIT`는 태그별 상품 검색 결과 중 비전 비교 단계에 전달할
-최대 후보 개수이며 기본값은 64입니다. 이미지 비교 처리 시간과 API 비용에 따라 코드 수정 없이
-조정할 수 있습니다. 이 값은 전체 후보 개수이며 이미지 모델의 요청당 배치 크기와는 별도로 관리합니다.
+최대 후보 개수이며 기본값은 30입니다. 사용자 이미지 1장을 포함하면 총 31장이므로 요청당 최대
+8장을 처리하는 현재 Fashion-CLIP PoC 기준 4개 배치로 나눌 수 있습니다. 이미지 비교 처리 시간과
+API 비용에 따라 코드 수정 없이 조정할 수 있습니다.
 
 쇼핑 공급자는 기본값으로 `fixture`를 사용합니다. Shopify Global Catalog를 사용하려면
 `SHOPPING_PROVIDER=shopify`와 `SHOPIFY_ENABLED=true`를 함께 설정합니다. 익명 호출에는 API
