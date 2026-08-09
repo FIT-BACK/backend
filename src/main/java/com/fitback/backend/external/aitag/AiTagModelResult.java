@@ -25,7 +25,7 @@ public record AiTagModelResult(
 
     public AiTagModelResult {
         garments = AiTagResults.validateGarments(garments);
-        xRequestId = xRequestId == null ? "UNAVAILABLE" : xRequestId;
+        xRequestId = AiTagRequestIdSanitizer.sanitize(xRequestId);
     }
 
     public List<AiTagPrediction> canonicalTags() {

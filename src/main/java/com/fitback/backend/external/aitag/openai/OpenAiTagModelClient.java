@@ -5,6 +5,7 @@ import com.fitback.backend.external.aitag.AiTagModelClient;
 import com.fitback.backend.external.aitag.AiTagModelOutput;
 import com.fitback.backend.external.aitag.AiTagModelRequest;
 import com.fitback.backend.external.aitag.AiTagModelResult;
+import com.fitback.backend.external.aitag.AiTagRequestIdSanitizer;
 import com.fitback.backend.external.aitag.AiTagResponseParser;
 import com.fitback.backend.external.aitag.config.AiTagProperties;
 import com.fitback.backend.global.exception.BusinessException;
@@ -31,8 +32,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     private static final String ENDPOINT = "https://api.openai.com/v1/responses";
     private static final int MAX_LOGGED_TYPE_COUNT = 20;
     private static final int MAX_LOGGED_TYPE_LENGTH = 64;
-    private static final int MAX_X_REQUEST_ID_LENGTH = 128;
-    private static final String UNAVAILABLE_X_REQUEST_ID = "UNAVAILABLE";
+    private static final String UNAVAILABLE_X_REQUEST_ID = AiTagRequestIdSanitizer.UNAVAILABLE;
     private static final Logger log = LoggerFactory.getLogger(OpenAiTagModelClient.class);
 
     private final AiTagProperties.OpenAi properties;
@@ -557,16 +557,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     }
 
     static String sanitizeXRequestId(String value) {
-        if (value == null || value.isBlank() || value.length() > MAX_X_REQUEST_ID_LENGTH) {
-            return UNAVAILABLE_X_REQUEST_ID;
-        }
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
-            if (character < 0x20 || character > 0x7e) {
-                return UNAVAILABLE_X_REQUEST_ID;
-            }
-        }
-        return value;
+        return AiTagRequestIdSanitizer.sanitize(value);
     }
 
     private static final class JdkTransport implements Transport {

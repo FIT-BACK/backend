@@ -67,10 +67,12 @@ class OpenAiTagEvaluationMainTest {
                         new AiTagPrediction(TagType.STYLE, "캐주얼")
                 ));
 
-        OpenAiTagEvaluationMain.EvaluationSummary summary = OpenAiTagEvaluationMain.summarize(List.of(
-                OpenAiTagEvaluationMain.CaseResult.failed(evaluationCase, "ANALYSIS409_1")
-        ));
+        OpenAiTagEvaluationMain.CaseResult result = OpenAiTagEvaluationMain.CaseResult.failed(
+                evaluationCase, "ANALYSIS409_1");
+        OpenAiTagEvaluationMain.EvaluationSummary summary = OpenAiTagEvaluationMain.summarize(List.of(result));
 
+        assertThat(result.attemptCount()).isZero();
+        assertThat(result.attempts()).isEmpty();
         assertThat(summary.micro()).isEqualTo(new OpenAiTagEvaluationMain.Metrics(0.0, 0.0, 0.0));
         assertThat(summary.macro()).isEqualTo(new OpenAiTagEvaluationMain.Metrics(0.0, 0.0, 0.0));
         assertThat(summary.exactMatchRate()).isZero();

@@ -484,7 +484,7 @@ public final class OpenAiTagEvaluationMain {
             List<AttemptMetadata> attempts
     ) {
         static CaseResult failed(EvaluationCase evaluationCase, String error) {
-            return failed(evaluationCase, error, null, null, null, null, null, 1);
+            return failed(evaluationCase, error, null, null, null, null, null, 0, List.of());
         }
 
         static CaseResult failed(

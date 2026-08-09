@@ -129,6 +129,12 @@ class OpenAiTagModelClientTest {
     void mapsMissingInvalidAndOversizedRequestIdsToUnavailable() {
         assertThat(new OpenAiTagModelClient.TransportResponse(500, "body").xRequestId())
                 .isEqualTo("UNAVAILABLE");
+        assertThat(new OpenAiTagModelClient.TransportResponse(500, "body", null).xRequestId())
+                .isEqualTo("UNAVAILABLE");
+        assertThat(new OpenAiTagModelClient.TransportResponse(500, "body", "").xRequestId())
+                .isEqualTo("UNAVAILABLE");
+        assertThat(new OpenAiTagModelClient.TransportResponse(500, "body", "   ").xRequestId())
+                .isEqualTo("UNAVAILABLE");
         assertThat(new OpenAiTagModelClient.TransportResponse(500, "body", "bad\nvalue").xRequestId())
                 .isEqualTo("UNAVAILABLE");
         assertThat(new OpenAiTagModelClient.TransportResponse(500, "body", "x".repeat(129)).xRequestId())
