@@ -37,7 +37,7 @@ public class AiTagProviderConfig {
             ObjectMapper objectMapper
     ) {
         properties.openai().validateForUse();
-        return new OpenAiTagModelClient(
+        return OpenAiTagModelClient.forProduction(
                 properties.openai(),
                 properties.requestTimeout(),
                 objectMapper

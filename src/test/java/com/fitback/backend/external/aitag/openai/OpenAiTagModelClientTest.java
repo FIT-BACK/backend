@@ -13,11 +13,15 @@ import com.fitback.backend.global.exception.ErrorCode;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import java.io.IOException;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.net.http.HttpHeaders;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -458,6 +462,256 @@ class OpenAiTagModelClientTest {
         assertAnalysisNotReady(client);
     }
 
+    @Test
+    void retriesTransientProviderStatusesOnceAndRecoversWithinLogicalBudget() throws Exception {
+        for (int retryableStatus : List.of(500, 502, 503, 504)) {
+            FakeNanoClock clock = new FakeNanoClock();
+            List<Duration> attemptTimeouts = new ArrayList<>();
+            List<Long> delays = new ArrayList<>();
+            AtomicInteger attempts = new AtomicInteger();
+            String successBody = successfulResponseBody();
+            OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) -> {
+                attemptTimeouts.add(timeout);
+                int attempt = attempts.incrementAndGet();
+                clock.advanceMillis(1_000L);
+                if (attempt == 1) {
+                    return new OpenAiTagModelClient.TransportResponse(
+                            retryableStatus, "provider-secret-response", "req-" + retryableStatus + "-1"
+                    );
+                }
+                return new OpenAiTagModelClient.TransportResponse(
+                        200, successBody, "req-" + retryableStatus + "-2"
+                );
+            };
+            Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+            ListAppender<ILoggingEvent> appender = new ListAppender<>();
+            appender.start();
+            logger.addAppender(appender);
+            try {
+                OpenAiTagModelClient client = productionRetryClient(
+                        Duration.ofSeconds(30), transport, clock,
+                        millis -> {
+                            delays.add(millis);
+                            clock.advanceMillis(millis);
+                        }, bound -> 0L
+                );
+
+                AiTagModelResult result = client.analyze(
+                        new AiTagImage(new byte[]{1}, "image/jpeg"),
+                        new AiTagModelRequest("analyze", Map.of("type", "object"))
+                );
+
+                assertThat(attempts).hasValue(2);
+                assertThat(delays).containsExactly(250L);
+                assertThat(attemptTimeouts).hasSize(2);
+                assertThat(attemptTimeouts.get(0)).isEqualTo(Duration.ofSeconds(30));
+                assertThat(attemptTimeouts.get(1)).isEqualTo(Duration.ofMillis(28_750L));
+                assertThat(result.xRequestId()).isEqualTo("req-" + retryableStatus + "-2");
+                assertThat(appender.list)
+                        .extracting(ILoggingEvent::getFormattedMessage)
+                        .anySatisfy(message -> assertThat(message)
+                                .contains(
+                                        "attemptCount=1",
+                                        "attemptLatencyMillis=1000",
+                                        "xRequestId=req-" + retryableStatus + "-1"
+                                )
+                                .doesNotContain("provider-secret-response"))
+                        .anySatisfy(message -> assertThat(message)
+                                .contains(
+                                        "logicalRequestCount=1",
+                                        "providerAttemptCount=2",
+                                        "attemptCount=2",
+                                        "recoveredByRetry=true",
+                                        "logicalLatencyMillis=2250",
+                                        "attemptLatencyMillis=1000",
+                                        "xRequestId=req-" + retryableStatus + "-2"
+                                ));
+            } finally {
+                logger.detachAppender(appender);
+                appender.stop();
+            }
+        }
+    }
+
+    @Test
+    void returnsFinalFailureAfterTwoRetryableProviderFailures() {
+        FakeNanoClock clock = new FakeNanoClock();
+        AtomicInteger attempts = new AtomicInteger();
+        OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) -> {
+            int attempt = attempts.incrementAndGet();
+            clock.advanceMillis(10L);
+            return new OpenAiTagModelClient.TransportResponse(
+                    500, "provider-secret-response", "req-final-" + attempt
+            );
+        };
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpenAiTagModelClient client = productionRetryClient(
+                    Duration.ofSeconds(30), transport, clock,
+                    clock::advanceMillis, bound -> 0L
+            );
+
+            assertThatThrownBy(() -> analyze(client))
+                    .isInstanceOfSatisfying(OpenAiTagModelClient.ProviderFailure.class, failure -> {
+                        assertThat(failure.providerHttpStatus()).isEqualTo(500);
+                        assertThat(failure.xRequestId()).isEqualTo("req-final-2");
+                    });
+
+            assertThat(attempts).hasValue(2);
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message).contains(
+                            "logicalRequestCount=1",
+                            "providerAttemptCount=2",
+                            "attemptCount=2",
+                            "recoveredByRetry=false",
+                            "final5xx=true",
+                            "xRequestId=req-final-2"
+                    ));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void doesNotRetry429OrOtherClientErrors() {
+        for (int status : List.of(400, 401, 403, 408, 429)) {
+            FakeNanoClock clock = new FakeNanoClock();
+            AtomicInteger attempts = new AtomicInteger();
+            OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) -> {
+                attempts.incrementAndGet();
+                return new OpenAiTagModelClient.TransportResponse(status, "body", "req-" + status);
+            };
+            OpenAiTagModelClient client = productionRetryClient(
+                    Duration.ofSeconds(30), transport, clock,
+                    millis -> {
+                        throw new AssertionError("client errors must not sleep");
+                    }, bound -> 0L
+            );
+
+            assertThatThrownBy(() -> analyze(client))
+                    .isInstanceOf(OpenAiTagModelClient.ProviderFailure.class);
+            assertThat(attempts).hasValue(1);
+        }
+    }
+
+    @Test
+    void doesNotRetryUnselectedServerErrorsButReportsFinal5xx() {
+        for (int status : List.of(501, 505, 599)) {
+            FakeNanoClock clock = new FakeNanoClock();
+            AtomicInteger attempts = new AtomicInteger();
+            OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) -> {
+                attempts.incrementAndGet();
+                return new OpenAiTagModelClient.TransportResponse(status, "body", "req-" + status);
+            };
+            Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+            ListAppender<ILoggingEvent> appender = new ListAppender<>();
+            appender.start();
+            logger.addAppender(appender);
+            try {
+                OpenAiTagModelClient client = productionRetryClient(
+                        Duration.ofSeconds(30), transport, clock,
+                        millis -> {
+                            throw new AssertionError("unselected server errors must not sleep");
+                        }, bound -> 0L
+                );
+
+                assertThatThrownBy(() -> analyze(client))
+                        .isInstanceOf(OpenAiTagModelClient.ProviderFailure.class);
+
+                assertThat(attempts).hasValue(1);
+                assertThat(appender.list)
+                        .extracting(ILoggingEvent::getFormattedMessage)
+                        .anySatisfy(message -> assertThat(message).contains(
+                                "providerAttemptCount=1",
+                                "attemptCount=1",
+                                "final5xx=true",
+                                "xRequestId=req-" + status
+                        ));
+            } finally {
+                logger.detachAppender(appender);
+                appender.stop();
+            }
+        }
+    }
+
+    @Test
+    void doesNotRetryTimeoutOrTransportErrors() {
+        for (IOException failure : List.of(
+                new HttpTimeoutException("provider-secret-timeout"),
+                new IOException("provider-secret-transport")
+        )) {
+            FakeNanoClock clock = new FakeNanoClock();
+            AtomicInteger attempts = new AtomicInteger();
+            OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) -> {
+                attempts.incrementAndGet();
+                throw failure;
+            };
+            OpenAiTagModelClient client = productionRetryClient(
+                    Duration.ofSeconds(30), transport, clock,
+                    millis -> {
+                        throw new AssertionError("transport failures must not sleep");
+                    }, bound -> 0L
+            );
+
+            assertThatThrownBy(() -> analyze(client))
+                    .isInstanceOf(OpenAiTagModelClient.ProviderFailure.class);
+            assertThat(attempts).hasValue(1);
+        }
+    }
+
+    @Test
+    void doesNotRetryParserOrSchemaFailures() throws Exception {
+        for (String responseBody : List.of("not-json", invalidSchemaResponseBody())) {
+            FakeNanoClock clock = new FakeNanoClock();
+            AtomicInteger attempts = new AtomicInteger();
+            OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) -> {
+                attempts.incrementAndGet();
+                return new OpenAiTagModelClient.TransportResponse(200, responseBody, "req-parse");
+            };
+            OpenAiTagModelClient client = productionRetryClient(
+                    Duration.ofSeconds(30), transport, clock,
+                    millis -> {
+                        throw new AssertionError("parsing failures must not sleep");
+                    }, bound -> 0L
+            );
+
+            assertThatThrownBy(() -> analyze(client))
+                    .isInstanceOf(OpenAiTagModelClient.ProviderFailure.class);
+            assertThat(attempts).hasValue(1);
+        }
+    }
+
+    @Test
+    void skipsRetryWhenLogicalDeadlineCannotFitDelayAndMinimumAttemptWindow() {
+        FakeNanoClock clock = new FakeNanoClock();
+        AtomicInteger attempts = new AtomicInteger();
+        List<Duration> attemptTimeouts = new ArrayList<>();
+        OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) -> {
+            attempts.incrementAndGet();
+            attemptTimeouts.add(timeout);
+            clock.advanceMillis(29_600L);
+            return new OpenAiTagModelClient.TransportResponse(500, "body", "req-budget");
+        };
+        OpenAiTagModelClient client = productionRetryClient(
+                Duration.ofSeconds(30), transport, clock,
+                millis -> {
+                    throw new AssertionError("insufficient budget must not sleep");
+                }, bound -> bound - 1L
+        );
+
+        assertThatThrownBy(() -> analyze(client))
+                .isInstanceOf(OpenAiTagModelClient.ProviderFailure.class);
+
+        assertThat(attempts).hasValue(1);
+        assertThat(attemptTimeouts).containsExactly(Duration.ofSeconds(30));
+        assertThat(clock.nanoTime()).isEqualTo(Duration.ofMillis(29_600L).toNanos());
+    }
+
     private static OpenAiTagModelClient clientReturning(int statusCode, String responseBody) {
         return clientReturning(statusCode, responseBody, null);
     }
@@ -477,6 +731,75 @@ class OpenAiTagModelClientTest {
                 new ObjectMapper(),
                 transport
         );
+    }
+
+    private static OpenAiTagModelClient productionRetryClient(
+            Duration logicalTimeout,
+            OpenAiTagModelClient.Transport transport,
+            OpenAiTagModelClient.NanoClock clock,
+            OpenAiTagModelClient.Sleeper sleeper,
+            OpenAiTagModelClient.Jitter jitter
+    ) {
+        AiTagProperties.OpenAi properties = new AiTagProperties.OpenAi("test-key", "test-model");
+        return OpenAiTagModelClient.forProduction(
+                properties, logicalTimeout, new ObjectMapper(), transport, clock, sleeper, jitter
+        );
+    }
+
+    private static AiTagModelResult analyze(OpenAiTagModelClient client) {
+        return client.analyze(
+                new AiTagImage(new byte[]{1}, "image/jpeg"),
+                new AiTagModelRequest("analyze", Map.of("type", "object"))
+        );
+    }
+
+    private static String successfulResponseBody() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        Map<String, Object> garments = new LinkedHashMap<>();
+        garments.put("TOP", null);
+        garments.put("BOTTOM", Map.of(
+                "canonicalTags", List.of(Map.of("type", "MATERIAL", "name", "데님")),
+                "suggestedTags", List.of()
+        ));
+        garments.put("SHOES", null);
+        String outputText = objectMapper.writeValueAsString(Map.of(
+                "garments", garments
+        ));
+        return objectMapper.writeValueAsString(Map.of(
+                "output", List.of(Map.of(
+                        "content", List.of(Map.of("type", "output_text", "text", outputText))
+                ))
+        ));
+    }
+
+    private static String invalidSchemaResponseBody() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String outputText = objectMapper.writeValueAsString(Map.of(
+                "garments", List.of(Map.of(
+                        "piece", "TOP",
+                        "canonicalTags", List.of(),
+                        "suggestedTags", List.of()
+                ))
+        ));
+        return objectMapper.writeValueAsString(Map.of(
+                "output", List.of(Map.of(
+                        "content", List.of(Map.of("type", "output_text", "text", outputText))
+                ))
+        ));
+    }
+
+    private static final class FakeNanoClock implements OpenAiTagModelClient.NanoClock {
+
+        private long nowNanos;
+
+        @Override
+        public long nanoTime() {
+            return nowNanos;
+        }
+
+        private void advanceMillis(long millis) {
+            nowNanos += Duration.ofMillis(millis).toNanos();
+        }
     }
 
     private static void assertAnalysisNotReady(OpenAiTagModelClient client) {
