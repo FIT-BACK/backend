@@ -237,6 +237,122 @@ OIDC trust policy는 `FIT-BACK/backend`의 `main` branch에서만 역할을 위�
 }
 ```
 
+## Production backend 로그 및 OpenAI retry 관측성
+
+### 현재 상태와 목표 구성
+
+2026-08-10 KST 읽기 전용 확인 기준으로 production backend container는 Docker daemon 기본
+`json-file` logging driver를 사용한다. EC2의 `amazon-cloudwatch-agent`와 `awslogsd`는 비활성이고
+각 agent 설정 파일도 없으며, `/fitback/prod/*` CloudWatch log group, Fitback alarm, SNS topic도
+없다. `FitbackProductionEC2Role`에는 `AmazonSSMManagedInstanceCore`와
+`FitbackProductionRuntimeAccess`만 연결되어 있고 CloudWatch Logs write 권한은 없다.
+
+목표 구성은 [CloudFormation template](../deploy/aws/production-backend-observability.yaml)과
+`compose.yaml`에 정의한다.
+
+- backend stdout/stderr만 `/fitback/prod/backend`로 전송하며 보존 기간은 30일이다. Nginx는 기존
+  logging 구성을 유지한다.
+- Docker `awslogs-stream-prefix=backend`를 사용해 container마다
+  `backend/<container-name>/<container-id>` 형태의 고유 stream을 만든다.
+- log group은 stack이 먼저 생성하며 `awslogs-create-group=false`를 유지한다. 따라서 EC2 role에는
+  해당 log group ARN으로 제한한 `logs:CreateLogStream`, `logs:PutLogEvents`만 추가하고
+  `logs:CreateLogGroup`은 부여하지 않는다.
+- metric filter는 다음 세 문구를 모두 포함한 logical summary만 센다.
+
+  ```text
+  "AI tag provider logical request" "provider=openai" "providerAttemptCount=2"
+  ```
+
+  production client의 `maxAttempts=2` 경로에서 `providerAttemptCount=2`는 두 번째 provider 호출이
+  실제 수행됐다는 뜻이다. 첫 5xx 뒤 retry budget이 부족하면 logical failure가
+  `providerAttemptCount=1 final5xx=true`일 수 있으므로 `final5xx=true`만으로 retry를 세지 않는다.
+  단일 시도 client와 정상 1회 요청도 이 filter에 포함되지 않는다.
+- metric은 `Fitback/OpenAI` namespace의 `ProviderRetryCount`이며 matching logical request마다 1을
+  더한다. `xRequestId`를 포함한 dimension은 만들지 않는다.
+- `fitback-prod-openai-provider-retry` alarm은 5분 `Sum >= 1`, 1 evaluation period,
+  `TreatMissingData=notBreaching`으로 평가하고 SNS topic 하나를 호출한다.
+- 현재 재사용할 SNS topic이 없으므로 template 기본값은 구독 없는
+  `fitback-prod-openai-provider-retry` topic을 만든다. production 적용 전 운영자가 실제 알림을 받을
+  subscription을 별도 승인·확정해야 한다. 기존 topic이 생기면 `ExistingAlarmTopicArn` parameter로
+  재사용한다.
+- logical summary는 `recoveredByRetry=true`와 `final5xx=true`를 구분할 수 있지만, 첫 적용은 custom
+  metric 비용과 변경 범위를 줄이기 위해 실제 retry 횟수 metric 하나만 만든다. 회복/최종 실패
+  metric은 natural traffic 관측 후 별도 변경으로 검토한다.
+
+애플리케이션 OpenAI 코드, prompt, schema, model, retry 정책은 이 구성의 대상이 아니다. API key,
+secret, 원본 request/response body, provider raw response, 이미지와 data URL은 log group, filter,
+alarm, 문서에 기록하지 않는다.
+
+### 배포 전 검증
+
+아래 명령은 CloudFormation schema와 metric filter 문법을 검증하며 AWS resource나 log event를
+생성하지 않는다.
+
+```bash
+bash scripts/deploy/test_production_backend_observability.sh
+
+aws cloudformation validate-template \
+  --region ap-northeast-2 \
+  --template-body file://deploy/aws/production-backend-observability.yaml
+
+aws logs test-metric-filter \
+  --region ap-northeast-2 \
+  --filter-pattern '"AI tag provider logical request" "provider=openai" "providerAttemptCount=2"' \
+  --log-event-messages \
+  'AI tag provider logical request completed. provider=openai model=synthetic logicalRequestCount=1 providerAttemptCount=2 attemptCount=2 recoveredByRetry=true final5xx=false logicalLatencyMillis=1 attemptLatencyMillis=1 xRequestId=unavailable' \
+  'AI tag provider logical request completed. provider=openai model=synthetic logicalRequestCount=1 providerAttemptCount=1 attemptCount=1 recoveredByRetry=false final5xx=false logicalLatencyMillis=1 attemptLatencyMillis=1 xRequestId=unavailable'
+```
+
+`test-metric-filter` 결과는 첫 번째 synthetic event의 `eventNumber`만 포함해야 한다. 이 API는 sample
+message를 `/fitback/prod/backend`에 적재하거나 metric을 발행하지 않는다.
+
+### Production 적용 및 확인 순서
+
+이 순서는 PR merge와 production 적용이 승인된 뒤에만 실행한다. `awslogs-create-group=false`이므로
+CloudFormation stack을 backend release보다 먼저 적용해야 한다.
+
+1. 기존 알림 topic을 다시 조회한다. 2026-08-10 snapshot에는 topic이 없으므로 새 외부 서비스는
+   도입하지 않고 fallback SNS topic을 사용한다.
+2. 권한 있는 운영자가 stack을 적용한다. 기존 topic이 없으면 다음 명령처럼 빈 parameter를 유지한다.
+
+   ```bash
+   aws cloudformation deploy \
+     --region ap-northeast-2 \
+     --stack-name fitback-prod-backend-observability \
+     --template-file deploy/aws/production-backend-observability.yaml \
+     --capabilities CAPABILITY_NAMED_IAM \
+     --parameter-overrides \
+       EC2RoleName=FitbackProductionEC2Role
+   ```
+
+   기존 topic을 재사용할 때만 `ExistingAlarmTopicArn=<approved-topic-arn>`을 전달한다.
+3. stack output, `/fitback/prod/backend`의 30일 retention, metric filter, alarm, EC2 inline policy의
+   두 Logs action을 확인한다. fallback topic을 쓴다면 승인된 subscription을 연결하고 확인한다.
+4. `develop → main` release PR과 Backend CD를 통해 새 Compose 설정을 배포한다. application release와
+   stack 변경을 독립적으로 추적하고, rollback 전에도 log group과 IAM policy는 유지한다.
+5. public Nginx health와 backend readiness가 정상인지 확인한 뒤 다음과 같이 message 원문 없이 stream과
+   event 도착 여부만 확인한다.
+
+   ```bash
+   aws logs describe-log-streams \
+     --region ap-northeast-2 \
+     --log-group-name /fitback/prod/backend \
+     --log-stream-name-prefix backend/ \
+     --order-by LastEventTime \
+     --descending \
+     --max-items 5
+
+   aws logs filter-log-events \
+     --region ap-northeast-2 \
+     --log-group-name /fitback/prod/backend \
+     --limit 1 \
+     --query 'events[].{Timestamp:timestamp,Stream:logStreamName}'
+   ```
+
+6. artificial OpenAI 500, `set-alarm-state`, synthetic production log injection으로 alarm을 유발하지 않는다.
+   자연 traffic에서 아직 `providerAttemptCount=2`가 없으면 alarm의 `OK`/`INSUFFICIENT_DATA` 상태와
+   metric 부재를 정상적인 **natural traffic 대기**로 기록한다.
+
 ## EC2 Runtime 요구사항
 
 SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 asset을 설치하고 `/opt/fitback/current` symlink를 활성 release로 유지한다. 운영 AMI에는 다음 항목이 필요하다.
