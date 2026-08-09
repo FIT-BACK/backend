@@ -64,7 +64,11 @@ assert(options['awslogs-stream-prefix'] == 'backend', 'Backend log streams need 
 assert(options['awslogs-create-group'] == 'false', 'The EC2 role must not create log groups.')
 
 template_path = ENV.fetch('OBSERVABILITY_TEMPLATE')
-template = YAML.load_file(template_path)
+template = YAML.safe_load(
+  File.read(template_path),
+  permitted_classes: [CloudFormationTag],
+  aliases: true
+)
 resources = template.fetch('Resources')
 
 log_group = resources.fetch('BackendLogGroup')
