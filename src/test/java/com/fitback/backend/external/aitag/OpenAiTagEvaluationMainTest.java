@@ -255,6 +255,34 @@ class OpenAiTagEvaluationMainTest {
     }
 
     @Test
+    void serializesSafeMetadataForEveryProviderAttempt() throws Exception {
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(500, "SERVER_ERROR", "req-1"),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult("req-2"))
+                ),
+                ignoredDelay -> { },
+                ignoredBound -> 0L
+        );
+        OpenAiTagEvaluationMain.EvaluationCase evaluationCase = new OpenAiTagEvaluationMain.EvaluationCase(
+                "top-01", "images/top-01.jpeg", List.of(new AiTagPrediction(TagType.STYLE, "캐주얼")));
+        OpenAiTagEvaluationMain.CaseResult result = OpenAiTagEvaluationMain.successfulCase(
+                evaluationCase, retryResult.result(), Set.of(), 8L, retryResult.attemptCount(),
+                retryResult.attempts());
+
+        String serialized = new ObjectMapper().writeValueAsString(result);
+
+        assertThat(result.attempts()).containsExactly(
+                new OpenAiTagEvaluationMain.AttemptMetadata(1, 500, "SERVER_ERROR", 1L, "req-1"),
+                new OpenAiTagEvaluationMain.AttemptMetadata(2, null, null, 100L, "req-2")
+        );
+        assertThat(serialized)
+                .contains("\"attempt\":1", "\"httpStatus\":500", "\"xRequestId\":\"req-1\"")
+                .contains("\"attempt\":2", "\"xRequestId\":\"req-2\"")
+                .doesNotContain("provider-response", "test-key", "data:image", "imageBytes");
+    }
+
+    @Test
     void calculatesBase64LengthWithoutEncodingImageBytes() {
         assertThat(OpenAiTagEvaluationMain.base64ImageLength(0)).isZero();
         assertThat(OpenAiTagEvaluationMain.base64ImageLength(1)).isEqualTo(4L);
@@ -314,19 +342,29 @@ class OpenAiTagEvaluationMainTest {
     private static OpenAiTagEvaluationMain.EvaluationAttempt providerFailure(
             int status, String category
     ) {
+        return providerFailure(status, category, "UNAVAILABLE");
+    }
+
+    private static OpenAiTagEvaluationMain.EvaluationAttempt providerFailure(
+            int status, String category, String xRequestId
+    ) {
         return OpenAiTagEvaluationMain.EvaluationAttempt.failure(
                 new OpenAiTagEvaluationMain.EvaluationFailure(
-                        "ANALYSIS409_1", 1L, status, category, null));
+                        "ANALYSIS409_1", 1L, status, category, null, xRequestId));
     }
 
     private static AiTagModelResult modelResult() {
+        return modelResult("UNAVAILABLE");
+    }
+
+    private static AiTagModelResult modelResult(String xRequestId) {
         return new AiTagModelResult(
                 "openai", "gpt-5.6-luna", List.of(new AiTagGarment(
                         GarmentPiece.TOP,
                         List.of(new AiTagPrediction(TagType.STYLE, "캐주얼")),
                         List.of()
                 )),
-                10, 5, 100
+                10, 5, 100, xRequestId
         );
     }
 }
