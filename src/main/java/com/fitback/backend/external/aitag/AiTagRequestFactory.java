@@ -41,10 +41,37 @@ public final class AiTagRequestFactory {
                 DETAIL, STYLE, and MATERIAL. A dimension may have no result when it is not visibly
                 supported.
 
+                Precision policy:
+                - Return a sparse set of only high-confidence, visibly supported tags. Inspecting
+                  all five dimensions does not require a tag from every type. When uncertain, omit
+                  the tag instead of guessing.
+                - If no canonical tag is high-confidence, use a precise, high-confidence suggested
+                  tag with visible evidence instead of guessing a canonical tag. Every returned
+                  garment must still contain at least one canonical or suggested tag.
+                - Do not choose the closest canonical tag when the exact attribute is not visibly
+                  supported. Do not return competing tags for the same attribute, such as two fits,
+                  rises, or lengths.
+                - MATERIAL: Return a tag only when positive surface evidence distinguishes it from
+                  other canonical materials. Do not infer composition from color, drape, opacity,
+                  garment category, or generic fabric appearance. 우븐/시어 is not a fallback for
+                  non-knit fabric; regular knit loops or ribs support 니트, not a coarse woven
+                  material. If multiple materials remain plausible, omit MATERIAL.
+                - SILHOUETTE: Return fit or rise tags only when directly observable. Do not infer
+                  body fit from a flat or hanging product image.
+                - DETAIL: Mere visibility is insufficient. Return a DETAIL only when it is a
+                  dominant, discriminative design cue. Omit routine functional fastenings,
+                  closures, or hardware even when clearly visible; standard waist or neckline
+                  construction is not identity-defining by itself.
+                - STYLE: Prefer one dominant STYLE tag. Consider graphic, distressed, utility,
+                  romantic, clean, restrained, tailored, and structured cues. These cues are
+                  examples, not exhaustive definitions. Do not use a generic style as a fallback
+                  when stronger visible cues support another style.
+                - If the image is rotated, mentally correct its orientation before judging it.
+
                 canonicalTags:
                 - Select 0 to %d tags only from the exact canonical catalog below.
                 - Do not invent, translate, or normalize canonical tag names.
-                - Return every canonical tag with its matching type.
+                - Return each selected canonical tag with its matching type.
 
                 suggestedTags:
                 - Suggest 0 to %d precise tags that are visibly supported but missing from the

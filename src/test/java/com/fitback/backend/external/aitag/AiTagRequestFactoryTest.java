@@ -93,6 +93,41 @@ class AiTagRequestFactoryTest {
     }
 
     @Test
+    void includesPrecisionFirstCanonicalTagSelectionPolicy() {
+        AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
+                Tag.create("와이드핏", TagType.SILHOUETTE, List.of(TagTargetClothing.PANTS)),
+                Tag.create("코튼", TagType.MATERIAL, List.of(TagTargetClothing.ALL)),
+                Tag.create("단추", TagType.DETAIL, List.of(TagTargetClothing.ALL)),
+                Tag.create("캐주얼", TagType.STYLE, List.of(TagTargetClothing.ALL))
+        ));
+
+        assertThat(request.prompt()).contains(
+                "Return a sparse set of only high-confidence, visibly supported tags",
+                "does not require a tag from every type",
+                "Do not choose the closest canonical tag",
+                "Do not return competing tags for the same attribute",
+                "Return a tag only when positive surface evidence distinguishes it from",
+                "Do not infer composition from color, drape, opacity",
+                "우븐/시어 is not a fallback for",
+                "regular knit loops or ribs support 니트",
+                "If multiple materials remain plausible, omit MATERIAL",
+                "Return fit or rise tags only when directly observable",
+                "Mere visibility is insufficient",
+                "Return a DETAIL only when it is a",
+                "dominant, discriminative design cue",
+                "Omit routine functional fastenings",
+                "standard waist or neckline",
+                "construction is not identity-defining by itself",
+                "Prefer one dominant STYLE tag",
+                "examples, not exhaustive definitions",
+                "mentally correct its orientation",
+                "use a precise, high-confidence suggested",
+                "tag with visible evidence instead of guessing a canonical tag",
+                "must still contain at least one canonical or suggested tag"
+        ).doesNotContain("Return every canonical tag with its matching type");
+    }
+
+    @Test
     void requiresAtLeastOneNonNullGarmentWhileRetainingNullablePieceChoices() {
         AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
                 Tag.create("베이지", TagType.COLOR, List.of(TagTargetClothing.ALL))
