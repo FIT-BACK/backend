@@ -113,7 +113,9 @@ assert(Array(alarm['AlarmActions']).length == 1, 'Retry alarm must use exactly o
 
 topic = resources.fetch('AlarmNotificationTopic')
 assert(topic['Type'] == 'AWS::SNS::Topic', 'Fallback notification resource must be SNS.')
-assert(!topic.fetch('Properties').key?('Subscription'), 'Fallback SNS topic must not invent an external subscription.')
+topic_properties = topic.fetch('Properties')
+assert(topic_properties['KmsMasterKeyId'] == 'alias/aws/sns', 'Fallback SNS topic must use the AWS-managed SNS KMS key.')
+assert(!topic_properties.key?('Subscription'), 'Fallback SNS topic must not invent an external subscription.')
 
 template_text = File.read(template_path)
 forbidden = ['logs:CreateLogGroup', 'xRequestId', 'apiKey', 'raw response', 'request body', 'response body', 'data URL']

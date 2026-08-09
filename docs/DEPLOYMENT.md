@@ -241,11 +241,13 @@ OIDC trust policy는 `FIT-BACK/backend`의 `main` branch에서만 역할을 위�
 
 ### 현재 상태와 목표 구성
 
-2026-08-10 KST 읽기 전용 확인 기준으로 production backend container는 Docker daemon 기본
+2026-08-10 KST에 기록한 읽기 전용 snapshot 기준으로 production backend container는 Docker daemon 기본
 `json-file` logging driver를 사용한다. EC2의 `amazon-cloudwatch-agent`와 `awslogsd`는 비활성이고
 각 agent 설정 파일도 없으며, `/fitback/prod/*` CloudWatch log group, Fitback alarm, SNS topic도
 없다. `FitbackProductionEC2Role`에는 `AmazonSSMManagedInstanceCore`와
 `FitbackProductionRuntimeAccess`만 연결되어 있고 CloudWatch Logs write 권한은 없다.
+이 snapshot은 현재 상태를 영구 보증하지 않으므로 stack 적용 직전에 CloudWatch Logs, alarm, SNS,
+EC2 role policy를 다시 읽기 전용으로 확인한다.
 
 목표 구성은 [CloudFormation template](../deploy/aws/production-backend-observability.yaml)과
 `compose.yaml`에 정의한다.
@@ -311,8 +313,8 @@ message를 `/fitback/prod/backend`에 적재하거나 metric을 발행하지 않
 이 순서는 PR merge와 production 적용이 승인된 뒤에만 실행한다. `awslogs-create-group=false`이므로
 CloudFormation stack을 backend release보다 먼저 적용해야 한다.
 
-1. 기존 알림 topic을 다시 조회한다. 2026-08-10 snapshot에는 topic이 없으므로 새 외부 서비스는
-   도입하지 않고 fallback SNS topic을 사용한다.
+1. 기존 알림 topic과 subscription을 다시 조회한다. 2026-08-10 snapshot에는 topic이 없었으므로,
+   적용 직전에도 재사용할 승인 topic이 없을 때만 구독 없는 fallback SNS topic을 사용한다.
 2. 권한 있는 운영자가 stack을 적용한다. 기존 topic이 없으면 다음 명령처럼 빈 parameter를 유지한다.
 
    ```bash

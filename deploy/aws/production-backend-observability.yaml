@@ -56,6 +56,7 @@ Resources:
     Condition: CreateAlarmTopic
     Properties:
       TopicName: fitback-prod-openai-provider-retry
+      KmsMasterKeyId: alias/aws/sns
 
   ProviderRetryAlarm:
     Type: AWS::CloudWatch::Alarm
