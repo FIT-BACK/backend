@@ -14,6 +14,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.time.Duration;
+import java.net.http.HttpHeaders;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +56,7 @@ class OpenAiTagModelClientTest {
         AtomicReference<String> requestBody = new AtomicReference<>();
         OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) -> {
             requestBody.set(body);
-            return new OpenAiTagModelClient.TransportResponse(200, responseBody);
+            return new OpenAiTagModelClient.TransportResponse(200, responseBody, "req-200");
         };
         AiTagProperties.OpenAi properties = new AiTagProperties.OpenAi(
                 "test-key",
@@ -97,6 +98,7 @@ class OpenAiTagModelClientTest {
         });
         assertThat(result.inputTokens()).isEqualTo(20);
         assertThat(result.outputTokens()).isEqualTo(8);
+        assertThat(result.xRequestId()).isEqualTo("req-200");
     }
 
     @Test
@@ -108,7 +110,7 @@ class OpenAiTagModelClientTest {
 
     @Test
     void exposesOnlySafeMetadataForProviderHttpFailures() {
-        OpenAiTagModelClient client = clientReturning(500, "provider-secret-response");
+        OpenAiTagModelClient client = clientReturning(500, "provider-secret-response", "req-500");
 
         assertThatThrownBy(() -> client.analyze(
                 new AiTagImage(new byte[]{1}, "image/jpeg"),
@@ -119,7 +121,34 @@ class OpenAiTagModelClientTest {
             assertThat(failure.providerErrorCategory()).isEqualTo("SERVER_ERROR");
             assertThat(failure.responseParsingCategory()).isNull();
             assertThat(failure.elapsedMillis()).isNotNegative();
+            assertThat(failure.xRequestId()).isEqualTo("req-500");
         });
+    }
+
+    @Test
+    void mapsMissingInvalidAndOversizedRequestIdsToUnavailable() {
+        assertThat(new OpenAiTagModelClient.TransportResponse(500, "body").xRequestId())
+                .isEqualTo("UNAVAILABLE");
+        assertThat(new OpenAiTagModelClient.TransportResponse(500, "body", null).xRequestId())
+                .isEqualTo("UNAVAILABLE");
+        assertThat(new OpenAiTagModelClient.TransportResponse(500, "body", "").xRequestId())
+                .isEqualTo("UNAVAILABLE");
+        assertThat(new OpenAiTagModelClient.TransportResponse(500, "body", "   ").xRequestId())
+                .isEqualTo("UNAVAILABLE");
+        assertThat(new OpenAiTagModelClient.TransportResponse(500, "body", "bad\nvalue").xRequestId())
+                .isEqualTo("UNAVAILABLE");
+        assertThat(new OpenAiTagModelClient.TransportResponse(500, "body", "x".repeat(129)).xRequestId())
+                .isEqualTo("UNAVAILABLE");
+    }
+
+    @Test
+    void extractsOnlyPrintableRequestIdFromHttpHeaders() {
+        assertThat(OpenAiTagModelClient.sanitizeXRequestId(HttpHeaders.of(
+                Map.of("x-request-id", List.of("req-header")), (name, value) -> true)))
+                .isEqualTo("req-header");
+        assertThat(OpenAiTagModelClient.sanitizeXRequestId(HttpHeaders.of(
+                Map.of("x-request-id", List.of("bad\tvalue")), (name, value) -> true)))
+                .isEqualTo("UNAVAILABLE");
     }
 
     @Test
@@ -144,14 +173,14 @@ class OpenAiTagModelClientTest {
         appender.start();
         logger.addAppender(appender);
         try {
-            OpenAiTagModelClient client = clientReturning(429, "provider-secret-response");
+            OpenAiTagModelClient client = clientReturning(429, "provider-secret-response", "req-429");
 
             assertAnalysisNotReady(client);
 
             String message = appender.list.getFirst().getFormattedMessage();
             assertThat(message)
                     .contains("provider=openai", "model=test-model", "httpStatus=429")
-                    .contains("providerErrorCategory=RATE_LIMIT", "elapsedMillis=")
+                    .contains("providerErrorCategory=RATE_LIMIT", "elapsedMillis=", "xRequestId=req-429")
                     .doesNotContain("test-key", "provider-secret-response", "data:image");
         } finally {
             logger.detachAppender(appender);
@@ -430,12 +459,18 @@ class OpenAiTagModelClientTest {
     }
 
     private static OpenAiTagModelClient clientReturning(int statusCode, String responseBody) {
+        return clientReturning(statusCode, responseBody, null);
+    }
+
+    private static OpenAiTagModelClient clientReturning(
+            int statusCode, String responseBody, String xRequestId
+    ) {
         AiTagProperties.OpenAi properties = new AiTagProperties.OpenAi(
                 "test-key",
                 "test-model"
         );
         OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) ->
-                new OpenAiTagModelClient.TransportResponse(statusCode, responseBody);
+                new OpenAiTagModelClient.TransportResponse(statusCode, responseBody, xRequestId);
         return new OpenAiTagModelClient(
                 properties,
                 Duration.ofSeconds(1),
