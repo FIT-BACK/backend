@@ -30,6 +30,7 @@ public final class OpenAiTagEvaluationMain {
     private static final Set<String> TAG_FIELDS = Set.of("type", "name");
     private static final int MAX_ATTEMPTS = 3;
     private static final Set<Integer> RETRYABLE_PROVIDER_STATUSES = Set.of(500, 502, 503, 504);
+    private static final String UNAVAILABLE_X_REQUEST_ID = "UNAVAILABLE";
     private static final Sleeper SYSTEM_SLEEPER = Thread::sleep;
     private static final Jitter SYSTEM_JITTER = bound -> ThreadLocalRandom.current().nextLong(bound);
     private static final Comparator<TagKey> TAG_ORDER = Comparator
@@ -76,13 +77,28 @@ public final class OpenAiTagEvaluationMain {
             Set<TagKey> catalogKeys,
             Long base64ImageLength
     ) {
+        return successfulCase(
+                evaluationCase, result, catalogKeys, base64ImageLength, 1,
+                List.of(AttemptMetadata.success(1, result))
+        );
+    }
+
+    static CaseResult successfulCase(
+            EvaluationCase evaluationCase,
+            AiTagModelResult result,
+            Set<TagKey> catalogKeys,
+            Long base64ImageLength,
+            int attemptCount,
+            List<AttemptMetadata> attempts
+    ) {
         Set<TagKey> expected = tagKeys(evaluationCase.expectedCanonicalTags());
         Set<TagKey> predicted = tagKeys(result.canonicalTags());
         return new CaseResult(
                 evaluationCase.imageId(), evaluationCase.imagePath(), sorted(expected), sorted(predicted),
                 sorted(difference(expected, predicted)), sorted(difference(predicted, expected)),
                 sorted(difference(predicted, catalogKeys)), result.inputTokens(), result.outputTokens(),
-                result.elapsedMillis(), null, null, null, base64ImageLength, null, 1, "SUCCESS");
+                result.elapsedMillis(), null, null, null, base64ImageLength, null,
+                attemptCount, "SUCCESS", attempts);
     }
 
     static EvaluationSummary summarize(List<CaseResult> results) {
@@ -125,7 +141,7 @@ public final class OpenAiTagEvaluationMain {
             if (retryResult.successful()) {
                 return successfulCase(
                         evaluationCase, retryResult.result(), catalogKeys, base64ImageLength,
-                        retryResult.attemptCount()
+                        retryResult.attemptCount(), retryResult.attempts()
                 );
             }
             EvaluationFailure failure = retryResult.failure();
@@ -133,7 +149,7 @@ public final class OpenAiTagEvaluationMain {
                     evaluationCase,
                     failure.error(), failure.elapsedMillis(), failure.providerHttpStatus(),
                     failure.providerErrorCategory(), failure.responseParsingCategory(),
-                    base64ImageLength, retryResult.attemptCount()
+                    base64ImageLength, retryResult.attemptCount(), retryResult.attempts()
             );
         } catch (RuntimeException exception) {
             return CaseResult.failed(evaluationCase, "UNEXPECTED_EVALUATION_FAILURE");
@@ -151,7 +167,7 @@ public final class OpenAiTagEvaluationMain {
             return EvaluationAttempt.failure(new EvaluationFailure(
                     exception.getErrorCode().getCode(), exception.elapsedMillis(),
                     exception.providerHttpStatus(), exception.providerErrorCategory(),
-                    exception.responseParsingCategory()
+                    exception.responseParsingCategory(), exception.xRequestId()
             ));
         } catch (BusinessException exception) {
             return EvaluationAttempt.failure(new EvaluationFailure(
@@ -169,14 +185,16 @@ public final class OpenAiTagEvaluationMain {
     }
 
     static RetryResult analyzeWithRetry(EvaluationCall call, Sleeper sleeper, Jitter jitter) {
+        List<AttemptMetadata> attempts = new ArrayList<>();
         for (int attemptCount = 1; attemptCount <= MAX_ATTEMPTS; attemptCount++) {
             EvaluationAttempt attempt = call.invoke();
+            attempts.add(AttemptMetadata.from(attemptCount, attempt));
             if (attempt.successful()) {
-                return RetryResult.success(attempt.result(), attemptCount);
+                return RetryResult.success(attempt.result(), attemptCount, attempts);
             }
             EvaluationFailure failure = attempt.failure();
             if (attemptCount == MAX_ATTEMPTS || !isRetryable(failure)) {
-                return RetryResult.failure(failure, attemptCount);
+                return RetryResult.failure(failure, attemptCount, attempts);
             }
             long delayMillis = retryDelayMillis(attemptCount, jitter);
             try {
@@ -185,7 +203,7 @@ public final class OpenAiTagEvaluationMain {
                 Thread.currentThread().interrupt();
                 return RetryResult.failure(
                         new EvaluationFailure("EVALUATION_RETRY_INTERRUPTED", null, null, null, null),
-                        attemptCount
+                        attemptCount, attempts
                 );
             }
         }
@@ -462,10 +480,11 @@ public final class OpenAiTagEvaluationMain {
             List<TagKey> falsePositives, List<TagKey> unknownCanonicalTags,
             Integer inputTokens, Integer outputTokens, Long elapsedMillis,
             Integer providerHttpStatus, String providerErrorCategory, String responseParsingCategory,
-            Long base64ImageLength, String error, int attemptCount, String finalStatus
+            Long base64ImageLength, String error, int attemptCount, String finalStatus,
+            List<AttemptMetadata> attempts
     ) {
         static CaseResult failed(EvaluationCase evaluationCase, String error) {
-            return failed(evaluationCase, error, null, null, null, null, null, 1);
+            return failed(evaluationCase, error, null, null, null, null, null, 0, List.of());
         }
 
         static CaseResult failed(
@@ -491,11 +510,61 @@ public final class OpenAiTagEvaluationMain {
                 Long base64ImageLength,
                 int attemptCount
         ) {
+            return failed(
+                    evaluationCase, error, elapsedMillis, providerHttpStatus, providerErrorCategory,
+                    responseParsingCategory, base64ImageLength, attemptCount,
+                    List.of(new AttemptMetadata(
+                            attemptCount, providerHttpStatus, providerErrorCategory, elapsedMillis,
+                            UNAVAILABLE_X_REQUEST_ID))
+            );
+        }
+
+        static CaseResult failed(
+                EvaluationCase evaluationCase,
+                String error,
+                Long elapsedMillis,
+                Integer providerHttpStatus,
+                String providerErrorCategory,
+                String responseParsingCategory,
+                Long base64ImageLength,
+                int attemptCount,
+                List<AttemptMetadata> attempts
+        ) {
             return new CaseResult(evaluationCase.imageId(), evaluationCase.imagePath(),
                     sorted(tagKeys(evaluationCase.expectedCanonicalTags())), List.of(),
                     sorted(tagKeys(evaluationCase.expectedCanonicalTags())), List.of(), List.of(),
                     null, null, elapsedMillis, providerHttpStatus, providerErrorCategory,
-                    responseParsingCategory, base64ImageLength, error, attemptCount, "FAILED");
+                    responseParsingCategory, base64ImageLength, error, attemptCount, "FAILED", attempts);
+        }
+    }
+
+    record AttemptMetadata(
+            int attempt,
+            Integer httpStatus,
+            String providerErrorCategory,
+            Long elapsedMillis,
+            String xRequestId
+    ) {
+        static AttemptMetadata from(int attempt, EvaluationAttempt evaluationAttempt) {
+            if (evaluationAttempt.successful()) {
+                return success(attempt, evaluationAttempt.result());
+            }
+            return failure(attempt, evaluationAttempt.failure());
+        }
+
+        static AttemptMetadata success(int attempt, AiTagModelResult result) {
+            return new AttemptMetadata(attempt, null, null, result.elapsedMillis(), result.xRequestId());
+        }
+
+        static AttemptMetadata failure(int attempt, EvaluationFailure failure) {
+            return new AttemptMetadata(
+                    attempt, failure.providerHttpStatus(), failure.providerErrorCategory(),
+                    failure.elapsedMillis(), failure.xRequestId()
+            );
+        }
+
+        AttemptMetadata {
+            xRequestId = xRequestId == null ? UNAVAILABLE_X_REQUEST_ID : xRequestId;
         }
     }
 
@@ -506,14 +575,10 @@ public final class OpenAiTagEvaluationMain {
             Long base64ImageLength,
             int attemptCount
     ) {
-        Set<TagKey> expected = tagKeys(evaluationCase.expectedCanonicalTags());
-        Set<TagKey> predicted = tagKeys(result.canonicalTags());
-        return new CaseResult(
-                evaluationCase.imageId(), evaluationCase.imagePath(), sorted(expected), sorted(predicted),
-                sorted(difference(expected, predicted)), sorted(difference(predicted, expected)),
-                sorted(difference(predicted, catalogKeys)), result.inputTokens(), result.outputTokens(),
-                result.elapsedMillis(), null, null, null, base64ImageLength, null,
-                attemptCount, "SUCCESS");
+        return successfulCase(
+                evaluationCase, result, catalogKeys, base64ImageLength, attemptCount,
+                List.of(AttemptMetadata.success(attemptCount, result))
+        );
     }
 
     record EvaluationFailure(
@@ -521,8 +586,23 @@ public final class OpenAiTagEvaluationMain {
             Long elapsedMillis,
             Integer providerHttpStatus,
             String providerErrorCategory,
-            String responseParsingCategory
+            String responseParsingCategory,
+            String xRequestId
     ) {
+        EvaluationFailure(
+                String error,
+                Long elapsedMillis,
+                Integer providerHttpStatus,
+                String providerErrorCategory,
+                String responseParsingCategory
+        ) {
+            this(error, elapsedMillis, providerHttpStatus, providerErrorCategory,
+                    responseParsingCategory, UNAVAILABLE_X_REQUEST_ID);
+        }
+
+        EvaluationFailure {
+            xRequestId = xRequestId == null ? UNAVAILABLE_X_REQUEST_ID : xRequestId;
+        }
     }
 
     record EvaluationAttempt(AiTagModelResult result, EvaluationFailure failure) {
@@ -539,13 +619,20 @@ public final class OpenAiTagEvaluationMain {
         }
     }
 
-    record RetryResult(AiTagModelResult result, EvaluationFailure failure, int attemptCount) {
-        static RetryResult success(AiTagModelResult result, int attemptCount) {
-            return new RetryResult(result, null, attemptCount);
+    record RetryResult(
+            AiTagModelResult result, EvaluationFailure failure, int attemptCount,
+            List<AttemptMetadata> attempts
+    ) {
+        static RetryResult success(
+                AiTagModelResult result, int attemptCount, List<AttemptMetadata> attempts
+        ) {
+            return new RetryResult(result, null, attemptCount, List.copyOf(attempts));
         }
 
-        static RetryResult failure(EvaluationFailure failure, int attemptCount) {
-            return new RetryResult(null, failure, attemptCount);
+        static RetryResult failure(
+                EvaluationFailure failure, int attemptCount, List<AttemptMetadata> attempts
+        ) {
+            return new RetryResult(null, failure, attemptCount, List.copyOf(attempts));
         }
 
         boolean successful() {
