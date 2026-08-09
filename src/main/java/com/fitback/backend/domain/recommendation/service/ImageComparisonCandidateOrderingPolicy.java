@@ -7,6 +7,6 @@ public interface ImageComparisonCandidateOrderingPolicy {
 
     List<ExternalProductCandidate> order(
             List<List<ExternalProductCandidate>> candidateBatches,
-            int multiTagPriorityLimit
+            int candidateLimit
     );
 }

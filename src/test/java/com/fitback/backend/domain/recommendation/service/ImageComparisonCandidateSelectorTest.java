@@ -75,11 +75,11 @@ class ImageComparisonCandidateSelectorTest {
     }
 
     @Test
-    void assignsOneThirdOfCandidateLimitToMultiTagPriorityOrdering() {
-        AtomicInteger receivedPriorityLimit = new AtomicInteger(-1);
+    void passesCandidateLimitToOrderingPolicy() {
+        AtomicInteger receivedCandidateLimit = new AtomicInteger(-1);
         ImageComparisonCandidateSelector selector = new ImageComparisonCandidateSelector(
-                (candidateBatches, multiTagPriorityLimit) -> {
-                    receivedPriorityLimit.set(multiTagPriorityLimit);
+                (candidateBatches, candidateLimit) -> {
+                    receivedCandidateLimit.set(candidateLimit);
                     return candidateBatches.stream().flatMap(List::stream).toList();
                 },
                 30
@@ -87,12 +87,12 @@ class ImageComparisonCandidateSelectorTest {
 
         selector.select(List.of(List.of(candidate(1))));
 
-        assertThat(receivedPriorityLimit).hasValue(10);
+        assertThat(receivedCandidateLimit).hasValue(30);
     }
 
     private static ImageComparisonCandidateSelector selector(int candidateLimit) {
         return new ImageComparisonCandidateSelector(
-                (candidateBatches, multiTagPriorityLimit) -> candidateBatches.stream()
+                (candidateBatches, orderingCandidateLimit) -> candidateBatches.stream()
                         .flatMap(List::stream)
                         .toList(),
                 candidateLimit

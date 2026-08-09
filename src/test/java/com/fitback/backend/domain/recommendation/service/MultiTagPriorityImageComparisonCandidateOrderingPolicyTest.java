@@ -23,11 +23,25 @@ class MultiTagPriorityImageComparisonCandidateOrderingPolicyTest {
                 List.of(candidate(2), candidate(6), candidate(1))
         );
 
-        List<ExternalProductCandidate> orderedCandidates = policy.order(batches, 2);
+        List<ExternalProductCandidate> orderedCandidates = policy.order(batches, 6);
 
         assertThat(orderedCandidates)
                 .extracting(candidate -> candidate.providerRef().externalProductId())
                 .containsExactly("1", "2", "4", "6", "3", "5");
+    }
+
+    @Test
+    void usesOneThirdOfCandidateLimitAsMultiTagPrioritySlots() {
+        List<List<ExternalProductCandidate>> batches = List.of(
+                List.of(candidate(1), candidate(9), candidate(2), candidate(3)),
+                List.of(candidate(1), candidate(8), candidate(2), candidate(3))
+        );
+
+        List<ExternalProductCandidate> orderedCandidates = policy.order(batches, 6);
+
+        assertThat(orderedCandidates)
+                .extracting(candidate -> candidate.providerRef().externalProductId())
+                .startsWith("1", "2", "9", "8");
     }
 
     @Test
@@ -37,7 +51,7 @@ class MultiTagPriorityImageComparisonCandidateOrderingPolicyTest {
                 List.of(candidate(1), candidate(3), candidate(2))
         );
 
-        List<ExternalProductCandidate> orderedCandidates = policy.order(batches, 3);
+        List<ExternalProductCandidate> orderedCandidates = policy.order(batches, 9);
 
         assertThat(orderedCandidates)
                 .extracting(candidate -> candidate.providerRef().externalProductId())
@@ -51,7 +65,7 @@ class MultiTagPriorityImageComparisonCandidateOrderingPolicyTest {
                 List.of(candidate(3), candidate(4))
         );
 
-        List<ExternalProductCandidate> orderedCandidates = policy.order(batches, 1);
+        List<ExternalProductCandidate> orderedCandidates = policy.order(batches, 3);
 
         assertThat(orderedCandidates)
                 .extracting(candidate -> candidate.providerRef().externalProductId())
@@ -65,16 +79,16 @@ class MultiTagPriorityImageComparisonCandidateOrderingPolicyTest {
                 List.of(candidate(1, false), unstableCandidate(), candidate(2))
         );
 
-        List<ExternalProductCandidate> orderedCandidates = policy.order(batches, 2);
+        List<ExternalProductCandidate> orderedCandidates = policy.order(batches, 6);
 
         assertThat(orderedCandidates.getFirst()).isEqualTo(candidate(2));
     }
 
     @Test
-    void rejectsNegativeMultiTagPriorityLimit() {
-        assertThatThrownBy(() -> policy.order(List.of(), -1))
+    void rejectsNonPositiveCandidateLimit() {
+        assertThatThrownBy(() -> policy.order(List.of(), 0))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("multiTagPriorityLimit must not be negative");
+                .hasMessage("candidateLimit must be positive");
     }
 
     private static ExternalProductCandidate candidate(int id) {

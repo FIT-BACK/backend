@@ -37,14 +37,14 @@ public class MultiTagPriorityImageComparisonCandidateOrderingPolicy
     @Override
     public List<ExternalProductCandidate> order(
             List<List<ExternalProductCandidate>> candidateBatches,
-            int multiTagPriorityLimit
+            int candidateLimit
     ) {
         Objects.requireNonNull(
                 candidateBatches,
                 "candidateBatches must not be null"
         );
-        if (multiTagPriorityLimit < 0) {
-            throw new IllegalArgumentException("multiTagPriorityLimit must not be negative");
+        if (candidateLimit < 1) {
+            throw new IllegalArgumentException("candidateLimit must be positive");
         }
 
         // 검색 결과별 중복 등장을 태그 간 연관성 신호로 사용하기 위한 상품별 통계 집계
@@ -56,6 +56,7 @@ public class MultiTagPriorityImageComparisonCandidateOrderingPolicy
         Set<ProviderProductRef> prioritizedProductRefs = new HashSet<>();
 
         // 전체 후보의 일부만 다중 태그 신호로 우선 배치해 이미지 비교 후보 다양성 보존
+        int multiTagPriorityLimit = candidateLimit / 3;
         occurrences.values().stream()
                 .filter(occurrence -> occurrence.batchCount() >= 2)
                 .sorted(PRIORITY_ORDER)

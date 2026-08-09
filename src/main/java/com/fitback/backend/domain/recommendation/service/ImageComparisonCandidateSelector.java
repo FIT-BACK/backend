@@ -34,11 +34,9 @@ public class ImageComparisonCandidateSelector {
     public SelectionResult select(
             List<List<ExternalProductCandidate>> candidateBatches
     ) {
-        // 전체 비교 예산의 3분의 1만 다중 태그 후보에 우선 배정해 나머지 다양성 보존
-        int multiTagPriorityLimit = candidateLimit / 3;
         List<ExternalProductCandidate> orderedCandidates = orderingPolicy.order(
                 candidateBatches,
-                multiTagPriorityLimit
+                candidateLimit
         );
 
         // 채택 순서 유지와 공급자 식별자 기준 중복 제거를 위한 자료구조 분리
