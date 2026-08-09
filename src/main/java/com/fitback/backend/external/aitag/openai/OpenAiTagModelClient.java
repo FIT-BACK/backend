@@ -22,6 +22,8 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
@@ -32,6 +34,12 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     private static final String ENDPOINT = "https://api.openai.com/v1/responses";
     private static final int MAX_LOGGED_TYPE_COUNT = 20;
     private static final int MAX_LOGGED_TYPE_LENGTH = 64;
+    private static final int SINGLE_ATTEMPT = 1;
+    private static final int PRODUCTION_MAX_ATTEMPTS = 2;
+    private static final long RETRY_DELAY_MIN_MILLIS = 250L;
+    private static final long RETRY_DELAY_RANGE_MILLIS = 251L;
+    private static final long MIN_RETRY_ATTEMPT_MILLIS = 250L;
+    private static final Set<Integer> RETRYABLE_PROVIDER_STATUSES = Set.of(500, 502, 503, 504);
     private static final String UNAVAILABLE_X_REQUEST_ID = AiTagRequestIdSanitizer.UNAVAILABLE;
     private static final Logger log = LoggerFactory.getLogger(OpenAiTagModelClient.class);
 
@@ -40,13 +48,21 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     private final ObjectMapper objectMapper;
     private final AiTagResponseParser responseParser;
     private final Transport transport;
+    private final int maxAttempts;
+    private final NanoClock clock;
+    private final Sleeper sleeper;
+    private final Jitter jitter;
 
     public OpenAiTagModelClient(
             AiTagProperties.OpenAi properties,
             Duration requestTimeout,
             ObjectMapper objectMapper
     ) {
-        this(properties, requestTimeout, objectMapper, new JdkTransport(requestTimeout));
+        this(
+                properties, requestTimeout, objectMapper, new JdkTransport(requestTimeout),
+                SINGLE_ATTEMPT, System::nanoTime, Thread::sleep,
+                bound -> ThreadLocalRandom.current().nextLong(bound)
+        );
     }
 
     OpenAiTagModelClient(
@@ -55,31 +71,154 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             ObjectMapper objectMapper,
             Transport transport
     ) {
+        this(
+                properties, requestTimeout, objectMapper, transport,
+                SINGLE_ATTEMPT, System::nanoTime, Thread::sleep,
+                bound -> ThreadLocalRandom.current().nextLong(bound)
+        );
+    }
+
+    public static OpenAiTagModelClient forProduction(
+            AiTagProperties.OpenAi properties,
+            Duration requestTimeout,
+            ObjectMapper objectMapper
+    ) {
+        return forProduction(
+                properties, requestTimeout, objectMapper, new JdkTransport(requestTimeout),
+                System::nanoTime, Thread::sleep,
+                bound -> ThreadLocalRandom.current().nextLong(bound)
+        );
+    }
+
+    static OpenAiTagModelClient forProduction(
+            AiTagProperties.OpenAi properties,
+            Duration requestTimeout,
+            ObjectMapper objectMapper,
+            Transport transport,
+            NanoClock clock,
+            Sleeper sleeper,
+            Jitter jitter
+    ) {
+        return new OpenAiTagModelClient(
+                properties, requestTimeout, objectMapper, transport,
+                PRODUCTION_MAX_ATTEMPTS, clock, sleeper, jitter
+        );
+    }
+
+    private OpenAiTagModelClient(
+            AiTagProperties.OpenAi properties,
+            Duration requestTimeout,
+            ObjectMapper objectMapper,
+            Transport transport,
+            int maxAttempts,
+            NanoClock clock,
+            Sleeper sleeper,
+            Jitter jitter
+    ) {
         properties.validateForUse();
         this.properties = properties;
         this.requestTimeout = requestTimeout;
         this.objectMapper = objectMapper;
         this.responseParser = new AiTagResponseParser(objectMapper);
         this.transport = transport;
+        this.maxAttempts = maxAttempts;
+        this.clock = clock;
+        this.sleeper = sleeper;
+        this.jitter = jitter;
     }
 
     @Override
     public AiTagModelResult analyze(AiTagImage image, AiTagModelRequest request) {
-        long startedAt = System.nanoTime();
+        long logicalStartedAt = clock.nanoTime();
+        String requestBody;
+        try {
+            requestBody = objectMapper.writeValueAsString(payload(image, request));
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "AI tag provider request failed. provider=openai model={} "
+                            + "providerErrorCategory=REQUEST_ERROR elapsedMillis={} attemptCount=0 "
+                            + "attemptLatencyMillis={} xRequestId={}",
+                    properties.model(),
+                    elapsedMillis(logicalStartedAt),
+                    elapsedMillis(logicalStartedAt),
+                    UNAVAILABLE_X_REQUEST_ID
+            );
+            ProviderFailure failure = providerFailure(null, "REQUEST_ERROR", null, logicalStartedAt);
+            logLogicalFailure(failure, 0, logicalStartedAt);
+            throw failure;
+        }
+
+        ProviderFailure lastFailure = null;
+        for (int attemptCount = 1; attemptCount <= maxAttempts; attemptCount++) {
+            long remainingNanos = remainingNanos(logicalStartedAt);
+            if (remainingNanos <= 0L) {
+                ProviderFailure failure = providerFailure(null, "TIMEOUT", null, logicalStartedAt);
+                logLogicalFailure(failure, attemptCount - 1, logicalStartedAt);
+                throw failure;
+            }
+            try {
+                AiTagModelResult result = analyzeAttempt(
+                        requestBody,
+                        Duration.ofNanos(remainingNanos),
+                        attemptCount
+                );
+                logLogicalSuccess(result, attemptCount, logicalStartedAt);
+                return result;
+            } catch (ProviderFailure failure) {
+                lastFailure = failure;
+                if (attemptCount == maxAttempts || !isRetryable(failure)) {
+                    logLogicalFailure(failure, attemptCount, logicalStartedAt);
+                    throw failure;
+                }
+                long delayMillis = retryDelayMillis();
+                if (!hasRetryBudget(logicalStartedAt, delayMillis)) {
+                    logLogicalFailure(failure, attemptCount, logicalStartedAt);
+                    throw failure;
+                }
+                try {
+                    sleeper.sleep(delayMillis);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    ProviderFailure interrupted = providerFailure(
+                            null, "INTERRUPTED", null, logicalStartedAt
+                    );
+                    logLogicalFailure(interrupted, attemptCount, logicalStartedAt);
+                    throw interrupted;
+                }
+                if (remainingNanos(logicalStartedAt)
+                        < Duration.ofMillis(MIN_RETRY_ATTEMPT_MILLIS).toNanos()) {
+                    logLogicalFailure(failure, attemptCount, logicalStartedAt);
+                    throw failure;
+                }
+            }
+        }
+        throw lastFailure == null
+                ? new IllegalStateException("provider retry loop exhausted without a result")
+                : lastFailure;
+    }
+
+    private AiTagModelResult analyzeAttempt(
+            String requestBody,
+            Duration attemptTimeout,
+            int attemptCount
+    ) {
+        long startedAt = clock.nanoTime();
         TransportResponse response;
         try {
             response = transport.post(
                     ENDPOINT,
                     properties.apiKey(),
-                    requestTimeout,
-                    objectMapper.writeValueAsString(payload(image, request))
+                    attemptTimeout,
+                    requestBody
             );
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             log.warn(
                     "AI tag provider call interrupted. provider=openai model={} providerErrorCategory=INTERRUPTED "
-                            + "elapsedMillis={} xRequestId={}",
+                            + "elapsedMillis={} attemptCount={} attemptLatencyMillis={} xRequestId={}",
                     properties.model(),
+                    elapsedMillis(startedAt),
+                    attemptCount,
                     elapsedMillis(startedAt),
                     UNAVAILABLE_X_REQUEST_ID
             );
@@ -87,8 +226,10 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         } catch (HttpTimeoutException exception) {
             log.warn(
                     "AI tag provider call failed. provider=openai model={} providerErrorCategory=TIMEOUT "
-                            + "elapsedMillis={} xRequestId={}",
+                            + "elapsedMillis={} attemptCount={} attemptLatencyMillis={} xRequestId={}",
                     properties.model(),
+                    elapsedMillis(startedAt),
+                    attemptCount,
                     elapsedMillis(startedAt),
                     UNAVAILABLE_X_REQUEST_ID
             );
@@ -96,8 +237,10 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         } catch (IOException exception) {
             log.warn(
                     "AI tag provider call failed. provider=openai model={} providerErrorCategory=TRANSPORT_ERROR "
-                            + "elapsedMillis={} xRequestId={}",
+                            + "elapsedMillis={} attemptCount={} attemptLatencyMillis={} xRequestId={}",
                     properties.model(),
+                    elapsedMillis(startedAt),
+                    attemptCount,
                     elapsedMillis(startedAt),
                     UNAVAILABLE_X_REQUEST_ID
             );
@@ -105,8 +248,10 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         } catch (RuntimeException exception) {
             log.warn(
                     "AI tag provider request failed. provider=openai model={} providerErrorCategory=REQUEST_ERROR "
-                            + "elapsedMillis={} xRequestId={}",
+                            + "elapsedMillis={} attemptCount={} attemptLatencyMillis={} xRequestId={}",
                     properties.model(),
+                    elapsedMillis(startedAt),
+                    attemptCount,
                     elapsedMillis(startedAt),
                     UNAVAILABLE_X_REQUEST_ID
             );
@@ -117,7 +262,8 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             log.warn(
                     "AI tag provider returned an error. provider=openai model={} httpStatus={} "
                             + "responseStatus={} incompleteDetailsReason={} outputTypes={} contentTypes={} "
-                            + "providerErrorCategory={} elapsedMillis={} xRequestId={}",
+                            + "providerErrorCategory={} elapsedMillis={} attemptCount={} "
+                            + "attemptLatencyMillis={} xRequestId={}",
                     properties.model(),
                     response.statusCode(),
                     response.statusCode(),
@@ -125,6 +271,8 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     metadata.outputTypes(),
                     metadata.contentTypes(),
                     providerErrorCategory(response.statusCode()),
+                    elapsedMillis(startedAt),
+                    attemptCount,
                     elapsedMillis(startedAt),
                     response.xRequestId()
             );
@@ -141,7 +289,8 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     response,
                     ResponseMetadata.unavailable(),
                     "INVALID_RESPONSE_JSON",
-                    startedAt
+                    startedAt,
+                    attemptCount
             );
             throw providerFailure(
                     response.statusCode(), null, "INVALID_RESPONSE_JSON", startedAt, response.xRequestId()
@@ -152,7 +301,8 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     response,
                     responseMetadata(root),
                     "INVALID_RESPONSE_SHAPE",
-                    startedAt
+                    startedAt,
+                    attemptCount
             );
             throw providerFailure(
                     response.statusCode(), null, "INVALID_RESPONSE_SHAPE", startedAt, response.xRequestId()
@@ -164,7 +314,9 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         try {
             outputJson = outputText(root);
         } catch (ResponseParsingException exception) {
-            logResponseParsingFailure(response, metadata, exception.category(), startedAt);
+            logResponseParsingFailure(
+                    response, metadata, exception.category(), startedAt, attemptCount
+            );
             throw providerFailure(
                     response.statusCode(), null, exception.category(), startedAt, response.xRequestId()
             );
@@ -180,7 +332,8 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     response,
                     metadata,
                     "INVALID_MODEL_OUTPUT_JSON",
-                    startedAt
+                    startedAt,
+                    attemptCount
             );
             throw providerFailure(
                     response.statusCode(), null, "INVALID_MODEL_OUTPUT_JSON", startedAt, response.xRequestId()
@@ -205,7 +358,8 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     response,
                     metadata,
                     "INVALID_MODEL_OUTPUT_SCHEMA:" + schemaFailureCategory(exception),
-                    startedAt
+                    startedAt,
+                    attemptCount
             );
             throw providerFailure(
                     response.statusCode(), null,
@@ -347,12 +501,14 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             TransportResponse response,
             ResponseMetadata metadata,
             String category,
-            long startedAt
+            long startedAt,
+            int attemptCount
     ) {
         log.warn(
                 "AI tag provider response parsing failed. provider=openai model={} responseStatus={} "
                         + "incompleteDetailsReason={} outputTypes={} contentTypes={} "
-                        + "responseParsingCategory={} elapsedMillis={} xRequestId={}",
+                        + "responseParsingCategory={} elapsedMillis={} attemptCount={} "
+                        + "attemptLatencyMillis={} xRequestId={}",
                 properties.model(),
                 response.statusCode(),
                 metadata.incompleteDetailsReason(),
@@ -360,7 +516,86 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                 metadata.contentTypes(),
                 category,
                 elapsedMillis(startedAt),
+                attemptCount,
+                elapsedMillis(startedAt),
                 response.xRequestId()
+        );
+    }
+
+    private boolean isRetryable(ProviderFailure failure) {
+        return failure.providerHttpStatus() != null
+                && RETRYABLE_PROVIDER_STATUSES.contains(failure.providerHttpStatus())
+                && "SERVER_ERROR".equals(failure.providerErrorCategory())
+                && failure.responseParsingCategory() == null;
+    }
+
+    private static boolean isProvider5xx(ProviderFailure failure) {
+        return failure.providerHttpStatus() != null
+                && failure.providerHttpStatus() >= 500
+                && failure.providerHttpStatus() < 600;
+    }
+
+    private long retryDelayMillis() {
+        return RETRY_DELAY_MIN_MILLIS + jitter.nextLong(RETRY_DELAY_RANGE_MILLIS);
+    }
+
+    private boolean hasRetryBudget(long logicalStartedAt, long delayMillis) {
+        long requiredNanos = Duration.ofMillis(delayMillis + MIN_RETRY_ATTEMPT_MILLIS).toNanos();
+        return remainingNanos(logicalStartedAt) >= requiredNanos;
+    }
+
+    private long remainingNanos(long logicalStartedAt) {
+        long elapsedNanos = Math.max(0L, clock.nanoTime() - logicalStartedAt);
+        return Math.max(0L, requestTimeout.toNanos() - elapsedNanos);
+    }
+
+    private void logLogicalSuccess(
+            AiTagModelResult result,
+            int attemptCount,
+            long logicalStartedAt
+    ) {
+        if (maxAttempts == SINGLE_ATTEMPT) {
+            return;
+        }
+        log.info(
+                "AI tag provider logical request completed. provider=openai model={} "
+                        + "logicalRequestCount=1 providerAttemptCount={} attemptCount={} "
+                        + "recoveredByRetry={} final5xx=false logicalLatencyMillis={} "
+                        + "attemptLatencyMillis={} xRequestId={}",
+                properties.model(),
+                attemptCount,
+                attemptCount,
+                attemptCount > 1,
+                elapsedMillis(logicalStartedAt),
+                result.elapsedMillis(),
+                result.xRequestId()
+        );
+    }
+
+    private void logLogicalFailure(
+            ProviderFailure failure,
+            int attemptCount,
+            long logicalStartedAt
+    ) {
+        if (maxAttempts == SINGLE_ATTEMPT) {
+            return;
+        }
+        log.warn(
+                "AI tag provider logical request failed. provider=openai model={} "
+                        + "logicalRequestCount=1 providerAttemptCount={} attemptCount={} "
+                        + "recoveredByRetry=false final5xx={} logicalLatencyMillis={} "
+                        + "attemptLatencyMillis={} httpStatus={} providerErrorCategory={} "
+                        + "responseParsingCategory={} xRequestId={}",
+                properties.model(),
+                attemptCount,
+                attemptCount,
+                isProvider5xx(failure),
+                elapsedMillis(logicalStartedAt),
+                failure.elapsedMillis(),
+                failure.providerHttpStatus(),
+                failure.providerErrorCategory(),
+                failure.responseParsingCategory(),
+                failure.xRequestId()
         );
     }
 
@@ -436,8 +671,8 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         return "UNEXPECTED_STATUS";
     }
 
-    private static long elapsedMillis(long startedAt) {
-        return (System.nanoTime() - startedAt) / 1_000_000L;
+    private long elapsedMillis(long startedAt) {
+        return Math.max(0L, clock.nanoTime() - startedAt) / 1_000_000L;
     }
 
     private record ResponseMetadata(
@@ -464,7 +699,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         }
     }
 
-    private static ProviderFailure providerFailure(
+    private ProviderFailure providerFailure(
             Integer providerHttpStatus,
             String providerErrorCategory,
             String responseParsingCategory,
@@ -476,7 +711,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         );
     }
 
-    private static ProviderFailure providerFailure(
+    private ProviderFailure providerFailure(
             Integer providerHttpStatus,
             String providerErrorCategory,
             String responseParsingCategory,
@@ -540,6 +775,21 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     interface Transport {
         TransportResponse post(String endpoint, String apiKey, Duration timeout, String body)
                 throws IOException, InterruptedException;
+    }
+
+    @FunctionalInterface
+    interface NanoClock {
+        long nanoTime();
+    }
+
+    @FunctionalInterface
+    interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
+
+    @FunctionalInterface
+    interface Jitter {
+        long nextLong(long boundExclusive);
     }
 
     record TransportResponse(int statusCode, String body, String xRequestId) {

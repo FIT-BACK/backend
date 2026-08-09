@@ -16,6 +16,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -67,6 +68,7 @@ class CanonicalAiTagAnalyzerTest {
 
     @Test
     void rejectsAValidNamePairedWithTheWrongType() {
+        AtomicInteger attempts = new AtomicInteger();
         AiTagModelClient client = (ignoredImage, request) -> new AiTagModelResult(
                 "test",
                 "test-model",
@@ -79,13 +81,17 @@ class CanonicalAiTagAnalyzerTest {
                 null,
                 1
         );
+        AiTagModelClient countingClient = (ignoredImage, request) -> {
+            attempts.incrementAndGet();
+            return client.analyze(ignoredImage, request);
+        };
 
         Logger logger = (Logger) LoggerFactory.getLogger(CanonicalAiTagAnalyzer.class);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         logger.addAppender(appender);
         try {
-            assertThatThrownBy(() -> analyzer(client).analyze(image))
+            assertThatThrownBy(() -> analyzer(countingClient).analyze(image))
                     .isInstanceOf(BusinessException.class)
                     .extracting(exception -> ((BusinessException) exception).getErrorCode())
                     .isEqualTo(ErrorCode.ANALYSIS_NOT_READY);
@@ -96,6 +102,7 @@ class CanonicalAiTagAnalyzerTest {
                     .contains("canonicalValidationCategory=UNKNOWN_CANONICAL_TAG")
                     .contains("predictedTagCount=1", "catalogTagCount=3", "elapsedMillis=1")
                     .doesNotContain("데님");
+            assertThat(attempts).hasValue(1);
         } finally {
             logger.detachAppender(appender);
             appender.stop();
