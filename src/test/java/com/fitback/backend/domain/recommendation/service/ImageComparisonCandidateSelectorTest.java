@@ -10,37 +10,26 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-class VisionCandidateSelectorTest {
-
-    @Test
-    void selectsCandidatesRoundRobinBySearchResultRank() {
-        VisionCandidateSelector selector = new VisionCandidateSelector(6);
-        List<List<ExternalProductCandidate>> batches = List.of(
-                List.of(candidate(1), candidate(2), candidate(3)),
-                List.of(candidate(4), candidate(5), candidate(6)),
-                List.of(candidate(7), candidate(8), candidate(9))
-        );
-
-        VisionCandidateSelector.SelectionResult result = selector.select(batches);
-
-        assertThat(result.candidates())
-                .extracting(candidate -> candidate.providerRef().externalProductId())
-                .containsExactly("1", "4", "7", "2", "5", "8");
-        assertThat(result.unsupportedReferenceSkipped()).isFalse();
-    }
+class ImageComparisonCandidateSelectorTest {
 
     @Test
     void skipsInvalidAndDuplicateCandidatesUntilLimitIsReached() {
-        VisionCandidateSelector selector = new VisionCandidateSelector(3);
+        ImageComparisonCandidateSelector selector = selector(3);
         ExternalProductCandidate missingImage = candidate(1, false);
         ExternalProductCandidate sameProductWithImage = candidate(1);
         ExternalProductCandidate duplicate = candidate(2);
         List<List<ExternalProductCandidate>> batches = List.of(
-                List.of(missingImage, candidate(2), candidate(3)),
-                List.of(sameProductWithImage, duplicate, candidate(4))
+                List.of(
+                        missingImage,
+                        sameProductWithImage,
+                        candidate(2),
+                        duplicate,
+                        candidate(3),
+                        candidate(4)
+                )
         );
 
-        VisionCandidateSelector.SelectionResult result = selector.select(batches);
+        ImageComparisonCandidateSelector.SelectionResult result = selector.select(batches);
 
         assertThat(result.candidates())
                 .extracting(candidate -> candidate.providerRef().externalProductId())
@@ -49,12 +38,12 @@ class VisionCandidateSelectorTest {
 
     @Test
     void reportsSkippedUnsupportedReferenceEvenWhenImageIsMissing() {
-        VisionCandidateSelector selector = new VisionCandidateSelector(2);
+        ImageComparisonCandidateSelector selector = selector(2);
         List<List<ExternalProductCandidate>> batches = List.of(
                 List.of(unstableCandidate(), candidate(1))
         );
 
-        VisionCandidateSelector.SelectionResult result = selector.select(batches);
+        ImageComparisonCandidateSelector.SelectionResult result = selector.select(batches);
 
         assertThat(result.candidates()).containsExactly(candidate(1));
         assertThat(result.unsupportedReferenceSkipped()).isTrue();
@@ -62,14 +51,13 @@ class VisionCandidateSelectorTest {
 
     @Test
     void returnsSameImmutableResultForSameInput() {
-        VisionCandidateSelector selector = new VisionCandidateSelector(10);
+        ImageComparisonCandidateSelector selector = selector(10);
         List<List<ExternalProductCandidate>> batches = List.of(
-                List.of(candidate(1), candidate(2)),
-                List.of(candidate(3))
+                List.of(candidate(1), candidate(3), candidate(2))
         );
 
-        VisionCandidateSelector.SelectionResult first = selector.select(batches);
-        VisionCandidateSelector.SelectionResult second = selector.select(batches);
+        ImageComparisonCandidateSelector.SelectionResult first = selector.select(batches);
+        ImageComparisonCandidateSelector.SelectionResult second = selector.select(batches);
 
         assertThat(first).isEqualTo(second);
         assertThat(first.candidates())
@@ -80,9 +68,18 @@ class VisionCandidateSelectorTest {
 
     @Test
     void rejectsNonPositiveCandidateLimit() {
-        assertThatThrownBy(() -> new VisionCandidateSelector(0))
+        assertThatThrownBy(() -> selector(0))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("candidateLimit must be positive");
+    }
+
+    private static ImageComparisonCandidateSelector selector(int candidateLimit) {
+        return new ImageComparisonCandidateSelector(
+                candidateBatches -> candidateBatches.stream()
+                        .flatMap(List::stream)
+                        .toList(),
+                candidateLimit
+        );
     }
 
     private static ExternalProductCandidate candidate(int id) {

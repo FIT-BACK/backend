@@ -46,7 +46,7 @@ public class RecommendationService {
     private final ProductCatalogPort productCatalogPort;
     private final ProductCandidateMapper candidateMapper;
     private final ProductMaterializationService materializationService;
-    private final VisionCandidateSelector visionCandidateSelector;
+    private final ImageComparisonCandidateSelector imageComparisonCandidateSelector;
     private final RecommendationScorer scorer;
     private final RecommendationSetWriter setWriter;
     private final RecommendationQueryService queryService;
@@ -57,7 +57,7 @@ public class RecommendationService {
             ProductCatalogPort productCatalogPort,
             ProductCandidateMapper candidateMapper,
             ProductMaterializationService materializationService,
-            VisionCandidateSelector visionCandidateSelector,
+            ImageComparisonCandidateSelector imageComparisonCandidateSelector,
             RecommendationScorer scorer,
             RecommendationSetWriter setWriter,
             RecommendationQueryService queryService
@@ -67,7 +67,7 @@ public class RecommendationService {
         this.productCatalogPort = productCatalogPort;
         this.candidateMapper = candidateMapper;
         this.materializationService = materializationService;
-        this.visionCandidateSelector = visionCandidateSelector;
+        this.imageComparisonCandidateSelector = imageComparisonCandidateSelector;
         this.scorer = scorer;
         this.setWriter = setWriter;
         this.queryService = queryService;
@@ -159,8 +159,8 @@ public class RecommendationService {
         }
 
         // 점수 계산과 이미지 비교 전에 처리 예산을 제한하기 위한 후보 선별
-        VisionCandidateSelector.SelectionResult selection =
-                visionCandidateSelector.select(candidateBatches);
+        ImageComparisonCandidateSelector.SelectionResult selection =
+                imageComparisonCandidateSelector.select(candidateBatches);
         List<String> warnings = new ArrayList<>();
 
         // 일부 검색 실패를 정상 결과와 함께 전달하기 위한 부분 성공 경고

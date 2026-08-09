@@ -79,7 +79,10 @@ class RecommendationServiceTest {
                 productCatalogPort,
                 candidateMapper,
                 materializationService,
-                new VisionCandidateSelector(candidateLimit),
+                new ImageComparisonCandidateSelector(
+                        new RoundRobinImageComparisonCandidateOrderingPolicy(),
+                        candidateLimit
+                ),
                 new RecommendationScorer(),
                 setWriter,
                 queryService
