@@ -93,7 +93,7 @@ class RecommendationApiFlowIntegrationTest {
                 .andExpect(jsonPath("$.data.analysisTags.length()").value(2))
                 .andExpect(jsonPath("$.data.matchPercentage").value(70))
                 .andExpect(jsonPath("$.data.scoreVersion")
-                        .value("TAG_MATCH_RATIO_THRESHOLD_V1"))
+                        .value("IMAGE_TAG_WEIGHTED_THR_V1"))
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
                 .andExpect(jsonPath("$.data.recommendationGroups.length()").value(8))
                 .andReturn();
