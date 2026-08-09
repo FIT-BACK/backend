@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 public class MultiTagPriorityImageComparisonCandidateOrderingPolicy
         implements ImageComparisonCandidateOrderingPolicy {
 
+    private static final int MULTI_TAG_PRIORITY_SLOT_DIVISOR = 3;
     private static final Comparator<CandidateOccurrence> PRIORITY_ORDER = Comparator
             // 여러 태그 검색에 함께 잡힌 상품부터 비교하기 위한 검색 배치 등장 횟수 우선
             .comparingInt(CandidateOccurrence::batchCount)
@@ -56,7 +57,7 @@ public class MultiTagPriorityImageComparisonCandidateOrderingPolicy
         Set<ProviderProductRef> prioritizedProductRefs = new HashSet<>();
 
         // 전체 후보의 일부만 다중 태그 신호로 우선 배치해 이미지 비교 후보 다양성 보존
-        int multiTagPriorityLimit = candidateLimit / 3;
+        int multiTagPriorityLimit = candidateLimit / MULTI_TAG_PRIORITY_SLOT_DIVISOR;
         occurrences.values().stream()
                 .filter(occurrence -> occurrence.batchCount() >= 2)
                 .sorted(PRIORITY_ORDER)

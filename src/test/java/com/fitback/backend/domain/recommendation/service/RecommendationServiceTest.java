@@ -45,6 +45,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class RecommendationServiceTest {
 
+    private static final int TEST_CANDIDATE_LIMIT = 64;
+
     @Mock
     private RecommendationInputReader inputReader;
 
@@ -73,7 +75,7 @@ class RecommendationServiceTest {
 
     @BeforeEach
     void setUp() {
-        recommendationService = recommendationService(64);
+        recommendationService = recommendationService(TEST_CANDIDATE_LIMIT);
     }
 
     private RecommendationService recommendationService(int candidateLimit) {
@@ -240,6 +242,43 @@ class RecommendationServiceTest {
         verify(materializationService, never()).materializeForRecommendation(unstable);
         assertThat(response.partial()).isTrue();
         assertThat(response.warnings()).containsExactly("MATERIALIZATION_SKIPPED");
+    }
+
+    @Test
+    void excludesCandidateWithoutImageBeforeScoringAndMaterialization() {
+        RecommendationInputSnapshot input = input();
+        ExternalProductCandidate missingImage = candidate(1, "0.90", true, false);
+        ExternalProductCandidate candidateWithImage = candidate(2, "0.80", true, true);
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenReturn(new ProductSearchResult(
+                        List.of(missingImage, candidateWithImage),
+                        null
+                ));
+        when(candidateMapper.category(candidateWithImage)).thenReturn(ProductCategory.TOP);
+        when(materializationService.materializeForRecommendation(candidateWithImage))
+                .thenReturn(new RecommendationMaterializationResult(2L, true));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L);
+
+        verify(scorer, never()).score(
+                input.tags(),
+                new BigDecimal("70"),
+                missingImage
+        );
+        verify(materializationService, never()).materializeForRecommendation(missingImage);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<RecommendationSelection>> selectionsCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(setWriter).replaceCurrentSet(
+                org.mockito.ArgumentMatchers.eq(input),
+                org.mockito.ArgumentMatchers.eq("IMAGE_TAG_WEIGHTED_V1"),
+                selectionsCaptor.capture()
+        );
+        assertThat(selectionsCaptor.getValue())
+                .extracting(RecommendationSelection::productId)
+                .containsExactly(2L);
     }
 
     @Test
@@ -588,7 +627,16 @@ class RecommendationServiceTest {
             String score,
             boolean stable
     ) {
-        return candidate(id, score, stable, "Fixture Product " + id);
+        return candidate(id, score, stable, "Fixture Product " + id, true);
+    }
+
+    private static ExternalProductCandidate candidate(
+            int id,
+            String score,
+            boolean stable,
+            boolean hasImage
+    ) {
+        return candidate(id, score, stable, "Fixture Product " + id, hasImage);
     }
 
     private static ExternalProductCandidate candidate(
@@ -596,6 +644,16 @@ class RecommendationServiceTest {
             String score,
             boolean stable,
             String name
+    ) {
+        return candidate(id, score, stable, name, true);
+    }
+
+    private static ExternalProductCandidate candidate(
+            int id,
+            String score,
+            boolean stable,
+            String name,
+            boolean hasImage
     ) {
         ProviderProductRef providerRef = stable
                 ? ProviderProductRef.stable("fixture", Integer.toString(id), null, "store")
@@ -606,7 +664,7 @@ class RecommendationServiceTest {
                 null,
                 "tops/shirts",
                 null,
-                URI.create("https://example.com/products/" + id + ".jpg"),
+                hasImage ? URI.create("https://example.com/products/" + id + ".jpg") : null,
                 score == null ? null : new BigDecimal(score),
                 Instant.parse("2026-07-25T00:00:00Z")
         );
