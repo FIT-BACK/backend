@@ -43,12 +43,14 @@ if [ -z "$scratch_image" ]; then
 fi
 
 scratch_container_name="fitback-observability-contract-${RANDOM}"
+scratch_container_id=''
 cleanup_scratch_container() {
-  docker rm -f "$scratch_container_name" >/dev/null 2>&1 || true
+  if [ -n "$scratch_container_id" ]; then
+    docker rm -f "$scratch_container_id" >/dev/null 2>&1 || true
+  fi
 }
-trap cleanup_scratch_container EXIT
 
-docker create \
+scratch_container_id="$(docker create \
   --pull=never \
   --name "$scratch_container_name" \
   --log-driver=awslogs \
@@ -56,9 +58,10 @@ docker create \
   --log-opt awslogs-group=/fitback/prod/backend \
   --log-opt 'tag=backend/{{.Name}}/{{.FullID}}' \
   --log-opt awslogs-create-group=false \
-  "$scratch_image" true >/dev/null
-test "$(docker inspect --format '{{.HostConfig.LogConfig.Type}}' "$scratch_container_name")" = 'awslogs'
-test "$(docker inspect --format '{{index .HostConfig.LogConfig.Config "tag"}}' "$scratch_container_name")" = 'backend/{{.Name}}/{{.FullID}}'
+  "$scratch_image" true)"
+trap cleanup_scratch_container EXIT
+test "$(docker inspect --format '{{.HostConfig.LogConfig.Type}}' "$scratch_container_id")" = 'awslogs'
+test "$(docker inspect --format '{{index .HostConfig.LogConfig.Config "tag"}}' "$scratch_container_id")" = 'backend/{{.Name}}/{{.FullID}}'
 
 if [ "${REQUIRE_PRODUCTION_DOCKER_SERVER_VERSION:-false}" = 'true' ]; then
   test "$docker_server_version" = "$production_docker_server_version"
@@ -117,6 +120,7 @@ assert(
   "Docker #{production_docker_server_version} does not support awslogs options: #{unsupported_awslogs_options.join(', ')}"
 )
 assert(options['tag'] == 'backend/{{.Name}}/{{.FullID}}', 'Backend log streams need a readable, unique Docker tag template.')
+assert(options['awslogs-create-group'] == 'false', 'Backend logging must keep awslogs-create-group=false.')
 assert(!options.key?('awslogs-stream'), 'A static awslogs stream would collide across recreation or scale-out.')
 
 template_path = ENV.fetch('OBSERVABILITY_TEMPLATE')
