@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import modal
-from modal_fashion_clip_core import normalize_embeddings, parse_image_batch
 
 APP_NAME = "fitback-fashion-clip-poc"
 MODEL_ID = "patrickjohncyh/fashion-clip"
@@ -57,6 +56,7 @@ class FashionClipEndpoint:
     def embed(self, payload: dict[str, object]) -> dict[str, object]:
         import torch
         from fastapi import HTTPException
+        from modal_fashion_clip_core import normalize_embeddings, parse_image_batch
 
         try:
             images = parse_image_batch(payload, max_batch_size=MAX_BATCH_SIZE)
