@@ -5,8 +5,9 @@ OpenAI와 Amazon Bedrock 모델을 동일한 이미지, 프롬프트, JSON Schem
 `AnalysisService`가 의존하는 `AiTagAnalyzer` 계약은 바뀌지 않는다.
 
 모델 응답은 crop UI 범위인 `TOP`, `BOTTOM`, `DRESS`, `OUTER` 가먼트피스별 객체를 반환하며
-각 객체는 다음 두 목록을 함께 가진다. 프롬프트는 각 피스에서 `SILHOUETTE`, `COLOR`,
-`DETAIL`, `STYLE`, `MATERIAL`을 독립적으로 확인한다.
+네 키를 모두 required로 포함한다. 보이지 않는 피스는 `null`을 사용하고 non-null garment는
+1~3개만 허용한다. 각 객체는 다음 두 목록을 함께 가진다. 프롬프트는 각 피스에서
+`SILHOUETTE`, `COLOR`, `DETAIL`, `STYLE`, `MATERIAL`을 독립적으로 확인한다.
 
 AI 결과의 `GarmentPiece`는 모델 결과를 묶기 위한 `TOP`, `BOTTOM`, `DRESS`, `OUTER` 계약이다.
 V25 태그 마스터의 적용 복종 `TagTargetClothing`은 `TOP`, `PANTS`, `SKIRT`, `DRESS`,
