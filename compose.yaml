@@ -5,6 +5,13 @@ services:
     image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
     restart: unless-stopped
     init: true
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ap-northeast-2
+        awslogs-group: /fitback/prod/backend
+        awslogs-stream-prefix: backend
+        awslogs-create-group: "false"
     environment:
       SPRING_PROFILES_ACTIVE: prod
       DB_URL: ${DB_URL:?DB_URL is required}

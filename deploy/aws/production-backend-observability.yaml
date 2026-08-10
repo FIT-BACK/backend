@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: FIT-BACK production backend logging and OpenAI provider retry alarm
+
+Parameters:
+  EC2RoleName:
+    Type: String
+    Default: FitbackProductionEC2Role
+    Description: Existing production EC2 instance role that runs the Docker daemon.
+  ExistingAlarmTopicArn:
+    Type: String
+    Default: ""
+    Description: Existing SNS topic ARN to reuse. Leave empty to create an unsubscribed topic.
+
+Conditions:
+  CreateAlarmTopic: !Equals [!Ref ExistingAlarmTopicArn, ""]
+
+Resources:
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: /fitback/prod/backend
+      RetentionInDays: 30
+
+  BackendLogWriterPolicy:
+    Type: AWS::IAM::RolePolicy
+    Properties:
+      RoleName: !Ref EC2RoleName
+      PolicyName: FitbackProductionBackendLogWriter
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: WriteBackendContainerLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            # AWS::Logs::LogGroup.Arn includes the trailing :* required for all streams in this group.
+            Resource: !GetAtt BackendLogGroup.Arn
+
+  ProviderRetryMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: fitback-prod-openai-provider-retry
+      LogGroupName: !Ref BackendLogGroup
+      FilterPattern: '"AI tag provider logical request" "provider=openai" "providerAttemptCount=2"'
+      MetricTransformations:
+        - MetricNamespace: Fitback/OpenAI
+          MetricName: ProviderRetryCount
+          MetricValue: "1"
+          Unit: Count
+
+  AlarmNotificationTopic:
+    Type: AWS::SNS::Topic
+    Condition: CreateAlarmTopic
+    Properties:
+      TopicName: fitback-prod-openai-provider-retry
+      KmsMasterKeyId: alias/aws/sns
+
+  ProviderRetryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: fitback-prod-openai-provider-retry
+      AlarmDescription: At least one production OpenAI logical request performed a provider retry.
+      Namespace: Fitback/OpenAI
+      MetricName: ProviderRetryCount
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [CreateAlarmTopic, !Ref AlarmNotificationTopic, !Ref ExistingAlarmTopicArn]
+
+Outputs:
+  BackendLogGroupName:
+    Value: !Ref BackendLogGroup
+  ProviderRetryAlarmName:
+    Value: !Ref ProviderRetryAlarm
+  AlarmTopicArn:
+    Value: !If [CreateAlarmTopic, !Ref AlarmNotificationTopic, !Ref ExistingAlarmTopicArn]
