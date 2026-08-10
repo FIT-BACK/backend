@@ -1,19 +1,21 @@
-# Recommendation/Product 및 이미지 업로드 API 계약
+# FIT-BACK Backend API 계약
 
 ## 0. 문서 정보
 
 | 항목 | 값 |
 | --- | --- |
-| 기준일 | 2026-07-26 |
-| 적용 범위 | Recommendation/Product MVP: 추천 결과 생성, 상품 검색·상세, 쇼핑 API 연동, 추천 상품 저장, 카테고리별 그룹핑. Image/Analysis는 기존 계약 참조 |
+| 최초 작성일 | 2026-07-26 |
+| 최종 검증일 | 2026-08-05 |
+| 검증 기준 | `develop` `85ecbc381eb2e89de686f790535ad55b6f6de179` 기반 issue #224 변경 |
+| 적용 범위 | 현재 Controller가 제공하는 Auth, Member, Image, Analysis, Recommendation, Product, Lookbook, Trend, Tag, Content Search, Closet, Notification API |
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
-| 연동 참고 | Auth `#20`의 `AuthMember` principal과 현재 `AnalysisReport`의 분석 결과를 입력으로 사용 |
-| 문서 성격 | Issue `#98` 기준 계약과 후속 기능 Issue `#106`, `#111`, `#119`, `#124` 구현 상태 반영 |
+| 연동 참고 | `AuthMember` principal과 현재 `AnalysisReport`의 분석 결과를 입력으로 사용 |
+| 문서 성격 | 구현 코드와 함께 갱신하는 현재 API 계약. 세부 request/response schema의 최종 기준은 실행 중인 OpenAPI(`/swagger-ui/index.html`, `/v3/api-docs`)와 DTO다. |
 
-이 문서는 제공된 임시 API 명세의 URI와 화면 흐름을 최대한 유지하면서 현재 backend 구조와
-확정된 Recommendation/Product 정책을 구체화한다. 이 범위 밖 Auth, Member, Tag, Trend,
-Lookbook, Closet API는 해당 도메인의 명세를 따른다.
+이 문서는 현재 backend 구조와 확정된 API 정책을 설명한다. Recommendation/Product/Image/Analysis는
+상세 계약을 유지하고, 나머지 도메인은 현재 endpoint와 핵심 DTO를 빠짐없이 찾을 수 있는 색인을
+제공한다. 문서와 실행 중인 OpenAPI가 다르면 해당 `develop` 커밋의 Controller와 DTO를 우선한다.
 
 ### 요구사항 반영 범위
 
@@ -23,7 +25,7 @@ Lookbook, Closet API는 해당 도메인의 명세를 따른다.
 | 비용 최소화 | pagination, Top 10, live lookup 최소화, fixture fallback을 전제로 함 |
 | 추천 생성 | 기존 분석 태그 또는 요청에서 확정한 기본·직접 입력 태그와 매칭값으로 추천 결과 생성 |
 | 추천 상품 저장(찜) | 추천 현재 세트와 분리된 `/members/me/saved-products` 정의 |
-| 범위 제한 | 원상품 후보 탐색·기준 가격 확정 모델은 제외 |
+| 범위 제한 | 원상품 후보 탐색·기준 가격 검증 port는 fixture 구현만 존재하며 현재 공개 API 흐름에서는 활성화하지 않음 |
 | 3D 가상 피팅 제외 | 이 문서와 Recommendation/Product MVP endpoint에서 제외 |
 | 외부 데이터 정책 준수 | candidateToken, materialization, snapshot/identity-only 경계 정의 |
 
@@ -33,13 +35,19 @@ Lookbook, Closet API는 해당 도메인의 명세를 따른다.
 
 ### 1.1 인증과 소유권
 
-- 이 문서의 **모든 API는 JWT 인증 필수**다. 상품 검색·상세도 예외가 아니다.
+- 기본 정책은 JWT 인증 필수이며, `SecurityConfig`에 명시된 공개 경로만 예외다.
+- 인증 없이 허용되는 API는 회원가입·로그인·비밀번호 재설정·토큰 refresh/exchange,
+  Kakao OAuth2 진입/콜백, health, 그리고 `GET /api/v1/trends/**`, `GET /api/v1/tags/**`,
+  `GET /api/v1/content-search`, `GET /api/v1/lookbooks`, `GET /api/v1/lookbooks/{id}`다.
+- 상품 검색·상세, 이미지, 분석, 추천, 저장, 회원, 알림과 모든 변경 API는 인증 필수다.
 - `Authorization: Bearer {accessToken}`을 사용한다.
 - Request body, path, query에서 `memberId`를 받지 않는다.
-- 회원 ID는 Auth `#20`이 제공할 인증 principal 또는 공통 현재 회원 abstraction에서 얻는다.
+- 회원 ID는 현재 인증 principal인 `AuthMember`에서 얻는다.
 - 리포트 기반 API는 인증 회원이 소유한 `AnalysisReport`에만 접근한다.
 - 타인 소유 리포트와 존재하지 않는 리포트는 모두 404로 처리해 리소스 존재 여부를 숨긴다.
-- `#20`이 병합되기 전 임시 회원 헤더나 임의의 `memberId` DTO를 만들지 않는다.
+- 임시 회원 헤더나 임의의 `memberId` DTO를 만들지 않는다.
+- 공개 조회 응답의 `isSaved`, `isLiked`, `isOwner`는 필드가 항상 직렬화되며 익명 요청에서는
+  `false`다.
 
 ### 1.2 공통 요청 헤더
 
@@ -87,15 +95,23 @@ ErrorCode enum 식별자와 wire code는 구분한다. 예를 들어 Java 식별
 - 금액은 JSON number, Java `BigDecimal`, DB `DECIMAL(19,2)`를 사용한다.
 - 통화는 ISO 4217 대문자 3자리다. 예: `KRW`.
 - 외부 가격의 의미를 추정하지 않고 `LIST`, `CURRENT`, `SALE`을 구분한다.
-- 시간은 UTC 기준 ISO 8601 문자열로 반환한다. 예: `2026-07-18T03:00:00Z`.
+- `Instant` 기반 필드는 UTC ISO 8601(`2026-07-18T03:00:00Z`)로 반환한다.
+- `LocalDateTime` 기반 분석 저장 시각, 룩북 작성 시각, 알림 시각은 offset 없는 ISO 8601
+  문자열로 직렬화된다. 클라이언트는 이 필드에 임의로 `Z`를 붙이지 않는다.
 - MVP는 환율, 배송비, 관세를 계산하지 않는다.
 
 ### 1.6 페이지네이션
 
-- 목록 API는 opaque cursor를 사용한다. 클라이언트가 cursor 내부 값을 해석하지 않는다.
-- `pageSize` 기본값은 10, 허용 범위는 1~20이다.
-- 응답은 `items`, `nextCursor`, `hasNext`, `pageSize`를 포함한다.
-- `hasNext=false`이면 `nextCursor=null`이다.
+| API | cursor | pageSize |
+| --- | --- | --- |
+| 상품 검색, 저장 상품 | 서버 발급 opaque `String` | 기본 10, 1~20 |
+| 분석 저장 목록 | `ClosetSave.saveId` 기반 `Long` | 기본 20, 1~50 |
+| 룩북 목록 | `lookbookId` 기반 `Long` | 기본 20, 1~20 |
+| 알림 목록 | `notificationId` 기반 `Long` | 기본 20, 1~50 |
+| 트렌드, 통합 클로젯 | `Long` | 고정 10 |
+
+목록 응답은 `items`, `nextCursor`, `hasNext`, `pageSize`를 포함하며 `hasNext=false`이면
+`nextCursor=null`이다. opaque cursor는 클라이언트가 해석하거나 직접 생성하지 않는다.
 
 ---
 
@@ -141,12 +157,22 @@ OTHER
 - `finalScore`는 이번 범위에서 `similarityScore`와 같다.
 - 상품 가격은 검색·상세·찜 화면 표시용이며 추천 점수나 가성비 문구에 사용하지 않는다.
 - 공급자 raw score를 그대로 내부 점수로 저장하지 않는다.
-- `SIMILARITY_V1`은 Adapter가 제공한 0~1 score를 0~100으로 변환하고 소수 둘째 자리에서
-  `HALF_UP`으로 저장한다.
-- score가 없으면 상품명·브랜드·카테고리에 분석 태그가 포함된 후보는 70점, 일치하지 않는
-  후보는 0점으로 계산한다.
-- 80점 이상은 `HIGH_SIMILARITY`, 분석 태그 문자열이 일치하면 `TAG_MATCH`, 그 외에는
-  `PROVIDER_SIMILARITY` reason code를 사용하며 code 목록은 정렬해 저장한다.
+- `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 타입 분석 태그 중 상품명·브랜드·카테고리에
+  포함된 태그의 비율을 0~100의 `tagMatchScore`로 계산한다.
+- `STYLE` 타입과 직접 입력 태그는 점수 계산의 분자와 분모에서 제외한다.
+- 태그 점수 계산 대상이 없으면 `tagMatchScore`는 100점이다.
+- 실제 이미지 유사도 연동 전까지 `temporaryImageSimilarityScore`는 70점으로 고정한다. 향후 이미지
+  유사도 계산이 구현되면 이 임시값을 실제 계산 결과로 교체한다.
+- 최종 `similarityScore`는 `temporaryImageSimilarityScore * 0.7 + tagMatchScore * 0.3`이며,
+  소수 둘째 자리에서 `HALF_UP`으로 저장한다.
+- 계산 대상 태그가 모두 일치하면 `FULL_ATTRIBUTE_MATCH`, 일부만 일치하면
+  `PARTIAL_ATTRIBUTE_MATCH`, 하나도 일치하지 않으면 `NO_ATTRIBUTE_MATCH`를 사용한다.
+- 계산 대상 태그가 없으면 `NO_SCORABLE_TAGS`를 사용한다. 이때 태그 점수는 100점이지만
+  실제 매칭 결과가 아니므로 `HIGH_SIMILARITY`를 추가하지 않는다.
+- 계산 대상 태그가 있고 `tagMatchScore`가 80점 이상이면 `HIGH_SIMILARITY`를 추가한다.
+- `IMAGE_TAG_WEIGHTED_V1`과 `IMAGE_TAG_WEIGHTED_THR_V1`로 새로 생성되는 모든 추천 상품은
+  최소 하나의 reason code를 가지며 code 목록은 정렬해 저장한다.
+- 레거시 추천 항목의 `reason_codes` 저장값이 빈 문자열이면 조회 응답의 `reasonCodes`는 빈 배열이다.
 
 ### 2.4 동점 정렬
 
@@ -202,10 +228,10 @@ similarityScore DESC
 - 다른 회원 또는 허용되지 않은 목적에서 사용하면 invalid다.
 - 같은 회원은 만료 전 허용된 목적에서 재사용할 수 있으며 materialization은 동일 Product를
   반환한다. 만료 뒤에는 새 검색이 필요하다.
-- `SNAPSHOT_UUID` 후보 token에는 서명된 random materialization nonce가 들어간다. 서버는
-  원문 token/nonce가 아니라 versioned SHA-256 `materializationKey`만 Product에 저장해 같은
-  token 재시도를 동일 Product로 만든다.
-- 새 검색에서 새 token으로 다시 발견한 unstable 상품의 전역 중복까지 보장하지는 않는다.
+- 현재 검색 API는 안정적인 provider identity가 있는 후보에만 token을 발급한다.
+- `SNAPSHOT_UUID`와 `materializationKey` 컬럼은 향후 snapshot 저장이 허용되는 공급자를 위한
+  스키마 예약이다. 현재 API는 unstable 후보에 token을 발급하지 않고 materialization 요청도
+  `PRODUCT422_2`로 거부한다.
 - token은 DB 저장이나 로그 원문 기록 대상이 아니다.
 - 클라이언트가 token 대신 상품명, 가격, 이미지 URL을 보내 내부 Product를 만들 수 없다.
 
@@ -228,10 +254,7 @@ similarityScore DESC
 `POST /product-references`는 외부 검색 결과를 상세·저장 가능한 내부 Product로 전환하기 위한
 상품 검색·상세 지원 endpoint다. 별도의 원상품 선택 기능을 의미하지 않는다.
 
-### 3.2 기존 Image/Analysis 기준 API
-
-아래 API는 이 문서에 함께 기록된 기존 계약이며 Issue `#98`의 Recommendation/Product 구현
-범위에는 포함하지 않는다.
+### 3.2 Image/Analysis/Lookbook API
 
 | Method | Endpoint | 이름 | 인증 |
 | --- | --- | --- | --- |
@@ -245,9 +268,42 @@ similarityScore DESC
 | DELETE | `/api/v1/analyses/{reportId}/save` | 분석 리포트 저장 해제 | 필수 |
 | DELETE | `/api/v1/analyses/{reportId}` | 분석 리포트 삭제 | 필수 |
 | POST | `/api/v1/lookbooks` | 업로드 이미지 또는 분석 추천 상품으로 룩북 생성 | 필수 |
+| PUT | `/api/v1/lookbooks/{lookbookId}` | 룩북 전체 수정 | 필수 |
+| POST | `/api/v1/lookbooks/{lookbookId}/reports` | 룩북 신고 | 필수 |
+| DELETE | `/api/v1/lookbooks/{lookbookId}` | 룩북 soft delete | 필수 |
+| POST | `/api/v1/lookbooks/{lookbookId}/likes` | 룩북 좋아요 | 필수 |
+| DELETE | `/api/v1/lookbooks/{lookbookId}/likes` | 룩북 좋아요 취소 | 필수 |
+| GET | `/api/v1/lookbooks` | 룩북 목록 | 선택(익명 허용) |
+| GET | `/api/v1/lookbooks/{lookbookId}` | 룩북 상세 | 선택(익명 허용) |
 
-Issue `#98`은 `GET /analyses/{reportId}` 자체를 새로 구현하지 않고, 기존 상세 응답에
-카테고리별 `recommendationGroups` fragment를 추가하는 계약만 정의한다.
+### 3.3 Auth/Member/Notification/Content API
+
+| Method | Endpoint | 이름 | 인증 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/auth/sign` | 이메일 회원가입 | 불필요 |
+| POST | `/api/v1/auth/login` | 이메일 로그인 | 불필요 |
+| POST | `/api/v1/auth/password-reset/request` | 비밀번호 재설정 메일 요청 | 불필요 |
+| PATCH | `/api/v1/auth/password-reset` | 비밀번호 재설정 | 불필요 |
+| POST | `/api/v1/auth/token/refresh` | access/refresh token 재발급 | 불필요 |
+| POST | `/api/v1/auth/token/exchange` | Kakao 임시 token 교환 | 불필요 |
+| POST | `/api/v1/auth/logout` | 로그아웃 | 필수 |
+| PATCH | `/api/v1/members/me` | 내 프로필 부분 수정 | 필수 |
+| GET | `/api/v1/members/me/nickname-availability` | 닉네임 사용 가능 확인 | 필수 |
+| PATCH | `/api/v1/members/me/password` | 비밀번호 변경 | 필수 |
+| GET | `/api/v1/members/me` | 마이페이지 | 필수 |
+| DELETE | `/api/v1/members/me` | 회원 탈퇴 | 필수 |
+| PUT | `/api/v1/members/me/onboarding` | 온보딩 프로필 설정 | 필수 |
+| PUT | `/api/v1/members/me/tags` | 관심 태그 교체 | 필수 |
+| GET/PATCH | `/api/v1/members/me/notification-settings` | 알림 설정 조회/부분 수정 | 필수 |
+| GET | `/api/v1/notifications` | 알림 목록 | 필수 |
+| PATCH | `/api/v1/notifications/{notificationId}/read` | 알림 읽음 | 필수 |
+| PATCH | `/api/v1/notifications/read` | 전체 알림 읽음 | 필수 |
+| DELETE | `/api/v1/notifications/{notificationId}` | 알림 삭제 | 필수 |
+| GET | `/api/v1/content-search` | 트렌드·룩북 통합 검색 | 선택(익명 허용) |
+| GET | `/api/v1/trends`, `/api/v1/trends/{trendId}` | 트렌드 목록·상세 | 선택(익명 허용) |
+| GET | `/api/v1/trends/{trendId}/lookbooks` | 트렌드 관련 룩북 | 선택(익명 허용) |
+| GET | `/api/v1/tags` | 태그 목록 | 불필요 |
+| POST/GET/DELETE | `/api/v1/closet-saves...` | 통합 클로젯 저장·목록·삭제 | 필수 |
 
 ---
 
@@ -351,11 +407,14 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
 ### 규칙
 
 - candidate token 서명·만료·공급자 capability를 검증한다.
-- `SNAPSHOT_UUID`는 token의 `materializationKey` unique로 재시도를 멱등 처리한다.
+- 현재는 `ProductIdentityHasher`가 `provider`, `externalProductId`, 선택 `externalVariantId`,
+  선택 `merchantId`를 NUL 구분자로 정규화해 만든 SHA-256 hex `providerIdentityKey`와
+  `UNIQUE(source_api, provider_identity_key)` 계약으로 재시도를 멱등 처리한다.
 - 가능한 경우 live lookup으로 identity와 현재 상태를 재확인한다.
-- `docs/ERD.md`가 허용하는 provider identity 또는 snapshot 최소 필드만 저장한다.
+- 현재 `IDENTITY_ONLY` 방식은 provider identity와 내부 카테고리만 저장하며 표시 필드는 live
+  lookup으로 가져온다.
 - 클라이언트가 상품명, 가격, 이미지, 구매 URL을 body로 보내지 않는다.
-- 안정 identity도 없고 snapshot 저장도 허용되지 않으면 `PRODUCT422_2`다.
+- 안정 identity가 없으면 현재 구현에서는 `PRODUCT422_2`다.
 - 추천 생성 내부에서도 동일한 materialization service를 사용한다.
 
 ---
@@ -401,12 +460,15 @@ GET /api/v1/products?keyword=미니멀%20셔츠&category=TOP&pageSize=10
   `dataStatus=STALE_SNAPSHOT`, `availability=TEMPORARILY_UNRESOLVED`를 반환할 수 있다.
 - 정상 live lookup 또는 유효한 최신 snapshot 응답은 `dataStatus=LIVE`를 사용한다.
 - 표시 가능한 데이터가 전혀 없으면 `PRODUCT503_1`이다.
-- provider not found는 Product를 hard delete하지 않고 `UNAVAILABLE`로 표시한다.
+- identity-only Product의 live lookup이 not found여도 DB 상태를 임의로 바꾸거나 hard delete하지
+  않고 현재 요청을 `PRODUCT503_1`로 실패 처리한다.
 - 찜 해제는 상세 조회 성공 여부와 무관하게 동작한다.
 
-Issue #106 구현은 fixture 기본 런타임에서 검색 GET의 무저장, 회원·목적·10분 만료
-candidate token, 안정 provider identity의 멱등 materialize와 상세 live lookup 계약을
-검증한다. Shopify 런타임 및 실제 외부 호출은 활성화하지 않는다.
+기본 런타임은 `SHOPPING_PROVIDER=fixture`, `SHOPIFY_ENABLED=false`다.
+`SHOPPING_PROVIDER=shopify`, `SHOPIFY_ENABLED=true`와 Shopify client 설정을 함께 제공하면
+`ShopifyGlobalCatalogAdapter`를 선택할 수 있다. CI와 기본 로컬 실행은 실제 외부 API를
+호출하지 않으며 fixture로 검색 GET의 무저장, 회원·목적·10분 만료 candidate token, 안정
+provider identity의 멱등 materialize와 상세 live lookup 계약을 검증한다.
 
 ---
 
@@ -439,9 +501,9 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
   "message": "성공적으로 요청을 처리했습니다.",
   "data": {
     "reportId": 501,
-    "analysisTags": ["미니멀", "와이드핏", "베이지톤"],
+    "analysisTags": ["미니멀", "와이드핏", "베이지"],
     "matchPercentage": 70,
-    "scoreVersion": "SIMILARITY_THRESHOLD_V2",
+    "scoreVersion": "IMAGE_TAG_WEIGHTED_THR_V1",
     "recommendationStatus": "CURRENT",
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
@@ -461,9 +523,9 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
               "observedAt": "2026-07-18T03:00:00Z"
             },
             "purchaseUrl": "https://mall.example/products/100",
-            "similarityScore": 82.00,
-            "finalScore": 82.00,
-            "reasonCodes": ["HIGH_SIMILARITY"],
+            "similarityScore": 79.00,
+            "finalScore": 79.00,
+            "reasonCodes": ["FULL_ATTRIBUTE_MATCH", "HIGH_SIMILARITY"],
             "availability": "AVAILABLE",
             "isSaved": false
           }
@@ -497,9 +559,10 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
 - 새 세트 저장에 성공하기 전 기존 세트를 삭제하지 않는다.
 - 입력 revision, 태그 key 또는 매칭값이 달라지면 `RECOMMENDATION409_1`을 반환하고 기존 세트를 유지한다.
 - body 요청은 `matchPercentage` 미만 후보를 materialization 전에 제외하고
-  `SIMILARITY_THRESHOLD_V2`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
-- body 없는 하위 호환 요청은 임계값 필터 없이 `SIMILARITY_V1`을 유지한다.
-- 외부 공급자가 모두 실패하면 `PRODUCT503_1`이며 기존 세트를 유지한다.
+  `IMAGE_TAG_WEIGHTED_THR_V1`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
+- body 없는 하위 호환 요청은 임계값 필터 없이 `IMAGE_TAG_WEIGHTED_V1`로 저장한다.
+- 외부 공급자가 모두 실패하면 대표 실패 원인에 따라 malformed response는 `PRODUCT502_1`,
+  timeout/auth/unavailable은 `PRODUCT503_1`, quota는 `PRODUCT503_2`이며 기존 세트를 유지한다.
 - materialize할 수 없는 후보는 현재 세트에서 제외하고 warning을 남긴다.
 - 후보가 모두 저장 정책상 materialize 불가하면 `PRODUCT503_3`이며 기존 세트를 유지한다.
 - 각 그룹은 최대 10개이며 8개 그룹을 고정 순서로 반환한다.
@@ -524,9 +587,9 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
   "message": "성공적으로 요청을 처리했습니다.",
   "data": {
     "reportId": 501,
-    "tags": ["미니멀", "와이드핏", "베이지톤"],
+    "tags": ["미니멀", "와이드핏", "베이지"],
     "recommendationStatus": "CURRENT",
-    "scoreVersion": "SIMILARITY_V1",
+    "scoreVersion": "IMAGE_TAG_WEIGHTED_V1",
     "recommendationGroups": [
       {"category": "OUTER", "items": []},
       {"category": "TOP", "items": []},
@@ -545,8 +608,10 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
 
 - 아직 생성하지 않았으면 `recommendationStatus=NOT_GENERATED`와 8개 빈 그룹을 반환한다.
 - 현재 분석 결과 version과 마지막 생성 입력 version이 다르면 `STALE`로 반환한다.
-- 일부 live hydrate 실패는 가능한 항목을 반환하고 `partial=true`, `warnings`에 reason code를 둔다.
-- 전체를 표시할 수 없으면 provider 오류를 반환하되 저장 상품 관계나 현재 세트를 삭제하지 않는다.
+- 일부 또는 전체 identity-only live hydrate 실패는 해당 항목의 표시 필드를 `null`, availability를
+  `TEMPORARILY_UNRESOLVED`로 두고 나머지 그룹과 함께 200으로 반환한다.
+- 현재 `AnalysisDetailResponse`는 `partial`, `warnings` 필드를 노출하지 않는다. 이 두 필드는
+  추천 생성 응답 `RecommendationCreateResponse`에만 포함된다.
 
 ---
 
@@ -649,13 +714,43 @@ body는 없다.
 
 | Java 식별자 | Wire code | HTTP | 적용 조건 |
 | --- | --- | ---: | --- |
-| `UNAUTHORIZED` | `COMMON401_1` | 401 | 인증이 없거나 유효하지 않음 |
+| `BAD_REQUEST` | `COMMON400_1` | 400 | 일반 잘못된 요청 |
 | `VALIDATION_ERROR` | `COMMON400_2` | 400 | 필드 형식·범위·필수값 위반 |
+| `UNAUTHORIZED` | `COMMON401_1` | 401 | 인증이 없거나 유효하지 않음 |
+| `FORBIDDEN` | `COMMON403_1` | 403 | 권한 부족 |
+| `NOT_FOUND` | `COMMON404_1` | 404 | 일반 리소스 없음 |
+| `METHOD_NOT_ALLOWED` | `COMMON405_1` | 405 | 허용되지 않은 HTTP method |
 | `NOT_ACCEPTABLE` | `COMMON406_1` | 406 | 지원하지 않는 응답 미디어 타입 요청 |
 | `UNSUPPORTED_MEDIA_TYPE` | `COMMON415_1` | 415 | 지원하지 않는 요청 미디어 타입 |
+| `INTERNAL_SERVER_ERROR` | `COMMON500_1` | 500 | 처리되지 않은 서버 오류 |
+| `INVALID_ANALYSIS_IMAGE` | `ANALYSIS400_1` | 400 | 분석 multipart 이미지 형식·크기 위반 |
+| `ANALYSIS_SELECTION_INVALID` | `ANALYSIS400_2` | 400 | 저장 선택 상품이 현재 추천과 불일치 |
+| `ANALYSIS_IMAGE_UPLOAD_FLOW_REQUIRED` | `ANALYSIS400_3` | 400 | 운영에서 multipart 분석 요청 |
 | `ANALYSIS_REPORT_NOT_FOUND` | `ANALYSIS404_1` | 404 | 리포트가 없거나 현재 회원 소유가 아님 |
 | `ANALYSIS_NOT_READY` | `ANALYSIS409_1` | 409 | 추천 입력으로 사용할 수 없는 분석 상태 |
+| `ANALYSIS_IMAGE_STORAGE_ERROR` | `ANALYSIS500_1` | 500 | 분석 이미지 저장 실패 |
 | `TAG_NOT_FOUND` | `TAG404_1` | 404 | 확정 요청의 기본 태그 ID가 존재하지 않음 |
+| `TREND_NOT_FOUND` | `TREND404_1` | 404 | 트렌드 없음 |
+| `LOOKBOOK_NOT_FOUND` | `LOOKBOOK404_1` | 404 | 통합 클로젯 저장 대상으로 지정한 룩북이 없거나 삭제됨 |
+| `CLOSET_ALREADY_SAVED` | `CLOSET400_1` | 400 | 통합 클로젯에 이미 저장됨 |
+| `CLOSET_NOT_FOUND` | `CLOSET404_1` | 404 | 저장 항목 없음 또는 소유권 없음 |
+| `CLOSET_TARGET_UNSUPPORTED` | `CLOSET422_1` | 422 | 지원하지 않는 저장 대상 |
+| `EMAIL_ALREADY_EXISTS` | `AUTH409_1` | 409 | 가입된 이메일 |
+| `INVALID_CREDENTIALS` | `AUTH401_1` | 401 | 이메일 또는 비밀번호 불일치 |
+| `LOGIN_ATTEMPT_LOCKED` | `AUTH429_1` | 429 | 로그인 시도 횟수 초과로 일시 잠금 |
+| `INVALID_REFRESH_TOKEN` | `AUTH401_2` | 401 | refresh token 오류 |
+| `INVALID_TEMP_TOKEN` | `AUTH401_3` | 401 | Kakao 임시 token 오류 |
+| `INVALID_PASSWORD_RESET_TOKEN` | `AUTH401_4` | 401 | 비밀번호 재설정 token 오류·만료 |
+| `SOCIAL_EMAIL_REQUIRED` | `AUTH400_1` | 400 | Kakao 이메일 동의 필요 |
+| `SOCIAL_ID_REQUIRED` | `AUTH400_2` | 400 | Kakao 사용자 식별값 없음 |
+| `PASSWORD_MISMATCH` | `MEMBER400_1` | 400 | 현재 비밀번호 불일치 |
+| `PASSWORD_CHANGE_NOT_ALLOWED` | `MEMBER400_2` | 400 | 소셜 회원 비밀번호 변경 요청 |
+| `MEMBER_TAG_NOT_FOUND` | `MEMBER400_3` | 400 | 존재하지 않는 관심 태그 포함 |
+| `REJOIN_BLOCKED` | `MEMBER403_1` | 403 | 탈퇴 후 30일 이내 재가입 |
+| `MEMBER_NOT_FOUND` | `MEMBER404_1` | 404 | 회원 없음 |
+| `NICKNAME_ALREADY_EXISTS` | `MEMBER409_1` | 409 | 사용 중인 닉네임 |
+| `NOTIFICATION_SETTING_EMPTY` | `NOTIFICATION400_1` | 400 | 알림 설정 PATCH에 변경 필드 없음 |
+| `NOTIFICATION_NOT_FOUND` | `NOTIFICATION404_1` | 404 | 알림 없음 또는 소유권 없음 |
 | `PRODUCT_NOT_FOUND` | `PRODUCT404_1` | 404 | 내부 Product가 없음 |
 | `PRODUCT_REFERENCE_INVALID` | `PRODUCT422_1` | 422 | candidate token 서명·형식·만료 오류 |
 | `PRODUCT_REFERENCE_UNSUPPORTED` | `PRODUCT422_2` | 422 | 안정 identity와 허용 snapshot 전략이 모두 없음 |
@@ -665,7 +760,12 @@ body는 없다.
 | `PRODUCT_PROVIDER_PERSISTENCE_UNSUPPORTED` | `PRODUCT503_3` | 503 | 후보를 허용된 방식으로 하나도 materialize할 수 없음 |
 | `RECOMMENDATION_INPUT_CHANGED` | `RECOMMENDATION409_1` | 409 | 외부 호출 중 분석 결과 version이 변경됨 |
 | `IMAGE_UNSUPPORTED_CONTENT_TYPE` | `IMAGE400_1` | 400 | JPEG, PNG, WebP 이외의 업로드 MIME type |
+| `IMAGE_NOT_FOUND` | `IMAGE404_1` | 404 | 이미지 없음 또는 소유권 없음 |
 | `IMAGE_OBJECT_NOT_FOUND` | `IMAGE404_2` | 404 | 업로드 완료 확인 시 S3 객체가 없음 |
+| `IMAGE_INVALID_STATE` | `IMAGE409_1` | 409 | 현재 상태·목적으로 요청 수행 불가 |
+| `IMAGE_UPLOAD_EXPIRED` | `IMAGE410_1` | 410 | 업로드 요청 만료 |
+| `INVALID_IMAGE_CONTENT` | `IMAGE422_1` | 422 | 실제 object signature·내용 검증 실패 |
+| `IMAGE_PRESIGN_ERROR` | `IMAGE500_1` | 500 | Presigned POST 발급 실패 |
 | `IMAGE_STORAGE_ERROR` | `IMAGE500_2` | 500 | S3 권한 또는 서버 설정 오류 |
 | `IMAGE_STORAGE_UNAVAILABLE` | `IMAGE503_1` | 503 | S3 timeout, 429, 5xx, `RequestTimeout`, `OperationAborted`, 연결 실패 |
 
@@ -684,12 +784,14 @@ body는 없다.
 ### 11.1 Port 경계
 
 ```text
-ProductCatalogPort             # 상품 검색·상세·추천 후보 조회·live lookup
-AffiliateLinkPort              # 제휴 링크를 실제 채택할 때만
+ProductCatalogPort              # 현재 공개 검색·추천 후보 조회·live lookup에 사용
+ReferenceProductDiscoveryPort   # 원상품 후보 탐색 PoC 경계; fixture만 구현, 공개 API 미연결
+ProductPriceVerificationPort    # 기준 가격 검증 PoC 경계; fixture만 구현, 공개 API 미연결
 ```
 
-Controller와 Service는 Shopify 등 공급자 이름을 DTO 계약에 노출하지 않는다. 실제 운영 Adapter의
-채택, 가격, quota는 공식 근거가 확정된 뒤 별도 운영 결정으로 기록한다.
+`FixtureShoppingProviderAdapter`는 세 port를 모두 구현하고, `ShopifyGlobalCatalogAdapter`는 현재
+`ProductCatalogPort`만 구현한다. `AffiliateLinkPort`는 현재 코드에 없다. Controller와 Service는
+Shopify 등 공급자 이름을 DTO 계약에 노출하지 않는다.
 
 ### 11.2 검색·저장 분리
 
@@ -698,8 +800,8 @@ Controller와 Service는 Shopify 등 공급자 이름을 DTO 계약에 노출하
 - 공급자 정책이 snapshot 저장을 금지하면 provider identity만 저장하고 응답 시 live lookup한다.
 - Shopify Global Catalog 상품은 `IDENTITY_ONLY`로 저장하며 상품명·가격·이미지·구매 URL은
   상세·저장 상품 목록·추천 결과 응답 시 live lookup한다.
-- 안정 identity가 없지만 snapshot 저장이 명시적으로 허용되면 내부 UUID 전략을 사용할 수 있다.
-- identity와 snapshot 모두 허용되지 않으면 상세·저장을 비활성화한다.
+- 안정 identity가 없는 후보는 현재 상세·저장 대상에서 제외한다. snapshot 저장과 내부 UUID는
+  schema 확장점일 뿐 현재 API가 지원하지 않는다.
 - 현재 추천 세트에는 materialize 가능한 Product만 포함하고 ephemeral 추천 행은 두지 않는다.
 - 외부 가격은 상품 표시 데이터로만 취급하며 기준 가격이나 가성비 근거로 재해석하지 않는다.
 
@@ -728,7 +830,8 @@ Controller와 Service는 Shopify 등 공급자 이름을 DTO 계약에 노출하
 | 외부 후보 materialize | `ProductReferenceCreateRequest`, `ProductReferenceResponse` |
 | 상품 상세 응답 | `ProductDetailResponse` |
 | 추천 생성 요청 | `RecommendationGenerateRequest` |
-| 추천 생성 응답 | `RecommendationResultResponse` |
+| 추천 생성 응답 | `RecommendationCreateResponse` |
+| 분석 상세 내부 추천 fragment | `RecommendationResultResponse` |
 | 추천 그룹 | `RecommendationGroupResponse` |
 | 저장 상품 응답/목록 | `SavedProductResponse`, `SavedProductListResponse` |
 | 이미지 업로드 URL 요청/응답 | `ImageUploadRequest`, `ImageUploadResponse` |
@@ -764,23 +867,27 @@ Controller와 Service는 Shopify 등 공급자 이름을 DTO 계약에 노출하
 
 ---
 
-## 14. 구현 Phase 검증 기준
+## 14. 자동화 검증 현황
 
-- [ ] 모든 endpoint 인증과 소유권 404가 MockMvc로 검증됨
-- [ ] 요청 DTO validation과 공통 응답 envelope가 검증됨
-- [ ] 상품 검색 GET이 DB write를 하지 않음
-- [ ] candidate token 변조·만료·재사용 정책이 검증됨
-- [ ] body 없는 추천 생성이 AnalysisReport와 ReportTag를 변경하지 않음
-- [ ] body 추천 생성이 기본·직접 입력 태그와 매칭값을 멱등 확정함
-- [ ] 0~100 임계값 경계와 임계값 미만 후보의 materialization 제외가 검증됨
-- [ ] 유사도 정규화와 `finalScore=similarityScore`가 순수 단위 테스트로 검증됨
-- [ ] 8개 그룹 순서, 그룹별 Top 10, 빈 그룹 포함이 검증됨
-- [ ] 외부 호출이 DB transaction 밖에서 실행됨
-- [ ] 저장 실패·분석 입력 변경 시 기존 현재 세트가 유지됨
-- [ ] 저장 상품 PUT/DELETE 멱등성과 추천 세트 독립성이 검증됨
-- [ ] provider 장애 중 저장 해제와 partial 목록이 동작함
-- [ ] API key, candidate token, 사용자 이미지 URL 원문이 로그에 노출되지 않음
-- [ ] API 변경 PR에서 이 문서가 함께 갱신됨
+`develop` `85ecbc3` 기반 issue #224 변경의 테스트 기준이다. 체크되지 않은 항목은 정책이 없다는 뜻이 아니라 해당
+속성을 직접 고정하는 전용 자동화 테스트를 확인하지 못했다는 뜻이다.
+
+- [x] 요청 DTO validation과 공통 응답 envelope
+- [x] 상품 검색 GET 무저장과 unstable 후보 token 미발급
+- [x] candidate token 변조·만료·회원/목적 binding
+- [x] 안정 provider identity materialization 멱등성
+- [x] body 없는 추천 생성의 분석 입력 비변경
+- [x] body 추천 생성의 기본·직접 입력 태그와 매칭값 멱등 확정
+- [x] 임계값 경계와 임계값 미만 후보 materialization 제외
+- [x] 유사도 정규화와 `finalScore=similarityScore`
+- [x] 8개 그룹 순서, 그룹별 Top 10, 빈 그룹 포함
+- [x] 저장 실패·분석 입력 변경 시 기존 현재 세트 유지
+- [x] 저장 상품 PUT/DELETE 멱등성과 추천 세트 독립성
+- [ ] 모든 공개/보호 endpoint의 Security filter-chain 계약
+- [ ] 외부 호출이 DB transaction 밖에서 실행된다는 직접 검증
+- [ ] API key, candidate token, 사용자 이미지 URL 원문 로그 비노출 검증
+
+API 계약 변경 PR은 이 문서 또는 더 구체적인 도메인 계약 문서를 함께 갱신한다.
 
 ---
 
@@ -851,12 +958,18 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 ### 상태와 검증
 
 - API의 논리 초기 상태는 `PENDING_UPLOAD`이며 `visibility=PRIVATE`로 시작한다.
-- Issue #95 호환 릴리스 A에서는 자동 rollback을 위해 DB에는 legacy `PENDING`을 기록하고, reader/domain check는 `PENDING`과 `PENDING_UPLOAD`를 모두 논리 `PENDING_UPLOAD`로 처리한다.
+- 현재 허용 상태는 `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`,
+  `DELETED`, `REJECTED`다. V18/V19가 legacy `PENDING`을 backfill하고 DB check를 canonical 값으로
+  축소했으므로 legacy 값은 현재 API 입력·저장 계약이 아니다.
 - 객체 key는 `images/{purpose}/{memberId}/{yyyy}/{MM}/{imageId}.{ext}` 형식으로 서버가 생성하며 클라이언트 파일명은 사용하지 않는다.
 - 이 API가 받은 `fileSize`는 발급 전 요청 검증용이다. 업로드 완료 API가 S3 metadata,
   실제 파일 시그니처와 크기를 다시 검증한다.
-- 분석 리포트가 생성되면 API 목적 `ANALYSIS` 또는 호환 저장값 `ANALYSIS_ORIGINAL` 이미지를 `ACTIVE`로 전환한다.
-- 24시간 이상 도메인에 연결되지 않은 `PENDING`/`PENDING_UPLOAD`/`READY`/`REJECTED` 이미지는 정리 작업자가 S3 객체와 DB 상태를 정리한다.
+- 분석 리포트가 생성되면 `ANALYSIS` 이미지를 `ACTIVE`로 전환한다. 현재 허용 목적은
+  `PROFILE`, `ANALYSIS`, `LOOKBOOK`뿐이다.
+- 24시간 이상 도메인에 연결되지 않은 `PENDING_UPLOAD`/`READY`/`REJECTED` 이미지는 정리
+  작업자가 S3 객체와 DB 상태를 정리한다.
+- 모든 사용자 이미지는 `PRIVATE`을 유지한다. API에 포함되는 조회 URL은 CloudFront 10분 Signed
+  URL이며, 공개 룩북 생성 시에도 visibility를 `PUBLIC`으로 바꾸지 않는다.
 
 ### 오류
 
@@ -866,6 +979,11 @@ POST policy는 bucket, 정확한 object key, MIME, 성공 상태, 5분 만료를
 | 필수값, enum, 파일 크기 위반 | 400 | `COMMON400_1` 또는 `COMMON400_2` |
 | 지원하지 않는 MIME type | 400 | `IMAGE400_1` |
 | Presigned POST 정보 생성 실패 | 500 | `IMAGE500_1` |
+| 이미지가 없거나 요청 회원 소유가 아님 | 404 | `IMAGE404_1` |
+| 완료·재발급이 불가능한 상태 | 409 | `IMAGE409_1` |
+| 업로드 요청 만료 | 410 | `IMAGE410_1` |
+| 실제 파일 signature·크기·MIME 불일치 | 422 | `IMAGE422_1` |
+| S3 metadata/object 처리 실패 | 500 | `IMAGE500_2` |
 
 ### `POST /api/v1/images/{imageId}/complete`
 
@@ -889,7 +1007,7 @@ S3 객체가 없으면 `404 IMAGE404_2`, S3 timeout·연결 실패·429·5xx 및
 
 ### `POST /api/v1/images/{imageId}/upload-request`
 
-아직 논리 `PENDING_UPLOAD`인 본인 이미지의 5분 유효 Presigned POST 정보를 재발급한다. 호환 릴리스 A에서는 DB의 `PENDING`도 같은 상태로 처리한다. 응답 계약은
+아직 `PENDING_UPLOAD`인 본인 이미지의 5분 유효 Presigned POST 정보를 재발급한다. 응답 계약은
 최초 발급 응답과 동일하며 DB의 이미지 ID와 object key는 바꾸지 않는다.
 
 ---
@@ -899,7 +1017,7 @@ S3 객체가 없으면 `404 IMAGE404_2`, S3 timeout·연결 실패·429·5xx 및
 ### `POST /api/v1/analyses`
 
 `Content-Type: application/json` 요청은 인증 회원 본인이 소유하고 `status=READY`인
-`ANALYSIS` 목적의 이미지 ID를 받는다. 호환 저장값 `ANALYSIS_ORIGINAL`도 같은 분석 목적 이미지로 처리한다.
+`ANALYSIS` 목적의 이미지 ID를 받는다.
 
 ```json
 {
@@ -913,7 +1031,7 @@ S3 객체가 없으면 `404 IMAGE404_2`, S3 timeout·연결 실패·429·5xx 및
 거절하므로, 클라이언트는 Presigned POST 완료 후 `imageId` JSON 계약을 사용해야 한다.
 
 `FITBACK_AI_TAG_ANALYZER=prototype`은 이미지 의미를 판별하는 실제 AI가 아니라 end-to-end
-프로토타입용 결정적 fallback이다. `미니멀`, `와이드핏`, `베이지톤` 기준 태그를 반환하며,
+프로토타입용 결정적 fallback이다. `미니멀`, `와이드핏`, `베이지` 기준 태그를 반환하며,
 기본값 `unavailable`은 실제 AI 공급자 연결 전까지 분석 생성을 fail-closed로 유지한다.
 
 | 조건 | HTTP | code |
@@ -971,8 +1089,9 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 ### `DELETE /api/v1/analyses/{reportId}`
 
 리포트를 soft delete 처리한다. 삭제된 리포트는 목록과 상세 조회에서 제외되며 연결된 이미지는
-보존 기간 이후 정리 작업의 대상이 된다. 저장된 리포트라면 클로젯 저장 관계와 선택 상품
-스냅샷을 먼저 제거한다.
+transaction commit 후 참조 release 이벤트의 대상이 된다. cleanup은 분석·룩북·프로필 참조를
+다시 확인하고 마지막 참조일 때만 삭제 claim을 수행한다. 저장된 리포트라면 클로젯 저장 관계와
+선택 상품 스냅샷을 먼저 제거한다.
 
 ---
 
@@ -1009,6 +1128,28 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 목록·상세 응답의 `matchedImageUrl`은 어느 경로로 생성했든 동일하게 표시 가능하며,
 상품 경로인 경우 `matchedProductId`도 반환한다.
 
+룩북에 연결된 원본·매칭·작성자 프로필 이미지는 모두 `PRIVATE` 상태를 유지한다. 공개 조회 API도
+각 요청 시점에 10분 유효 CloudFront Signed URL을 만들어 반환하며, 룩북 생성·공개 조회 때문에
+이미지를 `PUBLIC`으로 전환하지 않는다. Signed URL이 만료되면 목록·상세 API를 다시 호출해 새
+URL을 받아야 한다.
+
+### `PUT /api/v1/lookbooks/{lookbookId}`
+
+작성자만 룩북을 수정할 수 있다. body는 생성 요청과 같은 전체 교체 계약이며, 새 이미지가
+`READY`라면 `ACTIVE`로 전환하고 더 이상 참조하지 않는 기존 이미지 ID는 transaction commit 후
+참조 재확인·cleanup 흐름으로 전달한다. 성공 응답은 `lookbookId`를 반환한다.
+
+### `POST /api/v1/lookbooks/{lookbookId}/reports`
+
+로그인 회원이 신고 사유 하나를 전달한다. 사유는 `INAPPROPRIATE_IMAGE`,
+`COPYRIGHT_INFRINGEMENT`, `FRAUD_OR_FALSE_INFORMATION`, `SPAM_OR_ADVERTISEMENT`, `OTHER`다.
+동일 회원의 동일 룩북 중복 신고는 `COMMON400_1`이다. 성공 응답은 생성된 `reportId`를 반환한다.
+
+### `DELETE /api/v1/lookbooks/{lookbookId}`
+
+작성자 또는 `ADMIN`만 soft delete할 수 있다. 연결 이미지의 마지막 참조 여부는 commit 이후
+재확인하며, 다른 분석·룩북·프로필이 참조하면 이미지를 삭제하지 않는다.
+
 ### `POST /api/v1/lookbooks/{lookbookId}/likes`
 
 인증 회원이 룩북에 좋아요를 등록한다.
@@ -1016,6 +1157,23 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 ### `DELETE /api/v1/lookbooks/{lookbookId}/likes`
 
 인증 회원이 등록한 룩북 좋아요를 취소한다.
+
+좋아요 등록과 취소는 멱등이다. 두 응답 모두 현재 `isLiked`, `likeCount`를 반환한다.
+
+### `GET /api/v1/lookbooks?cursor=&pageSize=20&tag=`
+
+비로그인 조회를 허용한다. `lookbookId` 기반 `Long` cursor로 최신순 조회하며, `tag`가 있으면
+정규화한 태그 이름으로 필터한다. 응답은 `items`, `nextCursor`, `hasNext`, `pageSize`다. 각 item의
+`isLiked`는 익명 요청에서 `false`다.
+
+### `GET /api/v1/lookbooks/{lookbookId}`
+
+비로그인 조회를 허용한다. 원본·매칭 이미지, 작성자·프로필 이미지, 작성 시각, 구매 링크,
+코멘트, 태그, 좋아요 수를 반환한다. 익명 요청의 `isLiked`, `isOwner`는 `false`다.
+
+로그인 회원이 해당 룩북을 마이 클로젯에 저장한 경우 `saveId`에 저장 취소(`DELETE
+/api/v1/closet-saves/{saveId}`)에 사용할 `ClosetSave` ID를 반환한다. 저장하지 않았거나
+익명 요청인 경우 `saveId`는 `null`이다.
 
 ### 오류
 
@@ -1030,6 +1188,10 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 | 이미지가 없거나 본인 소유가 아닌 경우 | 404 | `IMAGE404_1` |
 | 상품이 존재하지 않는 경우 | 404 | `COMMON404_1` |
 | 이미지 목적 또는 상태가 룩북에서 사용할 수 없는 경우 | 409 | `IMAGE409_1` |
+| 룩북이 없거나 삭제된 경우(룩북 API) | 404 | `COMMON404_1` |
+| 룩북 수정·삭제 권한이 없는 경우 | 403 | `COMMON403_1` |
+| 본인 룩북 신고 | 403 | `COMMON403_1` |
+| 동일 룩북 중복 신고 | 400 | `COMMON400_1` |
 
 ---
 
@@ -1042,20 +1204,70 @@ Issue #119 구현은 body를 생략하면 기존 분석 결과를 읽고, body�
 닉네임·태그가 검색 대상이다. 삭제되거나 숨김 처리된 룩북은 제외한다.
 
 응답은 `trends`, `lookbooks` 두 그룹으로 구성하며 각 그룹은 최신순 최대 10개의 기존 목록 카드
-DTO를 반환한다. 로그인 요청은 트렌드 `isSaved`와 룩북 `isLiked`를 함께 계산한다.
+DTO를 반환한다. `isSaved`, `isLiked` 필드는 항상 포함하며 익명 요청에서는 `false`다.
 
 ### `GET /api/v1/trends`
 
-비로그인 조회를 허용하며 최신순으로 최대 10개의 트렌드를 반환한다. `cursor`와 `tag`를
-선택적으로 전달할 수 있다. 로그인 요청은 각 항목에 `isSaved`를 포함한다.
+비로그인 조회를 허용하며 최대 10개의 트렌드를 커서 기반으로 반환한다. `cursor`와 `tag`를
+선택적으로 전달할 수 있다. `tag`를 전달하면 해당 태그가 등록된 트렌드만 최신순으로 조회한다.
+`tag` 없이 로그인한 회원은 관심 태그와 일치하는 트렌드를 우선 노출하고 각 그룹 안에서 최신순으로
+정렬하며, 비로그인 또는 관심 태그 미설정 회원은 전체를 최신순으로 조회한다. `isSaved`는 항상
+포함하며 익명 요청에서는 `false`다.
 
 ### `GET /api/v1/trends/{trendId}`
 
 트렌드 제목, 이미지, 설명, 태그와 로그인 회원의 `isSaved`를 반환한다.
 
+### `GET /api/v1/trends/{trendId}/lookbooks`
+
+트렌드 태그와 룩북 태그의 관련도 점수를 기준으로 관련 룩북을 3개씩 커서 기반으로 반환한다.
+비로그인 조회를 허용하며 삭제·숨김 룩북은 제외한다. 응답은 룩북 목록 카드 DTO이며 `isLiked`는
+항상 포함하고 익명 요청에서는 `false`다. 존재하지 않는 `trendId`는 `TREND404_1`이다.
+`cursor`가 존재하지 않거나 해당 트렌드와 관련 없는 룩북이면 `COMMON404_1`이다. 페이지 조회 사이에
+커서 룩북이 삭제·숨김 처리되어도 해당 정렬 위치 다음부터 조회하며 응답 목록에서는 제외한다.
+
 ### `GET /api/v1/tags`
 
-관심 태그, 분석 태그 수정, 룩북 업로드에 사용할 전체 태그 목록을 반환한다.
+관심 태그, 분석 태그 수정, 룩북 업로드에 사용할 canonical 태그 마스터를 반환한다.
+각 항목은 태그 분류 `tagType`과 적용 복종 `targetClothing`을 포함한다. `ALL`은 상의,
+바지, 스커트, 원피스, 아우터에 공통 적용됨을 뜻하며 다른 복종 값과 함께 반환하지 않는다.
+
+```json
+{
+  "success": true,
+  "code": "COMMON200_1",
+  "message": "성공적으로 요청을 처리했습니다.",
+  "data": {
+    "items": [
+      {
+        "tagId": 8,
+        "tagName": "와이드핏",
+        "tagType": "SILHOUETTE",
+        "targetClothing": ["PANTS"]
+      },
+      {
+        "tagId": 22,
+        "tagName": "데님",
+        "tagType": "MATERIAL",
+        "targetClothing": ["ALL"]
+      }
+    ]
+  }
+}
+```
+
+`tagType`은 `STYLE`, `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 중 하나다.
+`targetClothing` 값은 `TOP`, `PANTS`, `SKIRT`, `DRESS`, `OUTER`, `ALL`이다. 개별 복종 배열은
+앞의 다섯 값 순서로 정렬하고, `ALL`은 개별 복종 값과 함께 반환하지 않는다. 마스터는 STYLE
+5개, SILHOUETTE 12개, MATERIAL 8개, DETAIL 10개, COLOR 8개로 총 43개다.
+
+| 타입 | 태그와 적용 복종 |
+| --- | --- |
+| `STYLE` | 미니멀, 스트릿, 러블리, 캐주얼, 포멀 — 모두 `ALL` |
+| `SILHOUETTE` | 와이드핏(`PANTS`), 슬림핏(`TOP/PANTS/SKIRT/DRESS/OUTER`), 오버사이즈(`TOP/DRESS/OUTER`), 레귤러핏(`TOP/PANTS/SKIRT/DRESS/OUTER`), A라인(`SKIRT/DRESS/OUTER`), H라인(`SKIRT/DRESS`), 크롭(`TOP/DRESS/OUTER`), 로우라이즈·하이라이즈·숏기장·미디기장·롱기장(`PANTS/SKIRT`) |
+| `MATERIAL` | 데님, 니트, 코튼, 린넨, 가죽, 트위드, 시폰, 우븐/시어 — 모두 `ALL` |
+| `DETAIL` | 브이넥·터틀넥·라운드넥(`TOP/DRESS/OUTER`), 러플/프릴·지퍼·벨트·포켓·슬릿·단추(`ALL`), 턱(`PANTS/SKIRT`) |
+| `COLOR` | 화이트, 블랙, 베이지, 네이비, 그레이, 브라운, 카키, 파스텔/메탈릭 — 모두 `ALL` |
 
 ### `POST /api/v1/closet-saves`
 
@@ -1085,8 +1297,78 @@ DTO를 반환한다. 로그인 요청은 트렌드 `isSaved`와 룩북 `isLiked`
 ### `GET /api/v1/closet-saves?target_type=&cursor=`
 
 인증 회원의 통합 저장 목록을 최신 저장순으로 최대 10개 반환한다. 각 항목은 삭제에 사용할
-`saveId`, `targetType`, `targetId`, `thumbnailUrl`, `tags`를 포함한다.
+`saveId`, `targetType`, `targetId`와 표시용 `thumbnailUrl`, `matchedImageUrl`, `tags`를
+포함한다. 저장 대상 타입별 표시 값은 다음과 같다.
+
+| `targetType` | `thumbnailUrl` | `matchedImageUrl` | `tags` |
+| --- | --- | --- | --- |
+| `TREND` | 트렌드 이미지 | `null` | 트렌드 태그 |
+| `LOOKBOOK` | 원본 이미지 | 매칭 이미지 또는 매칭 상품 이미지 | 룩북 태그 |
+| `ANALYSIS_REPORT` | 분석 원본 이미지 | `null` | 기본 태그와 커스텀 태그 |
+
+`matchedImageUrl`은 원본과 매칭 이미지를 나란히 표시하는 `LOOKBOOK`에만 값이 있으며 다른
+타입에서는 키를 유지한 채 `null`이다. 저장 이후 대상이 삭제된 항목은 목록에서 제외한다.
+룩북의 업로드 이미지와 `originalImage`가 연결된 분석 리포트는 응답 시점에 발급하는 signed
+URL이고, 트렌드 이미지와 룩북의 매칭 상품 이미지는 외부 URL을 그대로 반환한다. 이미지 업로드
+도입 전에 만들어진 분석 리포트는 저장된 `imageUrl`을 그대로 반환하므로 signed URL이 아니다.
 
 ### `DELETE /api/v1/closet-saves/{saveId}`
 
 인증 회원 본인이 저장한 항목을 `saveId`로 삭제한다.
+
+---
+
+## 19. 인증·회원·프로필 이미지·알림
+
+### 19.1 Auth
+
+| Endpoint | 핵심 request | 핵심 response/동작 |
+| --- | --- | --- |
+| `POST /api/v1/auth/sign` | `email`, `password` | 201, access/refresh token과 회원 식별 정보 |
+| `POST /api/v1/auth/login` | `email`, `password` | access/refresh token, 회원·프로필 정보 |
+| `POST /api/v1/auth/password-reset/request` | `email` | 가입 여부를 노출하지 않고 동일한 200 응답 |
+| `PATCH /api/v1/auth/password-reset` | `resetToken`, `newPassword` | 유효한 token이면 비밀번호 교체 |
+| `POST /api/v1/auth/token/refresh` | `refreshToken` | 새 access/refresh token |
+| `POST /api/v1/auth/token/exchange` | `tempToken` | Kakao access/refresh token, `isNewMember` |
+| `POST /api/v1/auth/logout` | Bearer token | 현재 회원 refresh token 무효화 |
+
+token은 가입·로그인·교환·refresh 응답 body로 발급한다. 이후 보호 API 요청은
+`Authorization: Bearer {accessToken}` 헤더를 사용한다. 비밀번호는 가입 시 필수이고, 변경·재설정
+비밀번호는 8~64자 validation을 적용한다.
+
+### 19.2 Member와 프로필 이미지
+
+- `PATCH /api/v1/members/me`는 `nickname`, `profileImageId`, `tagIds` 중 전달된 필드만 바꾼다.
+- `PUT /api/v1/members/me/onboarding`은 `nickname`, 선택 `profileImageId`, 최대 5개 `tagIds`를
+  저장한다. `tagIds` 필드 자체는 필수이며 빈 배열은 허용한다.
+- `PUT /api/v1/members/me/tags`는 관심 태그 전체를 교체한다.
+- 프로필 이미지 업로드는 15절에서 `purpose=PROFILE`로 발급·완료한 뒤 `READY` image ID를
+  `profileImageId`로 전달한다. 본인 소유가 아니거나 목적/상태가 다르면 연결할 수 없다.
+- 로그인, 마이페이지, 온보딩, 회원 수정 응답의 `profileImageUrl`은 원본 URL이 아니라 10분
+  유효한 CloudFront Signed URL이다. 이미지가 없으면 `null`이다.
+- 프로필 교체와 회원 탈퇴는 기존 이미지 참조를 transaction commit 후 release하고 마지막
+  참조인지 다시 확인한 뒤 cleanup한다.
+- `GET /api/v1/members/me/nickname-availability?nickname=`은 2~16자 닉네임의 사용 가능 여부를
+  반환한다. `PATCH /api/v1/members/me/password`는 이메일 회원만 허용한다.
+
+### 19.3 Notification
+
+알림 설정은 네 boolean 필드 `analysisCompleteEnabled`, `lookbookLikedEnabled`,
+`trendUpdateEnabled`, `marketingEnabled`를 가진다. 설정 조회 시 행이 없으면 기본값으로 생성하며,
+PATCH는 전달된 필드만 수정하고 모두 `null`이면 `NOTIFICATION400_1`이다.
+
+`GET /api/v1/notifications?cursor=&pageSize=20`은 본인 알림을 `notificationId` 기반 최신순으로
+조회하고 `items`, `unreadCount`, `nextCursor`, `hasNext`, `pageSize`를 반환한다. item에는 type,
+title, body, 대상 type/ID, `readAt`, `createdAt`이 포함된다. type과 화면 대상은 다음과 같다.
+
+| `notificationType` | `targetType` | target ID |
+| --- | --- | --- |
+| `ANALYSIS_COMPLETE` | `ANALYSIS_REPORT` | `reportId` |
+| `LOOKBOOK_LIKED` | `LOOKBOOK` | `lookbookId` |
+| `TREND_UPDATE` | `TREND` | `trendId` |
+| `MARKETING` | `null` | `null` |
+
+특정 읽음, 전체 읽음, 삭제는 모두 현재 회원 소유 범위에서만 처리한다. 현재 `develop`에는 알림
+설정·목록·읽음·삭제 API와 V21 저장 스키마가 있지만, 분석 완료·룩북 좋아요·트렌드 업데이트에서
+`Notification`을 자동 생성하는 producer는 연결되어 있지 않다. 따라서 이 문서는 자동 알림 발송을
+완료 기능으로 보장하지 않는다.

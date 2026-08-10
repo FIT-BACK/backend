@@ -86,12 +86,7 @@ hmac:
 
 app:
   cors:
-    allowed-origins:
-      - https://frontend-chi-one-35.vercel.app
-      - http://localhost:3000
-      - http://localhost:5173
-      - http://127.0.0.1:3000
-      - http://127.0.0.1:5173
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
   oauth:
     front-redirect-uri: ${FRONT_REDIRECT_URI}
     temp-token-ttl: 180000
@@ -100,3 +95,9 @@ app:
     sender-email: ${MAIL_EMAIL}
     token-ttl: 5m
     request-cooldown: 1m
+  login-attempt:
+    max-failures: 5
+    failure-reset-duration: 1m
+    lock-duration: 1m
+    retention-duration: 24h
+    cleanup-interval: 1h

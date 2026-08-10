@@ -82,7 +82,7 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(jsonPath("$.code").value("COMMON200_1"))
                 .andExpect(jsonPath("$.data.reportId").value(report.getId()))
                 .andExpect(jsonPath("$.data.analysisTags[0]").value("Fixture"))
-                .andExpect(jsonPath("$.data.scoreVersion").value("SIMILARITY_V1"))
+                .andExpect(jsonPath("$.data.scoreVersion").value("IMAGE_TAG_WEIGHTED_V1"))
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
                 .andExpect(jsonPath("$.data.recommendationGroups.length()").value(8))
                 .andExpect(jsonPath(
@@ -96,13 +96,27 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.recommendationGroups[1].items[0].name")
                         .value("Fixture Minimal Shirt"))
                 .andExpect(jsonPath("$.data.recommendationGroups[1].items[0].similarityScore")
-                        .value(91.00))
+                        .value(79.00))
+                .andExpect(jsonPath(
+                        "$.data.recommendationGroups[1].items[0].reasonCodes[0]"
+                ).value("FULL_ATTRIBUTE_MATCH"))
+                .andExpect(jsonPath(
+                        "$.data.recommendationGroups[1].items[0].reasonCodes[1]"
+                ).value("HIGH_SIMILARITY"))
                 .andExpect(jsonPath("$.data.recommendationGroups[7].category").value("OTHER"))
                 .andExpect(jsonPath("$.data.partial").value(true))
                 .andExpect(jsonPath("$.data.warnings[0]").value("MATERIALIZATION_SKIPPED"));
 
-        assertThat(productRepository.count()).isEqualTo(3);
-        assertThat(recommendedItemRepository.count()).isEqualTo(3);
+        assertThat(productRepository.count()).isEqualTo(1);
+        assertThat(recommendedItemRepository.count()).isEqualTo(1);
+        assertThat(recommendedItemRepository.findAll())
+                .allSatisfy(item -> {
+                    assertThat(item.getScoreVersion()).isEqualTo("IMAGE_TAG_WEIGHTED_V1");
+                    assertThat(item.getSimilarityScore()).isEqualByComparingTo("79.00");
+                    assertThat(item.getFinalScore()).isEqualByComparingTo("79.00");
+                });
+        assertThat(analysisReportRepository.findById(report.getId()).orElseThrow()
+                .getResultScoreVersion()).isEqualTo("IMAGE_TAG_WEIGHTED_V1");
 
         mockMvc.perform(post(
                                 "/api/v1/analyses/{reportId}/recommendations",
@@ -112,8 +126,8 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"));
 
-        assertThat(productRepository.count()).isEqualTo(3);
-        assertThat(recommendedItemRepository.count()).isEqualTo(3);
+        assertThat(productRepository.count()).isEqualTo(1);
+        assertThat(recommendedItemRepository.count()).isEqualTo(1);
 
         mockMvc.perform(get("/api/v1/analyses/{reportId}", report.getId())
                         .header("Authorization", bearer(accessToken)))
@@ -121,7 +135,7 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.tags[0]").value("Fixture"))
                 .andExpect(jsonPath("$.data.matchPercentage").value(70))
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
-                .andExpect(jsonPath("$.data.scoreVersion").value("SIMILARITY_V1"))
+                .andExpect(jsonPath("$.data.scoreVersion").value("IMAGE_TAG_WEIGHTED_V1"))
                 .andExpect(jsonPath("$.data.recommendationGroups.length()").value(8));
     }
 
@@ -164,9 +178,54 @@ class RecommendationControllerIntegrationTest {
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.analysisTags.length()").value(2))
+                .andExpect(jsonPath("$.data.analysisTags[0]").value("Fixture"))
+                .andExpect(jsonPath("$.data.analysisTags[1]").value("고프코어"))
                 .andExpect(jsonPath("$.data.matchPercentage").value(70))
                 .andExpect(jsonPath("$.data.scoreVersion")
-                        .value("SIMILARITY_THRESHOLD_V2"));
+                        .value("IMAGE_TAG_WEIGHTED_THR_V1"));
+    }
+
+    @Test
+    void persistsAndReturnsNoAttributeMatchReason() throws Exception {
+        String email = "recommendation-empty-reasons@fitback.com";
+        String accessToken = signUpAndGetAccessToken(email);
+        AnalysisReport report = report(email, "Unmatched");
+        Long tagId = report.getDisplayTags().getFirst().getId();
+
+        mockMvc.perform(post(
+                                "/api/v1/analyses/{reportId}/recommendations",
+                                report.getId()
+                        )
+                        .header("Authorization", bearer(accessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "confirmedTagIds", List.of(tagId),
+                                "customTagNames", List.of("Fixture"),
+                                "matchPercentage", 0
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.scoreVersion")
+                        .value("IMAGE_TAG_WEIGHTED_THR_V1"))
+                .andExpect(jsonPath(
+                        "$.data.recommendationGroups[1].items[0].similarityScore"
+                ).value(49.00))
+                .andExpect(jsonPath(
+                        "$.data.recommendationGroups[1].items[0].reasonCodes.length()"
+                ).value(1))
+                .andExpect(jsonPath(
+                        "$.data.recommendationGroups[1].items[0].reasonCodes[0]"
+                ).value("NO_ATTRIBUTE_MATCH"));
+
+        assertThat(recommendedItemRepository.findAll())
+                .isNotEmpty()
+                .allSatisfy(item -> {
+                    assertThat(item.getScoreVersion())
+                            .isEqualTo("IMAGE_TAG_WEIGHTED_THR_V1");
+                    assertThat(item.getReasonCodeList())
+                            .containsExactly("NO_ATTRIBUTE_MATCH");
+                });
+        assertThat(analysisReportRepository.findById(report.getId()).orElseThrow()
+                .getResultScoreVersion()).isEqualTo("IMAGE_TAG_WEIGHTED_THR_V1");
     }
 
     @Test
@@ -277,8 +336,8 @@ class RecommendationControllerIntegrationTest {
     void recordsCurrentEmptySetWhenThresholdExcludesAllCandidates() throws Exception {
         String email = "recommendation-threshold@fitback.com";
         String accessToken = signUpAndGetAccessToken(email);
-        AnalysisReport report = report(email, "Fixture");
-        Long tagId = report.getDisplayTags().getFirst().getId();
+        AnalysisReport report = report(email, "Fixture", "Unmatched");
+        List<Long> tagIds = report.getDisplayTags().stream().map(Tag::getId).toList();
 
         mockMvc.perform(post(
                                 "/api/v1/analyses/{reportId}/recommendations",
@@ -287,16 +346,18 @@ class RecommendationControllerIntegrationTest {
                         .header("Authorization", bearer(accessToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "confirmedTagIds", List.of(tagId),
+                                "confirmedTagIds", tagIds,
                                 "customTagNames", List.of(),
                                 "matchPercentage", 100
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
                 .andExpect(jsonPath("$.data.scoreVersion")
-                        .value("SIMILARITY_THRESHOLD_V2"));
+                        .value("IMAGE_TAG_WEIGHTED_THR_V1"));
 
         assertThat(recommendedItemRepository.count()).isZero();
+        assertThat(analysisReportRepository.findById(report.getId()).orElseThrow()
+                .getResultScoreVersion()).isEqualTo("IMAGE_TAG_WEIGHTED_THR_V1");
     }
 
     @Test

@@ -135,6 +135,9 @@ public class RecommendedItem extends BaseCreateTimeEntity {
     }
 
     public List<String> getReasonCodeList() {
+        if (reasonCodes.isEmpty()) {
+            return List.of();
+        }
         return List.of(reasonCodes.split(","));
     }
 
@@ -172,7 +175,7 @@ public class RecommendedItem extends BaseCreateTimeEntity {
     private static String serializeReasonCodes(List<String> reasonCodes) {
         Objects.requireNonNull(reasonCodes, "reasonCodes must not be null");
         String serialized = reasonCodes.stream()
-                .map(reasonCode -> requireNonBlank(reasonCode, "reasonCode"))
+                .map(RecommendationReasonCode::requireValid)
                 .distinct()
                 .sorted()
                 .collect(java.util.stream.Collectors.joining(","));

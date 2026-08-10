@@ -15,6 +15,8 @@ import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.product.service.model.ProductStorageMode;
 import com.fitback.backend.domain.product.service.model.ProviderIdentityType;
 import com.fitback.backend.domain.recommendation.entity.RecommendedItem;
+import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.trend.entity.TrendContent;
 import com.fitback.backend.domain.trend.entity.TrendTag;
 import jakarta.persistence.Table;
@@ -134,6 +136,22 @@ class EntityInvariantTest {
     }
 
     @Test
+    void trendTagUsesDefaultWeightAndRejectsNonPositiveWeight() {
+        TrendContent trend = TrendContent.create(
+                "title",
+                "https://example.com/trend.jpg",
+                null,
+                member()
+        );
+        Tag tag = Tag.create("미니멀", TagType.STYLE);
+
+        assertThat(TrendTag.create(trend, tag).getRelevanceWeight()).isEqualTo(1);
+        assertThat(TrendTag.create(trend, tag, 100).getRelevanceWeight()).isEqualTo(100);
+        assertThatThrownBy(() -> TrendTag.create(trend, tag, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void productRejectsNegativePriceOnCreateAndChange() {
         assertThatThrownBy(() -> product(new BigDecimal("-1.00")))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -200,6 +218,42 @@ class EntityInvariantTest {
                 List.of("HIGH_SIMILARITY")
         );
         assertThat(rankTen.getRankNo()).isEqualTo(10);
+        assertThatThrownBy(() -> RecommendedItem.create(
+                report,
+                product,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                "TAG_MATCH_RATIO_V1",
+                List.of()
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> RecommendedItem.create(
+                report,
+                product,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("90.00"),
+                "TAG_MATCH_RATIO_V1",
+                List.of("UNKNOWN_CODE")
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported reasonCode");
+        RecommendedItem legacyBlankReasonCodes = RecommendedItem.create(
+                report,
+                product,
+                1,
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                "TAG_MATCH_RATIO_V1",
+                List.of("NO_ATTRIBUTE_MATCH")
+        );
+        ReflectionTestUtils.setField(legacyBlankReasonCodes, "reasonCodes", "");
+        assertThat(legacyBlankReasonCodes.getReasonCodeList()).isEmpty();
         assertThatThrownBy(() -> RecommendedItem.create(
                 report,
                 product,

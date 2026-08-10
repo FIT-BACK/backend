@@ -38,31 +38,33 @@ seed_baseline_schema() {
   local database="$1"
   local member_columns="$2"
 
+  # V17이 legacy trend_tag 중복을 정리한 뒤 UNIQUE 제약을 생성하는지 검증한다.
   printf '%s\n' \
     "CREATE TABLE member (${member_columns});" \
-    'INSERT INTO member (member_id) VALUES (1), (8001);' \
+    "INSERT INTO member (member_id, email) VALUES (1, NULL), (8001, 'fitback.demo+content@gmail.com');" \
     'CREATE TABLE analysis_report (report_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, image_url VARCHAR(255) NOT NULL, match_percentage INT NOT NULL, CONSTRAINT FK_ANALYSIS_REPORT_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     "INSERT INTO analysis_report (report_id, member_id, image_url, match_percentage) VALUES (7001, 8001, 'https://example.com/analysis.jpg', 70);" \
     'CREATE TABLE product (product_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, external_product_id VARCHAR(100) NULL, name VARCHAR(255) NOT NULL, brand_name VARCHAR(100) NULL, seller_name VARCHAR(100) NOT NULL, price INT NOT NULL, average_price INT NULL, category VARCHAR(50) NOT NULL, season VARCHAR(20) NULL, gender VARCHAR(10) NULL, purchase_url VARCHAR(2048) NOT NULL, image_url VARCHAR(2048) NOT NULL, source_api VARCHAR(50) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL);' \
     "INSERT INTO product (external_product_id, name, brand_name, seller_name, price, average_price, category, season, gender, purchase_url, image_url, source_api, created_at) VALUES ('legacy-1', 'Legacy Product', NULL, 'Legacy Seller', 10000, NULL, 'legacy-custom-category', NULL, NULL, 'https://example.com/product', 'https://example.com/product.jpg', 'legacy', NOW());" \
     'CREATE TABLE recommended_item (recommend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, report_id BIGINT NOT NULL, product_id BIGINT NOT NULL, `rank` INT NOT NULL, category VARCHAR(50) NOT NULL, similarity_score INT NOT NULL, is_value_match BOOLEAN NOT NULL, created_at DATETIME(6) NOT NULL);' \
     "INSERT INTO recommended_item (report_id, product_id, \`rank\`, category, similarity_score, is_value_match, created_at) VALUES (7001, 1, 1, 'TOP', 90, TRUE, NOW());" \
-    'CREATE TABLE tag (tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, tag_name VARCHAR(50) NOT NULL, tag_type VARCHAR(30) NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, CONSTRAINT UK_TAG_NAME UNIQUE (tag_name));' \
+    "CREATE TABLE tag (tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, tag_name VARCHAR(50) NOT NULL, tag_type ENUM('COLOR','DETAIL','SILHOUETTE') NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, CONSTRAINT UK_TAG_NAME UNIQUE (tag_name));" \
     "INSERT INTO tag (tag_name, tag_type, created_at) VALUES ('기존태그', 'DETAIL', NOW());" \
+    'CREATE TABLE product_tag (product_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, product_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL, CONSTRAINT UK_PRODUCT_TAG_PRODUCT_ID_TAG_ID UNIQUE (product_id, tag_id), CONSTRAINT FK_PRODUCT_TAG_PRODUCT_TEST FOREIGN KEY (product_id) REFERENCES product (product_id), CONSTRAINT FK_PRODUCT_TAG_TAG_TEST FOREIGN KEY (tag_id) REFERENCES tag (tag_id));' \
     'CREATE TABLE member_tag (member_tag_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_MEMBER_TAG_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
-    'CREATE TABLE report_tag (report_tag_id BIGINT NOT NULL PRIMARY KEY, report_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_REPORT_TAG_REPORT_OLD FOREIGN KEY (report_id) REFERENCES analysis_report (report_id));' \
+    "CREATE TABLE report_tag (report_tag_id BIGINT NOT NULL PRIMARY KEY, report_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, source VARCHAR(20) NOT NULL DEFAULT 'AI', is_confirmed BOOLEAN NOT NULL DEFAULT FALSE, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), CONSTRAINT FK_REPORT_TAG_REPORT_OLD FOREIGN KEY (report_id) REFERENCES analysis_report (report_id), CONSTRAINT FK_REPORT_TAG_TAG_TEST FOREIGN KEY (tag_id) REFERENCES tag (tag_id));" \
     'CREATE TABLE closet_save (closet_save_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, target_type VARCHAR(30) NOT NULL, target_id BIGINT NOT NULL, CONSTRAINT FK_CLOSET_SAVE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     'CREATE TABLE lookbook_like (lookbook_like_id BIGINT NOT NULL PRIMARY KEY, member_id BIGINT NOT NULL, lookbook_id BIGINT NOT NULL, CONSTRAINT FK_LOOKBOOK_LIKE_MEMBER_OLD FOREIGN KEY (member_id) REFERENCES member (member_id));' \
     'CREATE TABLE lookbook_tag (lookbook_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, lookbook_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL);' \
-    'CREATE TABLE trend_content (trend_id BIGINT NOT NULL PRIMARY KEY, created_by BIGINT NOT NULL, title VARCHAR(100) NOT NULL, CONSTRAINT FK_TREND_CONTENT_MEMBER_OLD FOREIGN KEY (created_by) REFERENCES member (member_id));' \
-    'CREATE TABLE trend_tag (trend_tag_id BIGINT NOT NULL PRIMARY KEY, trend_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, CONSTRAINT FK_TREND_TAG_TREND_OLD FOREIGN KEY (trend_id) REFERENCES trend_content (trend_id));' \
-    "INSERT INTO trend_content (trend_id, created_by, title) VALUES (7001, 8001, 'Legacy Trend');" \
-    'INSERT INTO trend_tag (trend_tag_id, trend_id, tag_id) VALUES (7001, 7001, 1), (7002, 7001, 1);' \
+    'CREATE TABLE trend_content (trend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, created_by BIGINT NOT NULL, title VARCHAR(100) NOT NULL, image_url VARCHAR(2048) NOT NULL, description TEXT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, CONSTRAINT FK_TREND_CONTENT_MEMBER_OLD FOREIGN KEY (created_by) REFERENCES member (member_id));' \
+    'CREATE TABLE trend_tag (trend_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, trend_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL, CONSTRAINT FK_TREND_TAG_TREND_OLD FOREIGN KEY (trend_id) REFERENCES trend_content (trend_id));' \
+    "INSERT INTO trend_content (trend_id, created_by, title, image_url, created_at) VALUES (7001, 8001, 'Legacy Trend', 'https://example.com/trend.jpg', NOW());" \
+    'INSERT INTO trend_tag (trend_tag_id, trend_id, tag_id, created_at) VALUES (7001, 7001, 1, NOW()), (7002, 7001, 1, NOW());' \
     | docker exec -i "$container_name" mysql -uroot "$database"
 }
 
-seed_baseline_schema fitback "member_id BIGINT NOT NULL PRIMARY KEY, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL'"
-seed_baseline_schema fitback_existing_refresh_token "member_id BIGINT NOT NULL PRIMARY KEY, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL', refresh_token VARCHAR(512) NULL"
+seed_baseline_schema fitback "member_id BIGINT NOT NULL PRIMARY KEY, email VARCHAR(255) NULL, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL'"
+seed_baseline_schema fitback_existing_refresh_token "member_id BIGINT NOT NULL PRIMARY KEY, email VARCHAR(255) NULL, login_provider VARCHAR(20) NOT NULL DEFAULT 'EMAIL', refresh_token VARCHAR(512) NULL"
 
 for database in fitback fitback_existing_refresh_token; do
   while IFS= read -r migration; do
@@ -98,6 +100,21 @@ for database in fitback fitback_existing_refresh_token; do
   done < <(printf '%s\n' src/main/resources/db/migration/V*.sql | sort -V)
 done
 
+for database in fitback fitback_existing_refresh_token; do
+  tag_type_contract="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COLUMN_TYPE
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'tag'
+          AND COLUMN_NAME = 'tag_type';")"
+
+  if [ "$tag_type_contract" != "enum('COLOR','DETAIL','SILHOUETTE','STYLE','MATERIAL')" ]; then
+    echo "Unexpected tag_type ENUM in $database: $tag_type_contract" >&2
+    exit 1
+  fi
+done
+
 docker exec "$container_name" mysql -uroot -e \
   "CREATE DATABASE fitback_mismatched_social_uid;
    CREATE TABLE fitback_mismatched_social_uid.member (
@@ -111,6 +128,77 @@ if docker exec -i "$container_name" mysql -uroot fitback_mismatched_social_uid \
   < src/main/resources/db/migration/V12__add_member_social_uid.sql \
   >/dev/null 2>&1; then
   echo 'V12 accepted a mismatched UK_MEMBER_PROVIDER_UID constraint.' >&2
+  exit 1
+fi
+
+seed_v27_prerequisite_schema() {
+  local database="$1"
+
+  docker exec "$container_name" mysql -uroot -e \
+    "CREATE DATABASE $database;
+     CREATE TABLE $database.member (
+       member_id BIGINT NOT NULL PRIMARY KEY,
+       email VARCHAR(255) NULL
+     );
+     CREATE TABLE $database.tag (
+       tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       tag_name VARCHAR(50) NOT NULL UNIQUE,
+       tag_type VARCHAR(30) NOT NULL,
+       created_at DATETIME(6) NOT NULL,
+       updated_at DATETIME(6) NULL
+     );
+     CREATE TABLE $database.tag_target_clothing (
+       tag_id BIGINT NOT NULL,
+       target_clothing VARCHAR(20) NOT NULL,
+       PRIMARY KEY (tag_id, target_clothing)
+     );
+     CREATE TABLE $database.trend_content (
+       trend_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       title VARCHAR(100) NOT NULL,
+       image_url VARCHAR(2048) NOT NULL,
+       description TEXT NULL,
+       created_by BIGINT NOT NULL,
+       created_at DATETIME(6) NOT NULL,
+       updated_at DATETIME(6) NULL
+     );
+     CREATE TABLE $database.trend_tag (
+       trend_tag_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       trend_id BIGINT NOT NULL,
+       tag_id BIGINT NOT NULL,
+       relevance_weight INT NOT NULL DEFAULT 1,
+       created_at DATETIME(6) NOT NULL
+     );"
+}
+
+seed_v27_prerequisite_schema fitback_missing_trend_author
+if missing_author_error="$(docker exec -i "$container_name" mysql -uroot \
+  fitback_missing_trend_author \
+  < src/main/resources/db/migration/V27__seed_trend_contents.sql 2>&1)"; then
+  echo 'V27 accepted a schema without the required content author.' >&2
+  exit 1
+fi
+if [[ "$missing_author_error" != *'V27_CONTENT_AUTHOR_REQUIRED'* ]]; then
+  echo "V27 returned an unexpected missing-author error: $missing_author_error" >&2
+  exit 1
+fi
+
+seed_v27_prerequisite_schema fitback_conflicting_trend_ids
+docker exec "$container_name" mysql -uroot fitback_conflicting_trend_ids -e \
+  "INSERT INTO member (member_id, email)
+   VALUES (8001, 'fitback.demo+content@gmail.com');
+   INSERT INTO trend_content (
+     trend_id, title, image_url, created_by, created_at
+   ) VALUES (
+     1, 'Existing Trend', 'https://example.com/existing.jpg', 8001, NOW()
+   );"
+if conflicting_id_error="$(docker exec -i "$container_name" mysql -uroot \
+  fitback_conflicting_trend_ids \
+  < src/main/resources/db/migration/V27__seed_trend_contents.sql 2>&1)"; then
+  echo 'V27 accepted a schema with a conflicting trend ID.' >&2
+  exit 1
+fi
+if [[ "$conflicting_id_error" != *'V27_TREND_IDS_1_TO_6_MUST_BE_EMPTY'* ]]; then
+  echo "V27 returned an unexpected trend-ID conflict error: $conflicting_id_error" >&2
   exit 1
 fi
 
@@ -1145,21 +1233,260 @@ if [ "$password_reset_constraints" != "$expected_password_reset_constraints" ]; 
 fi
 
 docker exec -i "$container_name" mysql -uroot fitback \
-  < src/main/resources/db/migration/V16__seed_prototype_analysis_tags.sql
+  < src/main/resources/db/migration/V24__create_login_attempt_table.sql
 
-prototype_tag_contract="$(docker exec "$container_name" mysql -uroot \
+validate_login_attempt_contract() {
+  local database="$1"
+  local login_attempt_columns
+  local login_attempt_constraints
+  local login_attempt_index
+  local login_attempt_foreign_key_count
+
+  login_attempt_columns="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+          COLUMN_NAME, ':',
+          IS_NULLABLE, ':',
+          DATA_TYPE, ':',
+          COALESCE(CHARACTER_MAXIMUM_LENGTH, DATETIME_PRECISION, 0), ':',
+          COALESCE(COLLATION_NAME, '-'), ':',
+          IF(EXTRA = '', '-', EXTRA)
+        )
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'login_attempt'
+        ORDER BY ORDINAL_POSITION;")"
+
+  if [ "$login_attempt_columns" != "$(printf '%s\n' \
+    'login_attempt_id:NO:bigint:0:-:auto_increment' \
+    'email_hash:NO:char:64:ascii_bin:-' \
+    'failed_count:NO:int:0:-:-' \
+    'last_failed_at:NO:datetime:6:-:-' \
+    'locked_until:YES:datetime:6:-:-')" ]; then
+    echo "Unexpected login attempt columns in $database:" >&2
+    printf '%s\n' "$login_attempt_columns" >&2
+    exit 1
+  fi
+
+  login_attempt_constraints="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+          tc.CONSTRAINT_TYPE, ':',
+          tc.CONSTRAINT_NAME, ':',
+          GROUP_CONCAT(k.COLUMN_NAME ORDER BY k.ORDINAL_POSITION)
+        )
+        FROM information_schema.TABLE_CONSTRAINTS tc
+        JOIN information_schema.KEY_COLUMN_USAGE k
+          ON k.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+         AND k.TABLE_NAME = tc.TABLE_NAME
+         AND k.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+        WHERE tc.TABLE_SCHEMA = '$database'
+          AND tc.TABLE_NAME = 'login_attempt'
+          AND tc.CONSTRAINT_TYPE IN ('PRIMARY KEY', 'UNIQUE')
+        GROUP BY tc.CONSTRAINT_TYPE, tc.CONSTRAINT_NAME
+        ORDER BY tc.CONSTRAINT_TYPE, tc.CONSTRAINT_NAME;")"
+
+  if [ "$login_attempt_constraints" != "$(printf '%s\n' \
+    'PRIMARY KEY:PRIMARY:login_attempt_id' \
+    'UNIQUE:UK_LOGIN_ATTEMPT_EMAIL_HASH:email_hash')" ]; then
+    echo "Unexpected login attempt constraints in $database:" >&2
+    printf '%s\n' "$login_attempt_constraints" >&2
+    exit 1
+  fi
+
+  login_attempt_index="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+          INDEX_NAME, ':',
+          NON_UNIQUE, ':',
+          GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX)
+        )
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'login_attempt'
+          AND INDEX_NAME = 'IDX_LOGIN_ATTEMPT_LAST_FAILED_AT'
+        GROUP BY INDEX_NAME, NON_UNIQUE;")"
+
+  if [ "$login_attempt_index" != \
+    'IDX_LOGIN_ATTEMPT_LAST_FAILED_AT:1:last_failed_at' ]; then
+    echo "Unexpected login attempt index in $database: $login_attempt_index" >&2
+    exit 1
+  fi
+
+  login_attempt_foreign_key_count="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*)
+        FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'login_attempt'
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY';")"
+
+  if [ "$login_attempt_foreign_key_count" != '0' ]; then
+    echo "Unexpected login attempt foreign key in $database." >&2
+    exit 1
+  fi
+}
+
+for database in fitback fitback_existing_refresh_token; do
+  validate_login_attempt_contract "$database"
+done
+
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V16__seed_prototype_analysis_tags.sql
+docker exec "$container_name" mysql -uroot fitback \
+  -e "INSERT INTO product_tag (product_id, tag_id, created_at)
+      SELECT 1, tag_id, NOW()
+      FROM tag
+      WHERE tag_name IN ('베이지', '베이지톤');
+      INSERT INTO report_tag (report_tag_id, report_id, tag_id, source, is_confirmed)
+      SELECT 9101, 7001, tag_id, 'AI', FALSE
+      FROM tag
+      WHERE tag_name = '베이지';
+      INSERT INTO report_tag (report_tag_id, report_id, tag_id, source, is_confirmed)
+      SELECT 9102, 7001, tag_id, 'USER', TRUE
+      FROM tag
+      WHERE tag_name = '베이지톤';"
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V22__seed_member_style_tags.sql
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V23__classify_style_tags.sql
+docker exec -i "$container_name" mysql -uroot fitback \
+  < src/main/resources/db/migration/V25__seed_tag_master_taxonomy.sql
+
+seeded_tag_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CONCAT(
-        SUM(tag_name = '미니멀' AND tag_type = 'DETAIL'), ':',
+        SUM(tag_name = '미니멀' AND tag_type = 'STYLE'), ':',
         SUM(tag_name = '와이드핏' AND tag_type = 'SILHOUETTE'), ':',
-        SUM(tag_name = '베이지톤' AND tag_type = 'COLOR'), ':',
+        SUM(tag_name = '베이지' AND tag_type = 'COLOR'), ':',
+        SUM(tag_name = '베이지톤'), ':',
+        SUM(tag_name = '스트릿' AND tag_type = 'STYLE'), ':',
+        SUM(tag_name = '러블리' AND tag_type = 'STYLE'), ':',
+        SUM(tag_name = '캐주얼' AND tag_type = 'STYLE'), ':',
+        SUM(tag_name = '포멀' AND tag_type = 'STYLE'), ':',
         SUM(tag_name = '기존태그' AND tag_type = 'DETAIL'), ':',
         COUNT(*)
       )
       FROM fitback.tag;")"
 
-if [ "$prototype_tag_contract" != '1:1:1:1:4' ]; then
-  echo "Unexpected prototype tag contract: $prototype_tag_contract" >&2
+if [ "$seeded_tag_contract" != '1:1:1:0:1:1:1:1:1:48' ]; then
+  echo "Unexpected seeded tag contract: $seeded_tag_contract" >&2
+  exit 1
+fi
+
+beige_reference_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(t.tag_name, ':', COUNT(*))
+      FROM fitback.product_tag product_tag
+      JOIN fitback.tag t ON t.tag_id = product_tag.tag_id
+      WHERE product_tag.product_id = 1
+      GROUP BY t.tag_name;")"
+
+if [ "$beige_reference_contract" != '베이지:1' ]; then
+  echo "Unexpected beige reference migration: $beige_reference_contract" >&2
+  exit 1
+fi
+
+beige_report_reference_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(t.tag_name, ':', report_tag.source, ':', report_tag.is_confirmed, ':', COUNT(*))
+      FROM fitback.report_tag report_tag
+      JOIN fitback.tag t ON t.tag_id = report_tag.tag_id
+      WHERE report_tag.report_id = 7001
+      GROUP BY t.tag_name, report_tag.source, report_tag.is_confirmed;")"
+
+if [ "$beige_report_reference_contract" != '베이지:USER:1:1' ]; then
+  echo "Unexpected beige report reference migration: $beige_report_reference_contract" >&2
+  exit 1
+fi
+
+tag_taxonomy_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        COUNT(DISTINCT CASE WHEN t.tag_type = 'STYLE' THEN t.tag_id END), ':',
+        COUNT(DISTINCT CASE WHEN t.tag_type = 'SILHOUETTE' THEN t.tag_id END), ':',
+        COUNT(DISTINCT CASE WHEN t.tag_type = 'MATERIAL' THEN t.tag_id END), ':',
+        COUNT(DISTINCT CASE WHEN t.tag_type = 'DETAIL' THEN t.tag_id END), ':',
+        COUNT(DISTINCT CASE WHEN t.tag_type = 'COLOR' THEN t.tag_id END), ':',
+        COUNT(DISTINCT t.tag_id), ':',
+        COUNT(*)
+      )
+      FROM fitback.tag t
+      JOIN fitback.tag_target_clothing target ON target.tag_id = t.tag_id;")"
+
+if [ "$tag_taxonomy_contract" != '9:12:8:10:8:47:74' ]; then
+  echo "Unexpected tag taxonomy contract: $tag_taxonomy_contract" >&2
+  exit 1
+fi
+
+actual_tag_taxonomy="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        t.tag_name, '|', t.tag_type, '|',
+        GROUP_CONCAT(
+          target.target_clothing
+          ORDER BY FIELD(target.target_clothing, 'TOP', 'PANTS', 'SKIRT', 'DRESS', 'OUTER', 'ALL')
+        )
+      )
+      FROM fitback.tag t
+      JOIN fitback.tag_target_clothing target ON target.tag_id = t.tag_id
+      GROUP BY t.tag_id, t.tag_name, t.tag_type;" \
+  | LC_ALL=C sort)"
+
+expected_tag_taxonomy="$(printf '%s\n' \
+  '미니멀|STYLE|ALL' \
+  '스트릿|STYLE|ALL' \
+  '러블리|STYLE|ALL' \
+  '캐주얼|STYLE|ALL' \
+  '포멀|STYLE|ALL' \
+  '뉴트럴|STYLE|ALL' \
+  '페미닌|STYLE|ALL' \
+  '데일리룩|STYLE|ALL' \
+  '오피스룩|STYLE|ALL' \
+  '와이드핏|SILHOUETTE|PANTS' \
+  '슬림핏|SILHOUETTE|TOP,PANTS,SKIRT,DRESS,OUTER' \
+  '오버사이즈|SILHOUETTE|TOP,DRESS,OUTER' \
+  '레귤러핏|SILHOUETTE|TOP,PANTS,SKIRT,DRESS,OUTER' \
+  'A라인|SILHOUETTE|SKIRT,DRESS,OUTER' \
+  'H라인|SILHOUETTE|SKIRT,DRESS' \
+  '크롭|SILHOUETTE|TOP,DRESS,OUTER' \
+  '로우라이즈|SILHOUETTE|PANTS,SKIRT' \
+  '하이라이즈|SILHOUETTE|PANTS,SKIRT' \
+  '숏기장|SILHOUETTE|PANTS,SKIRT' \
+  '미디기장|SILHOUETTE|PANTS,SKIRT' \
+  '롱기장|SILHOUETTE|PANTS,SKIRT' \
+  '데님|MATERIAL|ALL' \
+  '니트|MATERIAL|ALL' \
+  '코튼|MATERIAL|ALL' \
+  '린넨|MATERIAL|ALL' \
+  '가죽|MATERIAL|ALL' \
+  '트위드|MATERIAL|ALL' \
+  '시폰|MATERIAL|ALL' \
+  '우븐/시어|MATERIAL|ALL' \
+  '브이넥|DETAIL|TOP,DRESS,OUTER' \
+  '터틀넥|DETAIL|TOP,DRESS,OUTER' \
+  '라운드넥|DETAIL|TOP,DRESS,OUTER' \
+  '러플/프릴|DETAIL|ALL' \
+  '지퍼|DETAIL|ALL' \
+  '벨트|DETAIL|ALL' \
+  '포켓|DETAIL|ALL' \
+  '슬릿|DETAIL|ALL' \
+  '단추|DETAIL|ALL' \
+  '턱|DETAIL|PANTS,SKIRT' \
+  '화이트|COLOR|ALL' \
+  '블랙|COLOR|ALL' \
+  '베이지|COLOR|ALL' \
+  '네이비|COLOR|ALL' \
+  '그레이|COLOR|ALL' \
+  '브라운|COLOR|ALL' \
+  '카키|COLOR|ALL' \
+  '파스텔/메탈릭|COLOR|ALL' \
+  | LC_ALL=C sort)"
+
+if [ "$actual_tag_taxonomy" != "$expected_tag_taxonomy" ]; then
+  echo 'Unexpected tag taxonomy mapping:' >&2
+  diff -u <(printf '%s\n' "$expected_tag_taxonomy") \
+    <(printf '%s\n' "$actual_tag_taxonomy") >&2 || true
   exit 1
 fi
 
@@ -1182,6 +1509,58 @@ expected_composite_unique_contract="$(printf '%s\n' \
 if [ "$composite_unique_contract" != "$expected_composite_unique_contract" ]; then
   echo 'Unexpected composite unique contract:' >&2
   printf '%s\n' "$composite_unique_contract" >&2
+  exit 1
+fi
+
+trend_seed_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(
+        COUNT(*), ':',
+        COUNT(DISTINCT title), ':',
+        COUNT(DISTINCT created_by), ':',
+        MIN(created_by), ':',
+        MIN(trend_id), ':',
+        MAX(trend_id)
+      )
+      FROM fitback.trend_content
+      WHERE trend_id BETWEEN 1 AND 6;")"
+
+if [ "$trend_seed_contract" != '6:6:1:8001:1:6' ]; then
+  echo "Unexpected trend seed contract: $trend_seed_contract" >&2
+  exit 1
+fi
+
+trend_tag_seed_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT GROUP_CONCAT(
+        CONCAT(trend_id, ':', tag_count, ':', relevance_score)
+        ORDER BY trend_id
+      )
+      FROM (
+        SELECT
+          trend_id,
+          COUNT(*) AS tag_count,
+          SUM(relevance_weight) AS relevance_score
+        FROM fitback.trend_tag
+        WHERE trend_id BETWEEN 1 AND 6
+        GROUP BY trend_id
+      ) trend_counts;")"
+
+if [ "$trend_tag_seed_contract" != '1:3:111,2:3:111,3:2:110,4:2:110,5:2:110,6:2:200' ]; then
+  echo "Unexpected trend tag seed contract: $trend_tag_seed_contract" >&2
+  exit 1
+fi
+
+trend_tag_relevance_contract="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(DATA_TYPE, ':', IS_NULLABLE, ':', COLUMN_DEFAULT)
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = 'fitback'
+        AND TABLE_NAME = 'trend_tag'
+        AND COLUMN_NAME = 'relevance_weight';")"
+
+if [ "$trend_tag_relevance_contract" != 'int:NO:1' ]; then
+  echo "Unexpected trend tag relevance contract: $trend_tag_relevance_contract" >&2
   exit 1
 fi
 

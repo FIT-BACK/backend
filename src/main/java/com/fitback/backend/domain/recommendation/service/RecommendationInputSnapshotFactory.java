@@ -18,21 +18,23 @@ public class RecommendationInputSnapshotFactory {
         List<TagInput> tags = new ArrayList<>();
         report.getDisplayTags().stream()
                 .sorted(Comparator.comparing(Tag::getId).thenComparing(Tag::getTagName))
-                .map(tag -> new TagInput("TAG:" + tag.getId(), tag.getTagName()))
-                .forEach(tags::add);
-        report.getCustomTags().stream()
-                .sorted(Comparator.comparing(ReportCustomTag::getNormalizedName))
                 .map(tag -> new TagInput(
-                        "CUSTOM:" + tag.getNormalizedName(),
-                        tag.getDisplayName()
+                        tag.getId(),
+                        tag.getTagName(),
+                        tag.getTagType()
                 ))
                 .forEach(tags::add);
+        List<String> customTagNames = report.getCustomTags().stream()
+                .sorted(Comparator.comparing(ReportCustomTag::getNormalizedName))
+                .map(ReportCustomTag::getDisplayName)
+                .toList();
         return new RecommendationInputSnapshot(
                 report.getId(),
                 memberId,
                 report.getRecommendationInputRevision(),
                 report.getMatchPercentage(),
-                tags
+                tags,
+                customTagNames
         );
     }
 
@@ -43,6 +45,7 @@ public class RecommendationInputSnapshotFactory {
         RecommendationInputSnapshot current = from(report, expected.memberId());
         return Objects.equals(current.inputRevision(), expected.inputRevision())
                 && Objects.equals(current.matchPercentage(), expected.matchPercentage())
-                && current.tagKeys().equals(expected.tagKeys());
+                && current.tags().equals(expected.tags())
+                && current.customTagNames().equals(expected.customTagNames());
     }
 }

@@ -25,6 +25,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthService {
 
+    // 미가입·소셜 이메일도 실제 회원과 동일한 BCrypt 비용으로 검증하기 위한 고정 해시
+    private static final String DUMMY_PASSWORD_HASH =
+            "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+
     private final PasswordEncoder passwordEncoder;
     private final MemberRepository memberRepository;
     private final JwtUtil jwtUtil;
@@ -33,6 +37,7 @@ public class AuthService {
 
     private final RejoinBlockChecker rejoinBlockChecker;
     private final NotificationSettingService notificationSettingService;
+    private final LoginAttemptService loginAttemptService;
 
     //이메일 회원가입
     @Transactional
@@ -76,6 +81,9 @@ public class AuthService {
         String refreshToken = jwtUtil.createRefreshToken(authMember);
         savedMember.updateRefreshToken(refreshToken);
 
+        // 미가입 상태에서 누적된 동일 이메일의 실패 기록 제거
+        loginAttemptService.clear(email);
+
         return MemberResponse.toSignUpResponse(accessToken, refreshToken, savedMember);
     }
 
@@ -84,14 +92,22 @@ public class AuthService {
     @Transactional
     public MemberResponse.LoginResponse login(MemberRequest.LoginRequest dto) {
         String email = LowercaseNormalizer.normalize(dto.email());
+        // 잠금 중이면 회원 존재 여부와 관계없이 비밀번호 검사 전에 차단
+        loginAttemptService.assertLoginAllowed(email);
 
-        //이메일로 member 찾기
-        Member member = memberRepository.findByEmail(email)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+        // 미가입 이메일도 동일한 BCrypt 비교를 수행해 회원 존재 여부 노출 방지
+        Member member = memberRepository.findByEmail(email).orElse(null);
+        String storedPassword = member != null && member.getPassword() != null
+                ? member.getPassword()
+                : DUMMY_PASSWORD_HASH;
+        boolean passwordMatches = passwordEncoder.matches(dto.password(), storedPassword);
 
-        //비밀번호 일치 여부 확인
-        if(member.getPassword() == null || !passwordEncoder.matches(dto.password(), member.getPassword())) {
-            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+        if (member == null || member.getPassword() == null || !passwordMatches) {
+            boolean locked = loginAttemptService.recordFailure(email);
+            // 1~4회는 기존 인증 실패, 5회차부터 로그인 잠금 응답
+            throw new BusinessException(
+                    locked ? ErrorCode.LOGIN_ATTEMPT_LOCKED : ErrorCode.INVALID_CREDENTIALS
+            );
         }
 
         //토큰 생성을 위해 AuthMember 생성
@@ -105,6 +121,8 @@ public class AuthService {
 
         //발급한 RefreshToken 저장
         member.updateRefreshToken(refreshToken);
+        // 로그인 성공 시 이전 실패 횟수와 잠금 기록 제거
+        loginAttemptService.clear(email);
 
         return MemberResponse.toLoginResponse(
                 accessToken,

@@ -1,5 +1,11 @@
 # Trend 도메인 API 설계
 
+> **보관 상태 (2026-08-01): Archived.** 구현 전 작성된 설계안으로, 아래의 "미구현" 상태와
+> 작업 순서는 현재 상태가 아니다. 현재 계약은 [API_SPEC.md](API_SPEC.md),
+> [`TrendController.java`](../src/main/java/com/fitback/backend/domain/trend/controller/TrendController.java),
+> [`TrendService.java`](../src/main/java/com/fitback/backend/domain/trend/service/TrendService.java)를
+> 기준으로 한다.
+
 기획서(`docs/FITBACK_API_명세서.md`) 기준 Trend API 설계 문서. Entity(`TrendContent`, `TrendTag`)는 이미 구현되어 있고, DTO/Repository/Service/Controller는 미구현 상태(package-info.java만 존재)에서 작성한 설계안.
 
 ## 범위

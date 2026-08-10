@@ -1,5 +1,9 @@
 # FIT-BACK Backend 운영 배포
 
+> **문서 표기:** 코드·workflow가 보장하는 절차는 **현재 계약**, 날짜가 붙은 AWS 값과 실행 결과는
+> **스냅샷/과거 증적**, 아직 구현하지 않은 항목은 **후속 항목**으로 구분한다. 스냅샷은 배포 전
+> AWS 콘솔·SSM·CloudFront에서 다시 확인한다.
+
 ## 배포 구조
 
 `main`에 변경이 병합되면 `Backend CD`가 다음 순서로 실행된다.
@@ -9,18 +13,20 @@
 3. ECR에서 `sha256` digest를 확인해 변경 불가능한 이미지 참조를 생성한다.
 4. `EC2_INSTANCE_ID` 저장소 변수가 설정된 경우에만 SSM Run Command로 EC2 배포를 실행한다.
 5. EC2는 고유한 release 디렉터리에서 Parameter Store의 DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값을 읽고 Compose stack을 갱신한다.
-6. Nginx와 backend health check가 실패하면 직전 release 전체로 rollback한다.
-7. `PUBLIC_BASE_URL`이 설정되어 있으면 CloudFront HTTPS 주소에서 Nginx와 backend readiness를 다시 확인한다.
+6. Nginx health와 readiness 기반 backend container health 중 하나라도 실패하면 직전 release 전체로 rollback한다.
+7. `PUBLIC_BASE_URL`이 설정되어 있으면 CloudFront HTTPS 주소에서 Nginx와 backend readiness를 다시 확인한다. 이 공개 경로 확인은 경고성 사후 검증이므로 실패해도 앞서 성공한 SSM release를 rollback하지 않으며, 복구 뒤 다시 실행해 확인한다.
 
 SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 운영 프로필은 메일 서버 장애가 애플리케이션 전체 health에 반영되지 않도록 mail health indicator를 비활성화한다.
-배포 및 rollback 판정은 `/actuator/health/readiness`만 사용한다.
+배포 및 rollback 판정은 `/nginx-health`와 readiness 기반 backend container health를 함께 사용한다.
 
-## 현재 운영 구성
+## 기록된 운영 구성과 최근 배포 증적
 
-2026-07-24 KST 기준 운영 구성은 다음과 같다. 비밀값과 private RDS endpoint는 문서에 기록하지 않는다.
+아래 리소스 값은 2026-07-24 KST에 확인한 운영 인프라 스냅샷이다. 현재 AWS 상태나 비용을
+실시간으로 보장하지 않으며, 배포 전에는 콘솔·CloudFront·SSM에서 다시 확인한다. 비밀값과 private
+RDS endpoint는 문서에 기록하지 않는다.
 
-| 항목 | 현재 값 |
+| 항목 | 2026-07-24 확인 스냅샷 |
 | --- | --- |
 | AWS Account / Region | `123209654535` / `ap-northeast-2` |
 | ECR | `fitback-backend` |
@@ -35,9 +41,15 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 | RDS Security Group | `sg-0655806f06e276341`, EC2 SG에서 MySQL 3306만 inbound |
 | GitHub OIDC Role | `FitbackGitHubDeployRole` |
 | EC2 Instance Role / Profile | `FitbackProductionEC2Role` / `FitbackProductionEC2Profile` |
-| 현재 검증 digest | `sha256:a0d33a7c3566b7b7e2e5c984e493cd33fd73ca6166072be21dde337283f00620` |
+| 2026-07-24 검증 digest | `sha256:a0d33a7c3566b7b7e2e5c984e493cd33fd73ca6166072be21dde337283f00620` |
 
-실제 Production CD 증적:
+마지막으로 기록된 성공 `main` 배포는 2026-07-30 KST의
+[`Backend CD` run 30550498810](https://github.com/FIT-BACK/backend/actions/runs/30550498810)이다.
+해당 run은 `main` `b09a7de8c122d801465aee705a45ad6890b0b2a2`를 성공적으로 배포했고, 기록된
+이미지 digest는 `sha256:8b550a46dc9a4fddbdca41955eb3ee195a4fbfc7ea7d96d3e0316873100fa09f`다.
+이는 배포 증적이지 이 문서를 읽는 시점의 실행 중 digest 보증은 아니다.
+
+2026-07-24 Production CD 검증 증적:
 
 - [main push 실행 #6](https://github.com/FIT-BACK/backend/actions/runs/29426542508): image publish와 SSM deploy 성공
 - [동일 SHA 수동 실행 #7](https://github.com/FIT-BACK/backend/actions/runs/29426904664): 기존 불변 태그 재사용, image publish와 SSM deploy 성공
@@ -67,12 +79,17 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 | `IMAGE_BUCKET` | EC2 배포 | private 사용자 이미지 버킷 이름이다. 현재 값은 `fitback-prod-images-123209654535-ap-northeast-2`이다. |
 | `IMAGE_CDN_BASE_URL` | EC2 배포 | 서명된 이미지 조회 URL을 만들 CloudFront HTTPS origin이다. 현재 값은 `https://d1p2ierkew26r1.cloudfront.net`이다. |
 | `CLOUDFRONT_KEY_PAIR_ID` | EC2 배포 | CloudFront signed URL에 포함할 public key ID이다. 현재 값은 `K1XNJ3JDEDCVL3`이다. |
-| `FITBACK_AI_TAG_ANALYZER` | 선택 | 분석기 모드다. 미설정 시 `unavailable`; 최소 프로토타입에서만 `prototype`을 사용한다. |
+| `APP_CORS_ALLOWED_ORIGINS` | EC2 배포 | Spring CORS allowlist다. 공백 없는 origin을 쉼표로 구분하며 현재 운영 프론트와 승인된 로컬 개발 origin을 설정한다. 변경 후 새 production 배포가 필요하다. |
+| `FITBACK_AI_TAG_ANALYZER` | 선택 | 분석기 모드다. `unavailable`, `prototype`, `openai`, `bedrock` 중 하나이며 기본값은 `unavailable`이다. |
+| `FITBACK_AI_REQUEST_TIMEOUT` | 선택 | AI 공급자 1회 요청 제한이다. 양의 정수 초 ISO-8601 값만 허용하며 기본값은 `PT30S`다. |
+| `FITBACK_AI_OPENAI_MODEL` | `openai` 선택 시 | OpenAI 분석 모델 이름이다. 비밀값이 아니며 공백 없는 값으로 설정한다. |
+| `FITBACK_AI_BEDROCK_MODEL_ID` | `bedrock` 선택 시 | Bedrock foundation model 또는 inference profile ID다. 비밀값이 아니며 공백 없는 값으로 설정한다. |
 | `SHOPPING_PROVIDER` | 선택 | 상품 공급자다. 미설정 시 `fixture`; Shopify 프로토타입에서는 `shopify`를 사용한다. |
 | `SHOPIFY_ENABLED` | 선택 | Shopify adapter 활성화 여부다. 미설정 시 `false`; `SHOPPING_PROVIDER=shopify`와 함께 `true`로 설정한다. |
 
-민감정보는 Repository Variable 또는 GitHub command payload에 넣지 않는다.
-배포 workflow는 위 세 feature 설정을 검증한 뒤 SSM command와 release `.env`까지 전달한다.
+민감정보는 Repository Variable 또는 GitHub command payload에 넣지 않는다. OpenAI API key도
+Repository Variable이 아니라 Parameter Store SecureString으로 관리한다. 배포 workflow는 CORS와
+AI/상품 비민감 설정을 검증한 뒤 SSM command와 release `.env`까지 전달한다.
 최소 프로토타입 운영 검증 시에는 `prototype/shopify/true` 조합을 명시하고, 검증 종료 후
 기본 fail-closed 조합으로 되돌릴 수 있다.
 
@@ -93,6 +110,7 @@ SSH, EC2 key pair, 장기 AWS Access Key는 사용하지 않는다.
 /fitback/prod/mail-app-password
 /fitback/prod/front-password-reset-url
 /fitback/prod/cloudfront-private-key
+/fitback/prod/openai-api-key  # FITBACK_AI_TAG_ANALYZER=openai일 때만 필요
 ```
 
 예시 형식은 다음과 같다. 실제 값은 문서나 저장소에 기록하지 않는다.
@@ -110,18 +128,22 @@ mail-email=<gmail-smtp-account>
 mail-app-password=<google-app-password>
 front-password-reset-url=https://<frontend-origin>/<password-reset-path>
 cloudfront-private-key=<base64-encoded-pkcs8-der>
+openai-api-key=<openai-project-api-key>
 ```
 
 `front-redirect-uri`는 카카오 로그인 성공/실패 후 임시 토큰 또는 에러 코드를 붙여 이동할 프론트 HTTPS URL이다.
 `mail-email`은 Gmail SMTP 로그인 및 비밀번호 재설정 메일 발신 주소이며,
 `mail-app-password`에는 Google 계정 비밀번호가 아니라 발급한 앱 비밀번호를 저장한다.
+`openai-api-key`는 OpenAI 모드에서만 EC2가 조회하며 workflow payload와 release `.env`에는
+포함하지 않는다. `prototype`, `unavailable`, `bedrock` 모드에서는 이 Parameter를 조회하지 않는다.
 `front-password-reset-url`은 메일의 `resetToken` 쿼리 파라미터를 전달할 프론트 HTTPS URL이다.
 운영 배포 전 카카오 개발자 콘솔의 Redirect URI에는 백엔드 콜백
 `https://d1ra74et9h0ohu.cloudfront.net/api/v1/auth/callback/kakao`를 등록한다.
 
-`cloudfront-private-key`는 PEM header/footer를 포함한 전체 문자열이 아니라 PKCS8 DER bytes를
-줄바꿈 없는 Base64로 인코딩한다. 전체 PEM을 다시 Base64로 인코딩하면 RSA key 크기에 따라
-Standard Parameter의 4096자 제한을 초과할 수 있다. 실제 키 원문과 Base64 값은 문서,
+`cloudfront-private-key`의 운영 권장 형식은 PEM header/footer 없는 PKCS8 DER bytes의 줄바꿈 없는
+Base64다. 전체 PEM을 다시 Base64로 인코딩하면 RSA key 크기에 따라 Standard Parameter의 4096자
+제한을 초과할 수 있다. 런타임 parser는 Base64로 감싼 PEM 및 PKCS1 RSA key도 정규화해 읽을 수
+있지만, 신규 운영 값은 위 PKCS8 DER 형식으로 통일한다. 실제 키 원문과 Base64 값은 문서,
 저장소, GitHub payload, 로그에 기록하지 않는다. `kakao-rest-api-secret`과
 `mail-app-password`도 같은 기준으로 문서, 저장소, GitHub payload, 로그에 기록하지 않는다.
 
@@ -162,6 +184,12 @@ Standard Parameter의 4096자 제한을 초과할 수 있다. 실제 키 원문�
   ]
 }
 ```
+
+`FITBACK_AI_TAG_ANALYZER=bedrock`을 활성화하면 GitHub Actions OIDC 역할이 아니라 운영 EC2
+instance role 정책에 선택한 모델 또는 inference profile 리소스로 제한한 `bedrock:InvokeModel`
+권한을 추가한다. Compose에서 실행되는 backend는 이 EC2 역할로 Bedrock을 호출하므로 별도 장기
+Access Key를 Parameter Store나 환경변수에 만들지 않는다. OpenAI 모드는 EC2의 HTTPS outbound가
+허용되어야 한다.
 
 OIDC trust policy는 `FIT-BACK/backend`의 `main` branch에서만 역할을 위임받도록 유지한다.
 
@@ -209,6 +237,134 @@ OIDC trust policy는 `FIT-BACK/backend`의 `main` branch에서만 역할을 위�
 }
 ```
 
+## Production backend 로그 및 OpenAI retry 관측성
+
+### 현재 상태와 목표 구성
+
+2026-08-10 KST에 기록한 읽기 전용 snapshot 기준으로 production backend container는 Docker daemon 기본
+`json-file` logging driver를 사용한다. EC2의 `amazon-cloudwatch-agent`와 `awslogsd`는 비활성이고
+각 agent 설정 파일도 없으며, `/fitback/prod/*` CloudWatch log group, Fitback alarm, SNS topic도
+없다. `FitbackProductionEC2Role`에는 `AmazonSSMManagedInstanceCore`와
+`FitbackProductionRuntimeAccess`만 연결되어 있고 CloudWatch Logs write 권한은 없다.
+이 snapshot은 현재 상태를 영구 보증하지 않으므로 stack 적용 직전에 CloudWatch Logs, alarm, SNS,
+EC2 role policy를 다시 읽기 전용으로 확인한다.
+
+목표 구성은 [CloudFormation template](../deploy/aws/production-backend-observability.yaml)과
+`compose.yaml`에 정의한다.
+
+- backend stdout/stderr만 `/fitback/prod/backend`로 전송하며 보존 기간은 30일이다. Nginx는 기존
+  logging 구성을 유지한다.
+- Docker Engine 25.0.16이 지원하는 `tag=backend/{{.Name}}/{{.FullID}}`를 사용해 container마다
+  `backend/<compose-container-name>/<full-container-id>` 형태의 고유 stream을 만든다. 명시적
+  `awslogs-stream`도 지원되지만 정적 이름은 container 재생성 및 scale-out에서 stream을 공유하므로
+  사용하지 않는다.
+- log group은 stack이 먼저 생성하며 `awslogs-create-group=false`를 유지한다. 따라서 EC2 role에는
+  해당 log group ARN으로 제한한 `logs:CreateLogStream`, `logs:PutLogEvents`만 추가하고
+  `logs:CreateLogGroup`은 부여하지 않는다.
+- metric filter는 다음 세 문구를 모두 포함한 logical summary만 센다.
+
+  ```text
+  "AI tag provider logical request" "provider=openai" "providerAttemptCount=2"
+  ```
+
+  production client의 `maxAttempts=2` 경로에서 `providerAttemptCount=2`는 두 번째 provider 호출이
+  실제 수행됐다는 뜻이다. 첫 5xx 뒤 retry budget이 부족하면 logical failure가
+  `providerAttemptCount=1 final5xx=true`일 수 있으므로 `final5xx=true`만으로 retry를 세지 않는다.
+  단일 시도 client와 정상 1회 요청도 이 filter에 포함되지 않는다.
+- metric은 `Fitback/OpenAI` namespace의 `ProviderRetryCount`이며 matching logical request마다 1을
+  더한다. `xRequestId`를 포함한 dimension은 만들지 않는다.
+- `fitback-prod-openai-provider-retry` alarm은 5분 `Sum >= 1`, 1 evaluation period,
+  `TreatMissingData=notBreaching`으로 평가하고 SNS topic 하나를 호출한다.
+- 현재 재사용할 SNS topic이 없으므로 template 기본값은 구독 없는
+  `fitback-prod-openai-provider-retry` topic을 만든다. production 적용 전 운영자가 실제 알림을 받을
+  subscription을 별도 승인·확정해야 한다. 기존 topic이 생기면 `ExistingAlarmTopicArn` parameter로
+  재사용한다.
+- logical summary는 `recoveredByRetry=true`와 `final5xx=true`를 구분할 수 있지만, 첫 적용은 custom
+  metric 비용과 변경 범위를 줄이기 위해 실제 retry 횟수 metric 하나만 만든다. 회복/최종 실패
+  metric은 natural traffic 관측 후 별도 변경으로 검토한다.
+
+애플리케이션 OpenAI 코드, prompt, schema, model, retry 정책은 이 구성의 대상이 아니다. API key,
+secret, 원본 request/response body, provider raw response, 이미지와 data URL은 log group, filter,
+alarm, 문서에 기록하지 않는다.
+
+### 배포 전 검증
+
+아래 명령은 CloudFormation schema와 metric filter 문법을 검증하며 AWS resource나 log event를
+생성하지 않는다.
+
+```bash
+bash scripts/deploy/test_production_backend_observability.sh
+
+aws cloudformation validate-template \
+  --region ap-northeast-2 \
+  --template-body file://deploy/aws/production-backend-observability.yaml
+
+aws logs test-metric-filter \
+  --region ap-northeast-2 \
+  --filter-pattern '"AI tag provider logical request" "provider=openai" "providerAttemptCount=2"' \
+  --log-event-messages \
+  'AI tag provider logical request completed. provider=openai model=synthetic logicalRequestCount=1 providerAttemptCount=2 attemptCount=2 recoveredByRetry=true final5xx=false logicalLatencyMillis=1 attemptLatencyMillis=1 xRequestId=unavailable' \
+  'AI tag provider logical request completed. provider=openai model=synthetic logicalRequestCount=1 providerAttemptCount=1 attemptCount=1 recoveredByRetry=false final5xx=false logicalLatencyMillis=1 attemptLatencyMillis=1 xRequestId=unavailable'
+```
+
+실제 production Docker Engine 버전까지 고정해 확인할 때는 다음처럼 실행한다. CI에서는 hosted
+runner의 Docker 버전 변동으로 계약 검증이 불필요하게 깨지지 않도록 이 옵션을 생략하지만,
+production 검증에서는 `25.0.16`과 일치하지 않으면 실패한다.
+
+```bash
+REQUIRE_PRODUCTION_DOCKER_SERVER_VERSION=true bash scripts/deploy/test_production_backend_observability.sh
+```
+
+`test-metric-filter` 결과는 첫 번째 synthetic event의 `eventNumber`만 포함해야 한다. 이 API는 sample
+message를 `/fitback/prod/backend`에 적재하거나 metric을 발행하지 않는다.
+
+### Production 적용 및 확인 순서
+
+이 순서는 PR merge와 production 적용이 승인된 뒤에만 실행한다. `awslogs-create-group=false`이므로
+CloudFormation stack을 backend release보다 먼저 적용해야 한다.
+
+1. 기존 알림 topic과 subscription을 다시 조회한다. 2026-08-10 snapshot에는 topic이 없었으므로,
+   적용 직전에도 재사용할 승인 topic이 없을 때만 구독 없는 fallback SNS topic을 사용한다.
+2. 권한 있는 운영자가 stack을 적용한다. 기존 topic이 없으면 다음 명령처럼 빈 parameter를 유지한다.
+
+   ```bash
+   aws cloudformation deploy \
+     --region ap-northeast-2 \
+     --stack-name fitback-prod-backend-observability \
+     --template-file deploy/aws/production-backend-observability.yaml \
+     --capabilities CAPABILITY_NAMED_IAM \
+     --parameter-overrides \
+       EC2RoleName=FitbackProductionEC2Role
+   ```
+
+   기존 topic을 재사용할 때만 `ExistingAlarmTopicArn=<approved-topic-arn>`을 전달한다.
+3. stack output, `/fitback/prod/backend`의 30일 retention, metric filter, alarm, EC2 inline policy의
+   두 Logs action을 확인한다. fallback topic을 쓴다면 승인된 subscription을 연결하고 확인한다.
+4. `develop → main` release PR과 Backend CD를 통해 새 Compose 설정을 배포한다. application release와
+   stack 변경을 독립적으로 추적하고, rollback 전에도 log group과 IAM policy는 유지한다.
+5. public Nginx health와 backend readiness가 정상인지 확인한 뒤 다음과 같이 message 원문 없이 stream과
+   event 도착 여부만 확인한다.
+
+   ```bash
+   aws logs describe-log-streams \
+     --region ap-northeast-2 \
+     --log-group-name /fitback/prod/backend \
+     --log-stream-name-prefix backend/ \
+     --order-by LastEventTime \
+     --descending \
+     --max-items 5
+
+   aws logs filter-log-events \
+     --region ap-northeast-2 \
+     --log-group-name /fitback/prod/backend \
+     --limit 1 \
+     --query 'events[].{Timestamp:timestamp,Stream:logStreamName}'
+   ```
+
+6. artificial OpenAI 500, `set-alarm-state`, synthetic production log injection으로 alarm을 유발하지 않는다.
+   자연 traffic에서 아직 `providerAttemptCount=2`가 없으면 alarm의 `OK`/`INSUFFICIENT_DATA` 상태와
+   metric 부재를 정상적인 **natural traffic 대기**로 기록한다.
+
 ## EC2 Runtime 요구사항
 
 SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 asset을 설치하고 `/opt/fitback/current` symlink를 활성 release로 유지한다. 운영 AMI에는 다음 항목이 필요하다.
@@ -218,16 +374,35 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - Docker daemon이 실행 중이어야 한다.
 - ECR 이미지 platform과 EC2 architecture가 일치해야 한다. 현재 workflow는 multi-architecture 이미지를 만들지 않는다.
 - `/opt/fitback/releases`에 배포 파일과 mode `600`의 비민감 runtime `.env`를 저장하고 `/opt/fitback/current` symlink를 교체할 수 있어야 한다. DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값은 파일에 기록하지 않고 Compose 프로세스 환경으로만 전달한다.
-- 비민감 feature 설정 `FITBACK_AI_TAG_ANALYZER`, `SHOPPING_PROVIDER`,
-  `SHOPIFY_ENABLED`는 release `.env`에 기록한다. 기본값은
-  `unavailable/fixture/false`이며, 배포형 최소 프로토타입은
+- 비민감 runtime 설정 `APP_CORS_ALLOWED_ORIGINS`, `FITBACK_AI_TAG_ANALYZER`,
+  `FITBACK_AI_REQUEST_TIMEOUT`, 공급자별 model ID, `SHOPPING_PROVIDER`, `SHOPIFY_ENABLED`는
+  release `.env`에 기록한다. OpenAI API key는 기록하지 않고 현재 Compose 프로세스 환경으로만
+  전달한다. feature 설정 기본값은 `unavailable/fixture/false`이며, 배포형 최소 프로토타입은
   `prototype/shopify/true`를 명시한다.
+
+## AI 태그 분석기 배포 전환 절차
+
+1. 스테이징에서는 운영과 분리된 `DEPLOY_PARAMETER_PREFIX`와 EC2/CloudFront endpoint를 사용한다.
+   현재 `Backend CD` job은 `main`의 production endpoint만 허용하므로 실제 스테이징 실행은 별도
+   workflow/environment가 마련되기 전까지 `remote_deploy.sh` 계약 테스트로만 검증한다.
+2. `FITBACK_AI_TAG_ANALYZER`를 `openai` 또는 `bedrock`으로 바꾸기 전에 #219 어댑터가 포함된
+   digest-pinned 이미지를 준비한다.
+3. OpenAI는 선택한 prefix의 `openai-api-key` SecureString과 model 변수를, Bedrock은 model ID와
+   EC2 role의 `bedrock:InvokeModel` 최소 권한을 준비한다.
+4. 배포 전 `bash scripts/deploy/test_remote_deploy.sh`로 모드별 필수값, 비밀값 비영속화,
+   fail-closed 검증을 실행한다.
+5. 배포 후 readiness와 업로드 → 분석 → 다중 태그 추출 API를 실제 이미지로 확인하고, 컨테이너
+   로그에 API key·원본 이미지·공급자 원문 응답이 노출되지 않는지 확인한다.
+6. 타임아웃/공급자 장애가 지속되면 Repository Variable을 `unavailable`로 되돌려 새 배포하고,
+   `prototype`은 명시적인 데모 계약 검증에만 사용한다.
 
 ## 네트워크 계약
 
 - 사용자는 CloudFront 기본 도메인의 HTTPS `443`으로 API에 접근한다.
 - CloudFront는 캐시를 비활성화하고 모든 API HTTP method와 viewer 요청 값을 EC2 Nginx 원본으로 전달한다.
 - EC2 Nginx 원본은 HTTP `80`을 사용하며 source를 AWS 관리형 prefix list `com.amazonaws.global.cloudfront.origin-facing`(`pl-22a6434b`)로 제한한다.
+- Spring CORS allowlist는 GitHub Repository Variable `APP_CORS_ALLOWED_ORIGINS`에서 주입한다.
+  값을 변경하면 새 production 배포 후 허용 Origin의 OPTIONS preflight와 실제 응답 헤더를 확인한다.
 - Elastic IP의 HTTP `80`, SSH `22`, backend `8080`은 일반 인터넷에서 직접 접근할 수 없다.
 - RDS는 public access를 비활성화한다.
 - RDS security group의 MySQL `3306` source는 EC2 security group으로 제한한다.
@@ -239,7 +414,8 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
 - S3 버킷은 Block Public Access와 Bucket owner enforced를 유지한다.
 - 버킷 정책은 CloudFront distribution `EV1PM17XDVYU5`의 OAC `s3:GetObject`만 허용한다.
 - CloudFront 기본 동작은 HTTPS redirect, `GET`/`HEAD`, `CachingOptimized`, trusted key group `fitback-private-images`를 사용한다.
-- 이미지 조회는 signed URL 또는 signed cookie만 허용하며 서명 없는 요청은 `403`이다.
+- CloudFront 인프라는 trusted key group으로 서명 없는 요청을 `403`으로 거부한다. 현재 백엔드는
+  signed URL만 발급하며 signed cookie는 구현하지 않았다.
 - 운영 EC2 역할은 Presigned POST 발급, 업로드 완료 검증, 미사용 객체 정리에 필요한
   `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`만 가진다.
 - 실제 적용 위치는 IAM role `FitbackProductionEC2Role`의 inline policy
@@ -260,11 +436,13 @@ SSM command는 root 권한으로 `/opt/fitback/releases/<release-id>`에 배포 
   `82543ae`로 배포됐다. [Production CD #30499561977](https://github.com/FIT-BACK/backend/actions/runs/30499561977)에서
   image publish, SSM deploy, public HTTPS readiness가 모두 성공했으며 릴리스 C의 직전
   rollback target이다.
-- 릴리스 C(`#97`)의 V19는 B rollback window의 legacy row를 최종 catch-up하고 temporary
-  CHECK gate로 잔여 0건을 확인한 뒤 purpose/status constraint를 신규값 전용으로 원자 교체한다.
-  Java legacy enum과 startup reconciliation도 제거한다.
-- C 실패 시 B로 rollback한다. B writer는 이미 신규값만 쓰므로 V19의 신규값 전용 constraint와
-  호환되며, A로는 더 이상 rollback하지 않는다.
+- 릴리스 C(`#97`, [PR #170](https://github.com/FIT-BACK/backend/pull/170))는 `main`에 병합됐다.
+  V19는 B rollback window의 legacy row를 최종 catch-up하고 zero gate를 통과한 뒤
+  purpose/status constraint를 canonical 값 전용으로 교체했으며 Java legacy enum과 startup
+  reconciliation을 제거했다.
+- V19 이후에는 DB migration을 자동으로 되돌리지 않는다. 과거 B 애플리케이션 writer는 canonical
+  값을 쓰므로 애플리케이션 release rollback과는 호환되지만, schema rollback 필요성은 별도 운영
+  절차로 판단한다.
 - S3 객체 수명 주기 자동 만료는 `ACTIVE`와 미사용 상태를 구분할 수 없어 적용하지 않는다.
   24시간 미사용 `PENDING_UPLOAD`/`READY`/`REJECTED` 정리와 `DELETE_FAILED` 재시도는 DB
   상태와 도메인 참조를 기준으로 애플리케이션 작업자가 수행한다.
@@ -293,18 +471,68 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V16__seed_prototype_analysis_tags.sql`,
 `V17__reconcile_composite_unique_constraints.sql`,
 `V18__backfill_image_lifecycle_values.sql`,
-`V19__contract_image_lifecycle_values.sql`을 순서대로 적용하고 Hibernate
+`V19__contract_image_lifecycle_values.sql`,
+`V20__add_member_profile_image_id.sql`,
+`V21__create_notification_table.sql`,
+`V22__seed_member_style_tags.sql`,
+`V23__classify_style_tags.sql`,
+`V24__create_login_attempt_table.sql`,
+`V25__seed_tag_master_taxonomy.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
+V23은 `미니멀`, `스트릿`, `러블리`, `캐주얼`, `포멀`의 타입을 `DETAIL`에서
+`STYLE`로 재분류한다.
+V25는 확정 태그 43개와 복종 매핑 70개를 멱등하게 구성하고 legacy `베이지톤` 참조를
+`베이지`로 수렴시킨다.
+
+### V23 실패 migration 복구
+
+V23 배포가 `tag.tag_type` ENUM에 없는 `STYLE` 값을 UPDATE하다 실패해
+`flyway_schema_history.success=0` 행을 남긴 경우, 수정된 이미지를 재배포하기 전에 운영 DB에서
+다음 순서로 V23 실패 이력만 복구한다. 먼저 대상 행이 실제로 실패 상태인지 확인한다.
+
+```sql
+SELECT version, description, success
+FROM flyway_schema_history
+WHERE version = '23';
+```
+
+결과가 `version=23`, `success=0`인 경우에만 해당 실패 행을 삭제한다. 성공한 migration이나
+다른 version의 이력은 삭제하지 않는다.
+
+```sql
+DELETE FROM flyway_schema_history
+WHERE version = '23'
+  AND success = 0;
+```
+
+그 다음 V23 ENUM 수정이 포함된 release를 배포하면 Flyway가 V23을 다시 실행한다. 배포 후에는
+다음 조회에서 V23이 `success=1`이고 `tag.tag_type`이 `STYLE`과 후속 V25의 `MATERIAL`을
+포함하는지 확인한다.
+
+```sql
+SELECT version, description, success
+FROM flyway_schema_history
+WHERE version = '23';
+
+SELECT COLUMN_TYPE
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = 'tag'
+  AND COLUMN_NAME = 'tag_type';
+```
+
+이 절차는 V23의 확인된 실패 이력만 복구하기 위한 일회성 운영 조치이며, Flyway history 전체
+삭제나 임의 migration 자동 repair로 대체하지 않는다.
 
 ## 배포 및 Rollback 동작
 
 `scripts/deploy/remote_deploy.sh`는 다음 작업을 수행한다.
 
 1. digest가 포함된 ECR 이미지 참조를 검증한다.
-2. Parameter Store의 DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, Base64 CloudFront 개인 키 값을 단일 행 값으로 검증한다.
+2. Parameter Store의 DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, Base64 CloudFront 개인 키와 OpenAI 모드의 API key 값을 단일 행 값으로 검증한다.
 3. host 단위 `flock`을 획득해 같은 EC2에서 두 배포가 동시에 실행되지 않게 한다.
-4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키 값은 현재 Compose 프로세스 환경으로 전달한다.
+4. 고유한 `/opt/fitback/releases/<release-id>/.env`에 image와 port 등 비민감 runtime 값만 mode `600`으로 원자적으로 작성하고, DB, JWT, HMAC, Kakao OAuth, 메일, 비밀번호 재설정 URL, CloudFront 개인 키와 OpenAI API key는 현재 Compose 프로세스 환경으로 전달한다. rollback 시에는 release-scoped 상위 환경변수를 제거해 대상 release의 `.env`가 우선된다.
 5. EC2 instance role로 ECR에 로그인하고 backend 이미지를 pull한다.
 6. 새 release의 `docker compose up -d --remove-orphans`를 실행한다.
 7. `/nginx-health`와 backend container health가 모두 정상인지 확인한다.
@@ -338,7 +566,8 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | rollback 자체 실패 | mock test | 비정상 종료 코드 반환 |
 | 활성화 실패 및 INT/TERM | mock test | 직전 release 복원 |
 | DB/JWT/HMAC/Kakao/메일 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
-| Flyway V1~V12 MySQL DDL | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4 적용, 기존 `refresh_token` 호환, 이미지 old/new purpose/status, 상품 provider·추천 결과·저장 계약, 회원 알림/탈퇴 cascade, 카카오 `social_uid` 계약 확인 |
+| Flyway V1~V25 MySQL 적용 | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4에 모든 migration 적용, 태그 43개·복종 매핑 70개와 기존 주요 제약조건 확인 |
+| V21 notification 세부 DDL assertion | 미구현 | migration 적용 성공은 확인하지만 notification 컬럼·FK·index를 별도로 조회하는 assertion은 아직 없음 |
 
 검증 명령:
 
@@ -395,10 +624,15 @@ ECR 및 S3 저장량, CloudFront 요청·데이터 전송, 소량의 CloudWatch 
 - [x] private S3 이미지 버킷, CloudFront OAC, trusted key group을 구성했다.
 - [x] 운영 프론트 Origin의 S3 Presigned POST 전용 CORS와 실제 업로드를 검증했다.
 - [x] 이미지 저장소 Repository Variable 세 개와 `/fitback/prod/cloudfront-private-key` SecureString을 구성했다.
-- [ ] `/fitback/prod/jwt-secret-key`, `/fitback/prod/hmac-secret-key`, Kakao OAuth, 메일, 비밀번호 재설정 URL 값을 포함한 운영 Parameter Store SecureString을 모두 생성했다.
+- [x] `/fitback/prod/jwt-secret-key`, `/fitback/prod/hmac-secret-key`, Kakao OAuth, 메일, 비밀번호 재설정 URL을 포함한 필수 SecureString은 Production CD가 EC2에서 조회해 배포에 사용했다. 값 자체는 문서·로그에서 별도 감사하지 않는다.
 - [ ] 카카오 개발자 콘솔에 운영 백엔드 콜백 URI를 등록했다.
 - [x] GitHub OIDC 역할에 SSM 최소 권한을 추가했다.
 - [x] GitHub Repository Variable `EC2_INSTANCE_ID`를 추가했다.
+- [ ] GitHub Repository Variable `APP_CORS_ALLOWED_ORIGINS`를 추가하고 production 재배포 후 확인한다.
+- [ ] AI 어댑터 #219 병합 후 공급자별 model/timeout Repository Variable을 설정한다.
+- [ ] OpenAI 선택 시 `/fitback/prod/openai-api-key` SecureString을 생성하고 값 비노출을 확인한다.
+- [ ] Bedrock 선택 시 EC2 role에 선택 모델로 제한한 `bedrock:InvokeModel` 권한을 추가한다.
+- [ ] 실제 이미지로 AI 태그 분석 smoke test를 통과한 뒤 `unavailable` rollback 절차를 확인한다.
 - [x] `Backend CD`를 실제 실행해 SSM command와 health check를 확인했다.
 - [x] CloudFront HTTPS endpoint에서 Nginx와 backend readiness를 확인했다.
 - [ ] 다음 `main` 배포 후 CloudFront 루트에서 안내 페이지와 Swagger UI/readiness 링크를 확인한다.

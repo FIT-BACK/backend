@@ -93,7 +93,7 @@ class RecommendationApiFlowIntegrationTest {
                 .andExpect(jsonPath("$.data.analysisTags.length()").value(2))
                 .andExpect(jsonPath("$.data.matchPercentage").value(70))
                 .andExpect(jsonPath("$.data.scoreVersion")
-                        .value("SIMILARITY_THRESHOLD_V2"))
+                        .value("IMAGE_TAG_WEIGHTED_THR_V1"))
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
                 .andExpect(jsonPath("$.data.recommendationGroups.length()").value(8))
                 .andReturn();
@@ -155,8 +155,8 @@ class RecommendationApiFlowIntegrationTest {
     void keepsEightEmptyGroupsWhenThresholdExcludesAllCandidates() throws Exception {
         String email = "recommendation-api-empty@fitback.com";
         String accessToken = signUpAndGetAccessToken(email);
-        AnalysisReport report = createReport(email, "Fixture");
-        Long tagId = report.getDisplayTags().getFirst().getId();
+        AnalysisReport report = createReport(email, "Fixture", "Unmatched");
+        List<Long> tagIds = report.getDisplayTags().stream().map(Tag::getId).toList();
 
         MvcResult result = mockMvc.perform(post(
                                 "/api/v1/analyses/{reportId}/recommendations",
@@ -164,7 +164,7 @@ class RecommendationApiFlowIntegrationTest {
                         )
                         .header("Authorization", bearer(accessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(recommendationRequest(tagId, 100)))
+                        .content(recommendationRequest(tagIds, 100)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
                 .andExpect(jsonPath("$.data.recommendationGroups.length()").value(8))
@@ -269,22 +269,28 @@ class RecommendationApiFlowIntegrationTest {
     }
 
     private String recommendationRequest(Long tagId, int matchPercentage) {
+        return recommendationRequest(List.of(tagId), matchPercentage);
+    }
+
+    private String recommendationRequest(List<Long> tagIds, int matchPercentage) {
         return objectMapper.writeValueAsString(Map.of(
-                "confirmedTagIds", List.of(tagId),
+                "confirmedTagIds", tagIds,
                 "customTagNames", List.of("고프코어"),
                 "matchPercentage", matchPercentage
         ));
     }
 
-    private AnalysisReport createReport(String email, String tagName) {
+    private AnalysisReport createReport(String email, String... tagNames) {
         Member member = memberRepository.findByEmail(email).orElseThrow();
         AnalysisReport report = AnalysisReport.create(
                 member,
                 "https://example.com/recommendation-flow-analysis.jpg",
                 70
         );
-        Tag tag = tagRepository.save(Tag.create(tagName, TagType.DETAIL));
-        report.addAiSuggestedTag(tag);
+        for (String tagName : tagNames) {
+            Tag tag = tagRepository.save(Tag.create(tagName, TagType.DETAIL));
+            report.addAiSuggestedTag(tag);
+        }
         return analysisReportRepository.save(report);
     }
 

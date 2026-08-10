@@ -19,6 +19,8 @@ special_mail_email="mail@fitback.com"
 special_mail_app_password="mail\$\$\\'password\\value#=end-for-fitback-test"
 special_front_password_reset_url="https://frontend.example.com/reset-password"
 special_cloudfront_private_key="Y2xvdWRmcm9udC1wcml2YXRlLWtleS1mb3ItdGVzdA=="
+special_openai_api_key="openai\$\$\\'secret\\value#=end-for-fitback-test"
+app_cors_allowed_origins="https://frontend-chi-one-35.vercel.app,http://localhost:3000,http://localhost:5173"
 
 mkdir -p "$mock_bin"
 : > "$mock_log"
@@ -82,6 +84,9 @@ if [ "${1:-}" = 'ssm' ] && [ "${2:-}" = 'get-parameter' ]; then
     */cloudfront-private-key)
       printf '%s\n' "$MOCK_CLOUDFRONT_PRIVATE_KEY"
       ;;
+    */openai-api-key)
+      printf '%s\n' "$MOCK_OPENAI_API_KEY"
+      ;;
     *)
       printf 'Unexpected parameter: %s\n' "$parameter_name" >&2
       exit 1
@@ -99,6 +104,30 @@ cat > "$mock_bin/docker" <<'EOF'
 set -euo pipefail
 
 printf 'docker %s\n' "$*" >> "$MOCK_LOG"
+
+if [ "${1:-}" = 'compose' ]; then
+  compose_env_file=''
+  previous_argument=''
+  for argument in "$@"; do
+    if [ "$previous_argument" = '--env-file' ]; then
+      compose_env_file="$argument"
+      break
+    fi
+    previous_argument="$argument"
+  done
+
+  if [ -n "${FITBACK_AI_TAG_ANALYZER+x}" ]; then
+    effective_ai_tag_analyzer="$FITBACK_AI_TAG_ANALYZER"
+  else
+    effective_ai_tag_analyzer="$(sed -n 's/^FITBACK_AI_TAG_ANALYZER=//p' "$compose_env_file")"
+  fi
+  printf 'compose ai mode %s for %s\n' "$effective_ai_tag_analyzer" "$compose_env_file" >> "$MOCK_LOG"
+  if [ -n "${FITBACK_AI_OPENAI_API_KEY+x}" ]; then
+    printf 'compose openai key present for %s\n' "$compose_env_file" >> "$MOCK_LOG"
+  else
+    printf 'compose openai key absent for %s\n' "$compose_env_file" >> "$MOCK_LOG"
+  fi
+fi
 
 if [ "${1:-}" = 'login' ]; then
   cat > /dev/null
@@ -213,7 +242,11 @@ run_deploy() {
   IMAGE_BUCKET='fitback-prod-images-123209654535-ap-northeast-2' \
   IMAGE_CDN_BASE_URL='https://d1p2ierkew26r1.cloudfront.net' \
   CLOUDFRONT_KEY_PAIR_ID='K1XNJ3JDEDCVL3' \
-  FITBACK_AI_TAG_ANALYZER='prototype' \
+  APP_CORS_ALLOWED_ORIGINS="$app_cors_allowed_origins" \
+  FITBACK_AI_TAG_ANALYZER="${TEST_FITBACK_AI_TAG_ANALYZER:-prototype}" \
+  FITBACK_AI_REQUEST_TIMEOUT="${TEST_FITBACK_AI_REQUEST_TIMEOUT:-PT30S}" \
+  FITBACK_AI_OPENAI_MODEL="${TEST_FITBACK_AI_OPENAI_MODEL-}" \
+  FITBACK_AI_BEDROCK_MODEL_ID="${TEST_FITBACK_AI_BEDROCK_MODEL_ID-}" \
   SHOPPING_PROVIDER='shopify' \
   SHOPIFY_ENABLED='true' \
   PARAMETER_PREFIX='/fitback/prod' \
@@ -233,6 +266,7 @@ run_deploy() {
   MOCK_MAIL_APP_PASSWORD="$special_mail_app_password" \
   MOCK_FRONT_PASSWORD_RESET_URL="$special_front_password_reset_url" \
   MOCK_CLOUDFRONT_PRIVATE_KEY="$special_cloudfront_private_key" \
+  MOCK_OPENAI_API_KEY="$special_openai_api_key" \
   MOCK_CURL_FAIL_COUNT="${MOCK_CURL_FAIL_COUNT:-0}" \
   MOCK_DOCKER_FAIL_MATCH="${MOCK_DOCKER_FAIL_MATCH:-}" \
   MOCK_DOCKER_PULL_FAIL_MATCH="${MOCK_DOCKER_PULL_FAIL_MATCH:-}" \
@@ -265,7 +299,11 @@ grep -Fxq 'AWS_REGION=ap-northeast-2' "$env_file"
 grep -Fxq 'IMAGE_BUCKET=fitback-prod-images-123209654535-ap-northeast-2' "$env_file"
 grep -Fxq 'IMAGE_CDN_BASE_URL=https://d1p2ierkew26r1.cloudfront.net' "$env_file"
 grep -Fxq 'CLOUDFRONT_KEY_PAIR_ID=K1XNJ3JDEDCVL3' "$env_file"
+grep -Fxq "APP_CORS_ALLOWED_ORIGINS=$app_cors_allowed_origins" "$env_file"
 grep -Fxq 'FITBACK_AI_TAG_ANALYZER=prototype' "$env_file"
+grep -Fxq 'FITBACK_AI_REQUEST_TIMEOUT=PT30S' "$env_file"
+grep -Fxq 'FITBACK_AI_OPENAI_MODEL=' "$env_file"
+grep -Fxq 'FITBACK_AI_BEDROCK_MODEL_ID=' "$env_file"
 grep -Fxq 'SHOPPING_PROVIDER=shopify' "$env_file"
 grep -Fxq 'SHOPIFY_ENABLED=true' "$env_file"
 
@@ -406,7 +444,7 @@ parsed_mail_app_password="$(DB_URL='jdbc:mysql://database.internal:3306/fitback'
   config --environment | sed -n 's/^MAIL_APP_PASSWORD=//p')"
 test "$parsed_mail_app_password" = "$special_mail_app_password"
 grep_status=0
-grep -Eq '^(DB_(URL|USER|PASSWORD)|JWT_SECRET_KEY|HMAC_SECRET_KEY|KAKAO_REST_API_KEY|KAKAO_REST_API_SECRET|FRONT_REDIRECT_URI|MAIL_EMAIL|MAIL_APP_PASSWORD|FRONT_PASSWORD_RESET_URL|CLOUDFRONT_PRIVATE_KEY_BASE64)=' "$env_file" || grep_status=$?
+grep -Eq '^(DB_(URL|USER|PASSWORD)|JWT_SECRET_KEY|HMAC_SECRET_KEY|KAKAO_REST_API_KEY|KAKAO_REST_API_SECRET|FRONT_REDIRECT_URI|MAIL_EMAIL|MAIL_APP_PASSWORD|FRONT_PASSWORD_RESET_URL|CLOUDFRONT_PRIVATE_KEY_BASE64|FITBACK_AI_OPENAI_API_KEY)=' "$env_file" || grep_status=$?
 if [ "$grep_status" -eq 0 ]; then
   echo 'Secret was written to .env.' >&2
   exit 1
@@ -439,6 +477,106 @@ if grep -Fq "$special_cloudfront_private_key" "$mock_log"; then
   echo 'CloudFront private key leaked into a command log.' >&2
   exit 1
 fi
+
+ai_rollback_root="$test_root/ai-rollback"
+ai_previous_release="$ai_rollback_root/releases/release-previous"
+ai_candidate_release="$ai_rollback_root/releases/release-candidate"
+mkdir -p "$ai_rollback_root/releases"
+create_release "$ai_previous_release"
+create_release "$ai_candidate_release"
+: > "$mock_log"
+: > "$curl_count_file"
+export TEST_FITBACK_AI_TAG_ANALYZER='unavailable'
+unset TEST_FITBACK_AI_OPENAI_MODEL TEST_FITBACK_AI_BEDROCK_MODEL_ID
+run_deploy "$ai_rollback_root" "$ai_previous_release" "$first_image"
+
+: > "$mock_log"
+: > "$curl_count_file"
+export TEST_FITBACK_AI_TAG_ANALYZER='openai'
+export TEST_FITBACK_AI_OPENAI_MODEL='fitback-openai-vision-model'
+export MOCK_CURL_FAIL_COUNT=1
+if ai_rollback_output="$(run_deploy "$ai_rollback_root" "$ai_candidate_release" "$failed_image" 2>&1)"; then
+  echo 'Expected the OpenAI deployment to fail after rollback.' >&2
+  exit 1
+fi
+
+grep -Fq "compose ai mode unavailable for $ai_previous_release/.env" "$mock_log"
+grep -Fq "compose openai key present for $ai_candidate_release/.env" "$mock_log"
+grep -Fq "compose openai key absent for $ai_previous_release/.env" "$mock_log"
+grep -Fq 'Rollback succeeded.' <<< "$ai_rollback_output"
+test "$(readlink "$ai_rollback_root/current")" = "$ai_previous_release"
+unset MOCK_CURL_FAIL_COUNT TEST_FITBACK_AI_TAG_ANALYZER TEST_FITBACK_AI_OPENAI_MODEL
+
+openai_deploy_root="$test_root/openai"
+openai_release="$openai_deploy_root/releases/release-openai"
+mkdir -p "$openai_deploy_root/releases"
+create_release "$openai_release"
+: > "$mock_log"
+: > "$curl_count_file"
+export TEST_FITBACK_AI_TAG_ANALYZER='openai'
+export TEST_FITBACK_AI_OPENAI_MODEL='fitback-openai-vision-model'
+run_deploy "$openai_deploy_root" "$openai_release" "$first_image"
+
+openai_env_file="$openai_release/.env"
+grep -Fxq 'FITBACK_AI_TAG_ANALYZER=openai' "$openai_env_file"
+grep -Fxq 'FITBACK_AI_REQUEST_TIMEOUT=PT30S' "$openai_env_file"
+grep -Fxq 'FITBACK_AI_OPENAI_MODEL=fitback-openai-vision-model' "$openai_env_file"
+grep -Fq 'FITBACK_AI_OPENAI_API_KEY: ${FITBACK_AI_OPENAI_API_KEY:-}' "$repo_root/compose.yaml"
+grep -Fq 'ssm get-parameter --name /fitback/prod/openai-api-key --with-decryption' "$mock_log"
+if grep -Fq 'FITBACK_AI_OPENAI_API_KEY=' "$openai_env_file"; then
+  echo 'OpenAI API key was written to the release .env.' >&2
+  exit 1
+fi
+if grep -Fq "$special_openai_api_key" "$mock_log"; then
+  echo 'OpenAI API key leaked into a command log.' >&2
+  exit 1
+fi
+
+bedrock_deploy_root="$test_root/bedrock"
+bedrock_release="$bedrock_deploy_root/releases/release-bedrock"
+mkdir -p "$bedrock_deploy_root/releases"
+create_release "$bedrock_release"
+: > "$mock_log"
+: > "$curl_count_file"
+export TEST_FITBACK_AI_TAG_ANALYZER='bedrock'
+unset TEST_FITBACK_AI_OPENAI_MODEL
+export TEST_FITBACK_AI_BEDROCK_MODEL_ID='apac.anthropic.fitback-vision-v1:0'
+run_deploy "$bedrock_deploy_root" "$bedrock_release" "$first_image"
+
+bedrock_env_file="$bedrock_release/.env"
+grep -Fxq 'FITBACK_AI_TAG_ANALYZER=bedrock' "$bedrock_env_file"
+grep -Fxq 'FITBACK_AI_BEDROCK_MODEL_ID=apac.anthropic.fitback-vision-v1:0' "$bedrock_env_file"
+if grep -Fq 'openai-api-key' "$mock_log"; then
+  echo 'Bedrock deployment must not read the OpenAI API key.' >&2
+  exit 1
+fi
+
+invalid_ai_release="$test_root/invalid-ai-release"
+create_release "$invalid_ai_release"
+export TEST_FITBACK_AI_TAG_ANALYZER='openai'
+export TEST_FITBACK_AI_OPENAI_MODEL=''
+unset TEST_FITBACK_AI_BEDROCK_MODEL_ID
+if invalid_ai_output="$(run_deploy "$test_root/invalid-ai" "$invalid_ai_release" "$first_image" 2>&1)"; then
+  echo 'Expected OpenAI deployment without a model to fail.' >&2
+  exit 1
+fi
+grep -Fq 'FITBACK_AI_OPENAI_MODEL is required' <<< "$invalid_ai_output"
+
+export TEST_FITBACK_AI_TAG_ANALYZER='prototype'
+export TEST_FITBACK_AI_REQUEST_TIMEOUT='PT0S'
+if invalid_timeout_output="$(run_deploy "$test_root/invalid-timeout" "$invalid_ai_release" "$first_image" 2>&1)"; then
+  echo 'Expected a zero AI timeout to fail.' >&2
+  exit 1
+fi
+grep -Fq 'FITBACK_AI_REQUEST_TIMEOUT must be a positive whole-second ISO-8601 duration' <<< "$invalid_timeout_output"
+
+export TEST_FITBACK_AI_REQUEST_TIMEOUT='PT1.5S'
+if fractional_timeout_output="$(run_deploy "$test_root/fractional-timeout" "$invalid_ai_release" "$first_image" 2>&1)"; then
+  echo 'Expected a fractional AI timeout to fail.' >&2
+  exit 1
+fi
+grep -Fq 'FITBACK_AI_REQUEST_TIMEOUT must be a positive whole-second ISO-8601 duration' <<< "$fractional_timeout_output"
+unset TEST_FITBACK_AI_TAG_ANALYZER TEST_FITBACK_AI_REQUEST_TIMEOUT TEST_FITBACK_AI_OPENAI_MODEL TEST_FITBACK_AI_BEDROCK_MODEL_ID
 
 pull_failed_release="$deploy_root/releases/release-pull-failure"
 create_release "$pull_failed_release"

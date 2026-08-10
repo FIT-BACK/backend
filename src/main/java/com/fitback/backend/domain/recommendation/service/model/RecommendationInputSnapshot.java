@@ -1,17 +1,32 @@
 package com.fitback.backend.domain.recommendation.service.model;
 
+import com.fitback.backend.domain.tag.entity.TagType;
 import java.util.List;
+import java.util.Locale;
+import java.util.stream.Stream;
 
 public record RecommendationInputSnapshot(
         Long reportId,
         Long memberId,
         Integer inputRevision,
         Integer matchPercentage,
-        List<TagInput> tags
+        List<TagInput> tags,
+        List<String> customTagNames
 ) {
 
     public RecommendationInputSnapshot {
         tags = List.copyOf(tags);
+        customTagNames = List.copyOf(customTagNames);
+    }
+
+    public RecommendationInputSnapshot(
+            Long reportId,
+            Long memberId,
+            Integer inputRevision,
+            Integer matchPercentage,
+            List<TagInput> tags
+    ) {
+        this(reportId, memberId, inputRevision, matchPercentage, tags, List.of());
     }
 
     public RecommendationInputSnapshot(
@@ -20,28 +35,27 @@ public record RecommendationInputSnapshot(
             Integer inputRevision,
             List<TagInput> tags
     ) {
-        this(reportId, memberId, inputRevision, 70, tags);
+        this(reportId, memberId, inputRevision, 70, tags, List.of());
     }
 
     public List<Long> tagIds() {
-        return tags.stream()
-                .filter(tag -> tag.key().startsWith("TAG:"))
-                .map(tag -> Long.valueOf(tag.key().substring("TAG:".length())))
-                .toList();
+        return tags.stream().map(TagInput::id).toList();
     }
 
     public List<String> tagKeys() {
-        return tags.stream().map(TagInput::key).toList();
+        return Stream.concat(
+                tags.stream().map(tag -> "TAG:" + tag.id()),
+                customTagNames.stream().map(name -> "CUSTOM:" + name.toLowerCase(Locale.ROOT))
+        ).toList();
     }
 
     public List<String> tagNames() {
-        return tags.stream().map(TagInput::name).toList();
+        return Stream.concat(
+                tags.stream().map(TagInput::name),
+                customTagNames.stream()
+        ).toList();
     }
 
-    public record TagInput(String key, String name) {
-
-        public TagInput(Long id, String name) {
-            this("TAG:" + id, name);
-        }
+    public record TagInput(Long id, String name, TagType tagType) {
     }
 }

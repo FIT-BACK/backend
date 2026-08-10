@@ -59,12 +59,15 @@ public final class ClosetSaveResponse {
             ClosetTargetType targetType,
             Long targetId,
             String thumbnailUrl,
+            // 원본/매칭 비교 UI 를 쓰는 룩북만 값, 나머지 타입은 null
+            String matchedImageUrl,
             List<String> tags
     ) {
 
         public static ClosetSaveItem toClosetSaveItem(
                 ClosetSave closetSave,
                 String thumbnailUrl,
+                String matchedImageUrl,
                 List<String> tags
         ) {
             return ClosetSaveItem.builder()
@@ -72,6 +75,7 @@ public final class ClosetSaveResponse {
                     .targetType(closetSave.getTargetType())
                     .targetId(closetSave.getTargetId())
                     .thumbnailUrl(thumbnailUrl)
+                    .matchedImageUrl(matchedImageUrl)
                     .tags(List.copyOf(tags))
                     .build();
         }

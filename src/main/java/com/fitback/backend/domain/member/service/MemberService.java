@@ -114,7 +114,10 @@ public class MemberService {
         Member member = authMember.getMember();
 
         Long savedCount = closetSaveRepository.countByMemberId(member.getId());
-        Long analysisCount = analysisReportRepository.countByMemberIdAndDeletedAtIsNull(member.getId());
+        // "분석 완료" 카운트 — 업로드 직후 생성만 되고 아직 태그 확인/추천이 안 끝난 리포트까지
+        // 세면 안 되므로, 실제로 추천 결과까지 생성된(recommendationGeneratedAt != null) 것만 센다.
+        Long analysisCount = analysisReportRepository
+                .countByMemberIdAndDeletedAtIsNullAndRecommendationGeneratedAtIsNotNull(member.getId());
         Long uploadCount = lookbookRepository.countByMemberIdAndDeletedAtIsNull(member.getId());
 
         //현재 회원의 관심 태그 (fetch join으로 N+1 방지)

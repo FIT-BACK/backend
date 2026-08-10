@@ -12,7 +12,7 @@
 - Java 버전: Java 21
 - Spring Boot 버전: 4.1.0
 - 빌드 도구: Gradle
-- 기본 실행 프로필: `local`
+- 로컬 실행 프로필: `local` (실행 시 명시적으로 활성화)
 - 테스트 프로필: `test`
 - 기본 API prefix: `/api/v1`
 
@@ -46,7 +46,10 @@ com.fitback.backend
 │   │   ├── entity
 │   │   └── dto
 │   ├── closet
+│   ├── contentsearch
+│   ├── image
 │   ├── lookbook
+│   ├── notification
 │   ├── trend
 │   ├── tag
 │   ├── analysis
@@ -165,7 +168,7 @@ JPA 매핑 시 다음 규칙을 따른다.
 ### 5.1 테이블 및 컬럼 네이밍
 
 - 테이블명과 컬럼명은 `snake_case`를 사용한다.
-  - 예: `analysis_report`, `profile_image_url`
+  - 예: `analysis_report`, `profile_image_id`
 - 테이블명은 단수형을 기본으로 한다.
   - 예: `member`, `product`, `tag`, `lookbook`
 - 조인 테이블은 `{주체}_{대상}` 형식으로 작성한다.
@@ -205,21 +208,16 @@ IDX_{TABLE_NAME}_{COLUMN1}_{COLUMN2}
 
 ### 5.4 마이그레이션
 
-초기 단계에서는 ERD 기준 SQL을 문서화하고, 실제 운영 마이그레이션 도구는 Flyway를 우선 후보로 둔다.
-
-Flyway 도입 기준은 다음과 같다.
-
-- Entity와 Repository가 추가되어 실제 DB 스키마 변경이 발생하는 경우
-- 여러 개발자가 같은 DB 스키마를 공유해야 하는 경우
-- 배포 환경에서 스키마 변경 이력을 추적해야 하는 경우
-
-Flyway를 도입하는 경우 다음 규칙을 따른다.
+운영 스키마는 Flyway로 관리하며 현재 `V1`~`V21` 마이그레이션을 적용한다.
+운영 프로필은 `ddl-auto: validate`와 Flyway를 사용하고, 로컬·테스트 프로필은 Flyway를
+비활성화한다. 마이그레이션 파일은 다음 경로와 이름 규칙을 따른다.
 
 ```text
 src/main/resources/db/migration/V{version}__{description}.sql
 ```
 
-한 번 merge된 마이그레이션 파일은 수정하지 않는다. 변경이 필요한 경우 새 버전의 마이그레이션 파일을 추가한다.
+한 번 merge된 마이그레이션 파일은 수정하지 않는다. 변경이 필요한 경우 다음 버전의
+마이그레이션 파일을 추가하고 `docs/ERD.md` 및 MySQL migration contract test를 함께 갱신한다.
 
 ---
 
@@ -241,7 +239,7 @@ POST /api/v1/auth/login
 GET /api/v1/members/me
 GET /api/v1/products/{productId}
 GET /api/v1/products?keyword=미니멀
-POST /api/v1/analysis-requests
+POST /api/v1/analyses
 ```
 
 ### 6.2 공통 응답 포맷
@@ -289,8 +287,10 @@ ApiResponse.onSuccess(data);
 ApiResponse.onSuccess();
 ApiResponse.onCreated(data);
 ApiResponse.onCreated();
-ApiResponse.onFailure(code, message, data);
+ApiResponse.onFailure(code, message);
 ```
+
+실패 응답은 `data`를 항상 `null`로 유지한다.
 
 ### 6.3 페이지네이션 응답 형식
 
@@ -406,43 +406,52 @@ throw new BusinessException(ErrorCode.NOT_FOUND);
 
 `global.security.SecurityConfig`에서 기본 보안 정책을 관리한다.
 
-- JWT 인증 구현 전까지 Swagger/OpenAPI 경로와 `/api/v1/**` 경로만 임시 허용한다.
-- 명시되지 않은 경로는 `denyAll`로 차단한다.
+- Swagger/OpenAPI, Actuator health, 아래 공개 인증 경로를 인증 없이 허용한다.
+- 공개 조회 경로는 `GET` 요청만 인증 없이 허용한다.
+- 그 밖의 요청은 모두 인증이 필요하다.
 - ERROR dispatcher는 에러 응답 렌더링을 위해 허용한다.
-- REST API 기준으로 CSRF, Form Login, HTTP Basic, Session은 비활성화한다.
+- REST API 기준으로 CSRF, Form Login, HTTP Basic은 비활성화하고 세션은 `STATELESS`로 사용한다.
+- 허용된 Origin만 CORS 요청을 받을 수 있으며 credential cookie는 허용하지 않는다.
 
 ### 8.2 공개 API와 인증 필요 API 구분
 
-JWT 도입 전에는 구현 편의를 위해 `/api/v1/**`를 임시 허용한다. JWT 도입 후에는 다음 기준으로 전환한다.
-
-공개 API 후보:
+현재 공개 API:
 
 - Swagger/OpenAPI 경로
+- `/actuator/health`, `/actuator/health/liveness`, `/actuator/health/readiness`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/sign`
-- `POST /api/v1/auth/kakao`
 - `POST /api/v1/auth/token/refresh`
+- `POST /api/v1/auth/token/exchange`
+- `POST /api/v1/auth/password-reset/request`
+- `PATCH /api/v1/auth/password-reset`
+- `/api/v1/auth/oauth2/**`, `/api/v1/auth/callback/**`
+- `GET /api/v1/trends/**`
+- `GET /api/v1/tags/**`
+- `GET /api/v1/content-search`
+- `GET /api/v1/lookbooks`, `GET /api/v1/lookbooks/{lookbookId}`
 
-인증 필요 API 후보:
+인증 필요 API:
 
 - `POST /api/v1/auth/logout`
 - `/api/v1/members/me/**`
 - `/api/v1/analyses/**`
 - `/api/v1/lookbooks/**` 중 작성, 삭제, 좋아요 등 사용자 상태 변경 API
 - `/api/v1/closet-saves/**`
+- 명시적으로 공개되지 않은 나머지 API
 
-읽기 전용 공개 여부가 필요한 API는 API 명세서와 기획 기준에 따라 별도 결정한다.
+공개 경로를 변경하면 `SecurityConfig`, 통합 테스트, `docs/API_SPEC.md`를 함께 갱신한다.
 
-### 8.3 JWT 도입 후 기준
+### 8.3 JWT 전달 및 검증 기준
 
-JWT 도입 시 다음 내용을 추가한다.
+회원가입·로그인·토큰 재발급·카카오 임시 토큰 교환 응답은 access/refresh JWT를
+공통 응답의 `data`에 담아 발급한다. 토큰을 응답 헤더나 credential cookie로 발급하지 않는다.
 
-- Access Token 인증 필터
-- Refresh Token 재발급 정책
-- 토큰 만료 및 위변조 에러 코드
-- SecurityContext member 식별 방식
-- 인증 실패와 인가 실패 응답 포맷
-- 로그아웃 시 Refresh Token 무효화 방식
+- 인증이 필요한 요청은 access token을 `Authorization: Bearer {accessToken}` 헤더로 전달한다.
+- Refresh token은 `POST /api/v1/auth/token/refresh`의 JSON body로 전달하며 Bearer 인증에 사용하지 않는다.
+- `JwtAuthFilter`가 access token을 검증하고 `SecurityContext`에 회원 정보를 설정한다.
+- 토큰 만료·위변조·용도 오류는 공통 또는 인증 도메인 오류 응답으로 반환한다.
+- 로그아웃은 저장된 Refresh token을 무효화한다.
 
 ---
 
@@ -476,9 +485,10 @@ API 명세서와 Swagger 내용이 충돌하면 API 명세서를 먼저 수정�
 
 ### 10.1 프로필 기준
 
-- 로컬 실행 기본 프로필은 `local`이다.
+- 로컬 실행은 `local` 프로필을 명시적으로 활성화한다. 프로필 생략 시 자동으로 `local`을 사용하지 않는다.
 - 테스트 프로필은 `test`이다.
 - 테스트는 H2 인메모리 DB를 사용한다.
+- 운영은 `prod` 프로필을 사용하며 설정 구조와 기본 정책은 `application-prod.yml`로 추적한다.
 
 ### 10.2 커밋 대상
 
@@ -493,13 +503,14 @@ src/test/resources/application-test.yml
 
 ```text
 .env
-.env.*
+.env.* (.env.example 제외)
 application-secret.yml
 application-secret.properties
 ```
 
 - `.env`에는 실제 비밀값을 둔다.
-- `.env.example`에는 필요한 환경변수 이름과 예시값만 작성한다.
+- `.env.example`에는 로컬 실행에 필요한 환경변수 이름과 비민감 예시값만 작성한다.
+- 운영의 비민감 기능 설정은 GitHub Repository Variable, 비밀값은 Parameter Store SecureString으로 관리한다.
 - 민감정보는 코드, 문서, PR, 이슈에 포함하지 않는다.
 
 ---
@@ -549,20 +560,19 @@ GitHub Actions는 다음 브랜치에서 실행된다.
 - `main`
 - `develop`
 
-CI는 다음 명령을 수행한다.
+CI는 Backend CD workflow 출력·OIDC·배포 payload 계약을 먼저 검사하고, 다음 핵심 검증을 수행한다.
 
 ```bash
+bash scripts/ci/test_publish_ecr_image.sh
+bash scripts/ci/test_nginx_public_entrypoint.sh
+bash scripts/deploy/test_remote_deploy.sh
+bash scripts/ci/test_mysql_migrations.sh
 ./gradlew clean build
 ```
 
-현재 CI에서는 MySQL service를 띄우지 않는다. 테스트는 H2 기반 `application-test.yml`을 사용한다.
-
-MySQL service CI는 다음 시점에 별도 이슈로 추가한다.
-
-- Entity와 Repository가 추가된 이후
-- MySQL 고유 제약조건 검증이 필요해진 경우
-- Flyway 또는 Liquibase가 도입된 경우
-- H2와 MySQL 차이로 인한 검증 필요성이 생긴 경우
+Gradle 테스트는 H2 기반 `application-test.yml`을 사용한다. MySQL 검증은 service 선언 대신
+`test_mysql_migrations.sh`가 임시 MySQL 8.4 컨테이너를 실행하여 Flyway `V1`~`V21`과
+주요 제약조건 계약을 검사한다.
 
 GitHub Actions 외부 액션은 full commit SHA로 고정한다.
 `actions/checkout`에는 다음 설정을 사용한다.
@@ -630,7 +640,9 @@ ci: 백엔드 CI 실행 조건 정리
 main
 develop
 feature/#{issue-number}-{feature-name}
-docs/{document-name}
+fix/#{issue-number}-{fix-name}
+chore/#{issue-number}-{task-name}
+docs/#{issue-number}-{document-name}
 ```
 
 브랜치 역할은 다음과 같다.
@@ -639,7 +651,9 @@ docs/{document-name}
 main: 최종 제출 및 배포 기준 브랜치
 develop: 백엔드 통합 개발 브랜치
 feature/#{issue-number}-{feature-name}: 이슈 기반 기능 작업 브랜치
-docs/{document-name}: 문서 작업 브랜치
+fix/#{issue-number}-{fix-name}: 이슈 기반 버그 수정 브랜치
+chore/#{issue-number}-{task-name}: 이슈 기반 설정·정비 작업 브랜치
+docs/#{issue-number}-{document-name}: 이슈 기반 문서 작업 브랜치
 ```
 
 예시:
@@ -653,10 +667,10 @@ git checkout -b feature/#12-auth
 PR 흐름은 다음을 따른다.
 
 ```text
-feature/#{issue-number}-{feature-name}
-        ↓ PR
+작업 브랜치 (`feature/`, `fix/`, `chore/`, `docs/`)
+                       ↓ PR
 develop
-        ↓ 최종 PR
+                       ↓ 최종 PR
 main
 ```
 
@@ -689,33 +703,8 @@ Docs: API 명세서 수정
 
 ### 15.4 PR 규칙
 
-PR은 기본적으로 `feature` 브랜치에서 `develop` 브랜치로 생성한다.
-
-```md
-## 관련된 이슈
-
-close #
-
-## 작업 내용
-
--
-
-## 공유 사항
-
--
-
-## 체크리스트
-
-- [ ] Reviewer에 팀원들을 선택 했나요?
-- [ ] Assignees에 본인을 선택 했나요?
-- [ ] Merge 하려는 브랜치가 올바르게 설정되어 있나요?
-- [ ] 컨벤션을 지키고 있나요?
-- [ ] 로컬에서 실행했을 때 에러가 발생하지 않나요?
-- [ ] 불필요한 주석이 제거되었나요?
-- [ ] 코드 스타일이 일관적인가요?
-- [ ] Entity 또는 DB 변경 시 ERD/DDL 문서를 업데이트했나요?
-- [ ] API 변경 시 API 명세서를 업데이트했나요?
-```
+PR은 작업 브랜치에서 `develop` 브랜치로 생성하며, 본문은 저장소의
+[PR 템플릿](.github/pull_request_template.md)을 그대로 기준으로 작성한다.
 
 PR 작성 시 다음을 지킨다.
 
@@ -753,8 +742,9 @@ PR 작성 시 다음을 지킨다.
 
 ### Database
 
-- MySQL 8.0
-- H2: 테스트 프로필에서 사용
+- MySQL: 운영 데이터베이스 및 Flyway 마이그레이션 대상
+- MySQL 8.4: CI migration contract 검증 컨테이너
+- H2: Gradle 테스트 프로필에서 사용
 
 ### ORM
 
@@ -763,7 +753,7 @@ PR 작성 시 다음을 지킨다.
 ### Security
 
 - Spring Security
-- JWT는 인증/인가 구현 시 도입
+- JWT access/refresh 인증과 Spring OAuth2 Client 기반 카카오 로그인
 
 ### API Documentation
 
@@ -774,6 +764,9 @@ PR 작성 시 다음을 지킨다.
 
 - GitHub Actions
 - Dependabot
+- Docker, Amazon ECR, EC2, Systems Manager
+- Amazon RDS, S3, CloudFront, Parameter Store
+- Nginx
 
 ### Collaboration
 
@@ -797,6 +790,7 @@ PR 작성 시 다음을 지킨다.
 
 - GitHub Actions는 OIDC 역할 위임을 사용하며 장기 AWS Access Key를 사용하지 않는다.
 - EC2는 instance profile로 ECR, SSM, Parameter Store에 접근한다.
+- 운영 설정 구조와 기본 정책은 `src/main/resources/application-prod.yml`로 추적하고, 비민감 기능 설정은 GitHub Repository Variable로 관리한다.
 - DB URL, 사용자, 비밀번호는 Parameter Store SecureString으로 관리한다.
 - 운영 비밀값은 GitHub Repository Variable, workflow payload, Compose `.env`, 저장소, 문서, 로그에 기록하지 않는다.
 - EC2 운영 접속은 SSM으로 제한하고 SSH key pair와 22 포트를 사용하지 않는다.

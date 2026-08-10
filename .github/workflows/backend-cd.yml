@@ -80,6 +80,8 @@ jobs:
             --env MAIL_EMAIL=validation@example.invalid \
             --env MAIL_APP_PASSWORD=validation-app-password \
             --env FRONT_PASSWORD_RESET_URL=https://frontend.example.invalid/reset-password \
+            --env APP_CORS_ALLOWED_ORIGINS=https://frontend.example.invalid \
+            --env FITBACK_AI_REQUEST_TIMEOUT=PT30S \
             --env AWS_REGION=ap-northeast-2 \
             --env IMAGE_BUCKET=fitback-cd-validation-images \
             --env IMAGE_CDN_BASE_URL=https://images.example.invalid \
@@ -236,7 +238,11 @@ jobs:
       IMAGE_BUCKET: ${{ vars.IMAGE_BUCKET }}
       IMAGE_CDN_BASE_URL: ${{ vars.IMAGE_CDN_BASE_URL }}
       CLOUDFRONT_KEY_PAIR_ID: ${{ vars.CLOUDFRONT_KEY_PAIR_ID }}
+      APP_CORS_ALLOWED_ORIGINS: ${{ vars.APP_CORS_ALLOWED_ORIGINS }}
       FITBACK_AI_TAG_ANALYZER: ${{ vars.FITBACK_AI_TAG_ANALYZER || 'unavailable' }}
+      FITBACK_AI_REQUEST_TIMEOUT: ${{ vars.FITBACK_AI_REQUEST_TIMEOUT || 'PT30S' }}
+      FITBACK_AI_OPENAI_MODEL: ${{ vars.FITBACK_AI_OPENAI_MODEL || '' }}
+      FITBACK_AI_BEDROCK_MODEL_ID: ${{ vars.FITBACK_AI_BEDROCK_MODEL_ID || '' }}
       SHOPPING_PROVIDER: ${{ vars.SHOPPING_PROVIDER || 'fixture' }}
       SHOPIFY_ENABLED: ${{ vars.SHOPIFY_ENABLED || 'false' }}
       IMAGE_REFERENCE: ${{ needs.publish-image.outputs.image-reference }}
@@ -254,7 +260,9 @@ jobs:
             IMAGE_BUCKET
             IMAGE_CDN_BASE_URL
             CLOUDFRONT_KEY_PAIR_ID
+            APP_CORS_ALLOWED_ORIGINS
             FITBACK_AI_TAG_ANALYZER
+            FITBACK_AI_REQUEST_TIMEOUT
             SHOPPING_PROVIDER
             SHOPIFY_ENABLED
           )
@@ -296,9 +304,36 @@ jobs:
             exit 1
           fi
 
-          if [ "$FITBACK_AI_TAG_ANALYZER" != 'unavailable' ] \
-              && [ "$FITBACK_AI_TAG_ANALYZER" != 'prototype' ]; then
-            echo "FITBACK_AI_TAG_ANALYZER must be unavailable or prototype." >&2
+          for ai_model_setting in "$FITBACK_AI_OPENAI_MODEL" "$FITBACK_AI_BEDROCK_MODEL_ID"; do
+            if [ -n "$ai_model_setting" ] && [[ ! "$ai_model_setting" =~ ^[^[:space:]]+$ ]]; then
+              echo "AI model settings must be empty or contain no whitespace." >&2
+              exit 1
+            fi
+          done
+
+          case "$FITBACK_AI_TAG_ANALYZER" in
+            unavailable|prototype)
+              ;;
+            openai)
+              if [[ ! "$FITBACK_AI_OPENAI_MODEL" =~ ^[^[:space:]]+$ ]]; then
+                echo "FITBACK_AI_OPENAI_MODEL is required for the OpenAI analyzer." >&2
+                exit 1
+              fi
+              ;;
+            bedrock)
+              if [[ ! "$FITBACK_AI_BEDROCK_MODEL_ID" =~ ^[^[:space:]]+$ ]]; then
+                echo "FITBACK_AI_BEDROCK_MODEL_ID is required for the Bedrock analyzer." >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "FITBACK_AI_TAG_ANALYZER must be unavailable, prototype, openai, or bedrock." >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "$FITBACK_AI_REQUEST_TIMEOUT" =~ ^PT[1-9][0-9]*S$ ]]; then
+            echo "FITBACK_AI_REQUEST_TIMEOUT must be a positive whole-second ISO-8601 duration such as PT30S." >&2
             exit 1
           fi
 
@@ -362,7 +397,11 @@ jobs:
             --arg image_bucket "$IMAGE_BUCKET" \
             --arg image_cdn_base_url "$IMAGE_CDN_BASE_URL" \
             --arg cloudfront_key_pair_id "$CLOUDFRONT_KEY_PAIR_ID" \
+            --arg app_cors_allowed_origins "$APP_CORS_ALLOWED_ORIGINS" \
             --arg fitback_ai_tag_analyzer "$FITBACK_AI_TAG_ANALYZER" \
+            --arg fitback_ai_request_timeout "$FITBACK_AI_REQUEST_TIMEOUT" \
+            --arg fitback_ai_openai_model "$FITBACK_AI_OPENAI_MODEL" \
+            --arg fitback_ai_bedrock_model_id "$FITBACK_AI_BEDROCK_MODEL_ID" \
             --arg shopping_provider "$SHOPPING_PROVIDER" \
             --arg shopify_enabled "$SHOPIFY_ENABLED" \
             --arg release_dir "$release_dir" \
@@ -379,7 +418,11 @@ jobs:
                   + " IMAGE_BUCKET=" + ($image_bucket | @sh)
                   + " IMAGE_CDN_BASE_URL=" + ($image_cdn_base_url | @sh)
                   + " CLOUDFRONT_KEY_PAIR_ID=" + ($cloudfront_key_pair_id | @sh)
+                  + " APP_CORS_ALLOWED_ORIGINS=" + ($app_cors_allowed_origins | @sh)
                   + " FITBACK_AI_TAG_ANALYZER=" + ($fitback_ai_tag_analyzer | @sh)
+                  + " FITBACK_AI_REQUEST_TIMEOUT=" + ($fitback_ai_request_timeout | @sh)
+                  + " FITBACK_AI_OPENAI_MODEL=" + ($fitback_ai_openai_model | @sh)
+                  + " FITBACK_AI_BEDROCK_MODEL_ID=" + ($fitback_ai_bedrock_model_id | @sh)
                   + " SHOPPING_PROVIDER=" + ($shopping_provider | @sh)
                   + " SHOPIFY_ENABLED=" + ($shopify_enabled | @sh)
                   + " DEPLOY_ROOT=/opt/fitback"

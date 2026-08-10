@@ -1,5 +1,8 @@
 # 프론트엔드 최소 프로토타입 API 전달서
 
+> **문서 상태 (2026-08-01):** `develop` 구현 기준 프런트 연동 계약이다. 외부 운영 설정값은
+> 별도 확인 시점의 스냅샷이며, 배포 전 AWS의 현재 값을 다시 확인한다.
+
 ## 1. 목적과 범위
 
 프론트엔드는 이 문서를 기준으로 아래 세로 흐름을 연결한다.
@@ -34,9 +37,11 @@ UT 계정 이메일과 비밀번호는 Git에 저장하지 않으며 별도 보�
 
 ## 3. 프론트에서 백엔드로 확정해서 전달할 URL
 
-AWS Systems Manager Parameter Store의 현재 운영 설정은 다음과 같다.
+AWS Systems Manager Parameter Store 값은 저장소 코드가 보장하는 상수가 아니다. 아래 값은
+2026-07-30 확인 당시의 운영 스냅샷이며, 이름과 쿼리 형식은 연동 계약으로 사용하되 실제 값은
+배포 전 Parameter Store에서 다시 확인한다.
 
-| Parameter Store 이름 | 현재 값 | 프론트 구현 계약 |
+| Parameter Store 이름 | 2026-07-30 확인 스냅샷 | 프론트 구현 계약 |
 | --- | --- | --- |
 | `/fitback/prod/front-redirect-uri` | `https://frontend-chi-one-35.vercel.app/oauth/kakao` | 카카오 로그인 성공과 실패를 모두 받는 화면 |
 | `/fitback/prod/front-password-reset-url` | `https://frontend-chi-one-35.vercel.app/reset-password` | 메일의 비밀번호 재설정 토큰을 받는 화면 |
@@ -328,6 +333,63 @@ URL은 응답 시 live lookup하므로 프론트가 별도 snapshot을 영구 �
 - `availability=TEMPORARILY_UNRESOLVED`: 구매 버튼을 비활성화한다.
 - 구매 이동은 `affiliateUrl`이 있으면 우선 사용하고, 없으면 `purchaseUrl`을 사용한다.
 
+### 5.8 프로필 이미지 업로드와 연결
+
+프로필 이미지도 분석 이미지와 같은 Presigned POST 흐름을 사용하되 업로드 목적만 `PROFILE`로
+지정한다.
+
+```http
+POST /api/v1/images/upload-requests
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{
+  "purpose": "PROFILE",
+  "contentType": "image/jpeg",
+  "fileSize": 1048576
+}
+```
+
+S3 업로드와 `POST /api/v1/images/{imageId}/complete`가 끝난 뒤, 응답받은 `imageId`를 회원
+수정이나 온보딩 요청의 `profileImageId`로 보낸다.
+
+```http
+PATCH /api/v1/members/me
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{
+  "profileImageId": "{imageId}"
+}
+```
+
+신규 회원은 `PUT /api/v1/members/me/onboarding`의 `profileImageId` 필드에 같은 값을 넣는다.
+백엔드는 업로드가 완료된 본인 소유 `PROFILE` 이미지만 연결하며 회원·로그인·룩북 응답에는
+저장 식별자가 아닌 `profileImageUrl`을 반환한다. 이 URL은 비공개 이미지의 10분짜리 서명
+URL이므로 영구 저장하지 않고 해당 회원 또는 룩북 API를 다시 조회해 갱신한다.
+
+### 5.9 알림 API와 현재 구현 경계
+
+다음 API는 모두 로그인이 필요하다.
+
+| Method | Endpoint | 현재 구현 |
+| --- | --- | --- |
+| GET | `/api/v1/members/me/notification-settings` | 설정 조회, 없으면 기본값 생성 |
+| PATCH | `/api/v1/members/me/notification-settings` | 전달된 설정만 부분 수정 |
+| GET | `/api/v1/notifications?cursor={id}&pageSize={1..50}` | 알림 목록·전체 미읽음 수 조회, 기본 20건 |
+| PATCH | `/api/v1/notifications/{notificationId}/read` | 본인 알림 단건 읽음 처리 |
+| PATCH | `/api/v1/notifications/read` | 본인 알림 전체 읽음 처리 |
+| DELETE | `/api/v1/notifications/{notificationId}` | 본인 알림 삭제 |
+
+설정 수정 필드는 `analysisCompleteEnabled`, `lookbookLikedEnabled`, `trendUpdateEnabled`,
+`marketingEnabled`이며 하나 이상을 보내야 한다. 목록 항목은 `notificationId`,
+`notificationType`, `title`, `body`, `targetType`, `targetId`, `readAt`, `createdAt`을 반환한다.
+
+현재 `develop`에는 알림 설정과 목록·읽음·삭제 API 및 저장 테이블은 구현되어 있지만, 분석
+완료·룩북 좋아요·트렌드 갱신 이벤트로 알림 레코드를 자동 생성하는 producer는 연결되어 있지
+않다. 따라서 프론트는 빈 목록과 관리 동작을 연동할 수 있으나, 이벤트 발생 후 새 알림이
+자동으로 생긴다고 가정하면 안 된다.
+
 ## 6. 화면 상태
 
 ```text
@@ -373,6 +435,9 @@ IDLE
 - [ ] 상품 상세을 다시 조회한 뒤 구매 URL로 이동한다.
 - [ ] `picsum.photos` 및 고정 상품 데이터가 API 연결 화면에서 제거됐다.
 - [ ] 토큰과 Presigned 값을 브라우저 로그·분석 도구에 남기지 않는다.
+- [ ] 프로필 이미지는 `purpose=PROFILE`로 업로드하고 `profileImageId`로 연결한다.
+- [ ] 화면에는 응답의 `profileImageUrl`을 사용하고 만료 시 회원·룩북 API를 다시 조회한다.
+- [ ] 알림 화면은 빈 목록을 처리하며 자동 알림 생성은 별도 백엔드 구현 전까지 가정하지 않는다.
 
 전체 API 예시는 [API_SPEC.md](API_SPEC.md), 기존 단계별 예시는
 [PROTOTYPE_FRONTEND_VERTICAL_FLOW.md](PROTOTYPE_FRONTEND_VERTICAL_FLOW.md)를 참고한다.

@@ -15,6 +15,16 @@ import org.springframework.data.repository.query.Param;
 
 public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
 
+    // 관련도 정렬과 다음 커서 계산에 필요한 룩북 정보
+    interface RelatedLookbookRank {
+
+        Long getLookbookId();
+
+        Long getRelevanceScore();
+
+        LocalDateTime getCreatedAt();
+    }
+
     long countByMemberIdAndDeletedAtIsNull(Long memberId);
 
     @Query("""
@@ -35,6 +45,12 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
     )
     Optional<Lookbook> findByIdAndDeletedAtIsNull(Long id);
 
+    //마이 클로젯 목록용 배치 조회, 신고 숨김 룩북은 본인 저장 목록이라 제외하지 않음
+    //createReadUrl 이 objectKey 를 읽으므로 두 이미지는 EntityGraph 필수,
+    //matchedProduct 는 null 체크와 snapshot 컬럼만 사용해 조인 불필요
+    @EntityGraph(attributePaths = {"originalImage", "matchedImage"})
+    List<Lookbook> findAllByIdInAndDeletedAtIsNull(List<Long> lookbookIds);
+
     @EntityGraph(
             attributePaths = {
                 "member", "matchedProduct", "matchedImage", "originalImage"
@@ -43,6 +59,87 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
     List<Lookbook> findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
             LookbookModerationStatus moderationStatus,
             Pageable pageable
+    );
+
+    // 첫 페이지의 룩북을 공통 태그 가중치 합계 순으로 조회
+    @Query("""
+            SELECT lookbook.id AS lookbookId,
+                   SUM(trendTag.relevanceWeight) AS relevanceScore,
+                   lookbook.createdAt AS createdAt
+            FROM Lookbook lookbook
+            JOIN LookbookTag lookbookTag ON lookbookTag.lookbook = lookbook
+            JOIN TrendTag trendTag ON trendTag.tag = lookbookTag.tag
+            WHERE trendTag.trend.id = :trendId
+              AND lookbook.deletedAt IS NULL
+              AND lookbook.moderationStatus = :moderationStatus
+            GROUP BY lookbook.id, lookbook.createdAt
+            ORDER BY SUM(trendTag.relevanceWeight) DESC,
+                     lookbook.createdAt DESC,
+                     lookbook.id DESC
+            """)
+    List<RelatedLookbookRank> findRelatedLookbookRanks(
+            @Param("trendId") Long trendId,
+            @Param("moderationStatus") LookbookModerationStatus moderationStatus,
+            Pageable pageable
+    );
+
+    // 삭제·숨김 상태와 무관하게 다음 페이지 기준이 되는 커서 룩북의 정렬값 복원
+    @Query("""
+            SELECT lookbook.id AS lookbookId,
+                   SUM(trendTag.relevanceWeight) AS relevanceScore,
+                   lookbook.createdAt AS createdAt
+            FROM Lookbook lookbook
+            JOIN LookbookTag lookbookTag ON lookbookTag.lookbook = lookbook
+            JOIN TrendTag trendTag ON trendTag.tag = lookbookTag.tag
+            WHERE trendTag.trend.id = :trendId
+              AND lookbook.id = :lookbookId
+            GROUP BY lookbook.id, lookbook.createdAt
+            """)
+    Optional<RelatedLookbookRank> findRelatedLookbookRank(
+            @Param("trendId") Long trendId,
+            @Param("lookbookId") Long lookbookId
+    );
+
+    // 관련도 점수, 생성 시간, id 순서로 커서 이후 룩북 조회
+    @Query("""
+            SELECT lookbook.id AS lookbookId,
+                   SUM(trendTag.relevanceWeight) AS relevanceScore,
+                   lookbook.createdAt AS createdAt
+            FROM Lookbook lookbook
+            JOIN LookbookTag lookbookTag ON lookbookTag.lookbook = lookbook
+            JOIN TrendTag trendTag ON trendTag.tag = lookbookTag.tag
+            WHERE trendTag.trend.id = :trendId
+              AND lookbook.deletedAt IS NULL
+              AND lookbook.moderationStatus = :moderationStatus
+            GROUP BY lookbook.id, lookbook.createdAt
+            HAVING SUM(trendTag.relevanceWeight) < :cursorScore
+                OR (SUM(trendTag.relevanceWeight) = :cursorScore
+                    AND lookbook.createdAt < :cursorCreatedAt)
+                OR (SUM(trendTag.relevanceWeight) = :cursorScore
+                    AND lookbook.createdAt = :cursorCreatedAt
+                    AND lookbook.id < :cursorId)
+            ORDER BY SUM(trendTag.relevanceWeight) DESC,
+                     lookbook.createdAt DESC,
+                     lookbook.id DESC
+            """)
+    List<RelatedLookbookRank> findNextRelatedLookbookRanks(
+            @Param("trendId") Long trendId,
+            @Param("moderationStatus") LookbookModerationStatus moderationStatus,
+            @Param("cursorScore") Long cursorScore,
+            @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable
+    );
+
+    // 관련도 조회 결과 중 현재 노출 가능한 룩북과 응답 생성에 필요한 연관관계 일괄 조회
+    @EntityGraph(
+            attributePaths = {
+                "member", "matchedProduct", "matchedImage", "originalImage"
+            }
+    )
+    List<Lookbook> findAllByIdInAndDeletedAtIsNullAndModerationStatus(
+            List<Long> lookbookIds,
+            LookbookModerationStatus moderationStatus
     );
 
     @EntityGraph(
