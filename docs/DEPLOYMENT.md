@@ -307,6 +307,14 @@ aws logs test-metric-filter \
   'AI tag provider logical request completed. provider=openai model=synthetic logicalRequestCount=1 providerAttemptCount=1 attemptCount=1 recoveredByRetry=false final5xx=false logicalLatencyMillis=1 attemptLatencyMillis=1 xRequestId=unavailable'
 ```
 
+실제 production Docker Engine 버전까지 고정해 확인할 때는 다음처럼 실행한다. CI에서는 hosted
+runner의 Docker 버전 변동으로 계약 검증이 불필요하게 깨지지 않도록 이 옵션을 생략하지만,
+production 검증에서는 `25.0.16`과 일치하지 않으면 실패한다.
+
+```bash
+REQUIRE_PRODUCTION_DOCKER_SERVER_VERSION=true bash scripts/deploy/test_production_backend_observability.sh
+```
+
 `test-metric-filter` 결과는 첫 번째 synthetic event의 `eventNumber`만 포함해야 한다. 이 API는 sample
 message를 `/fitback/prod/backend`에 적재하거나 metric을 발행하지 않는다.
 

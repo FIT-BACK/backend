@@ -32,6 +32,40 @@ compose_json="$(
 export COMPOSE_CONFIG_JSON="$compose_json"
 export OBSERVABILITY_TEMPLATE="$repo_root/deploy/aws/production-backend-observability.yaml"
 
+production_docker_server_version='25.0.16'
+docker_server_version="$(docker version --format '{{.Server.Version}}')"
+test -n "$docker_server_version"
+
+scratch_image="$(docker image ls --format '{{.Repository}}:{{.Tag}}' | sed '/^<none>:/d' | head -n 1)"
+if [ -z "$scratch_image" ]; then
+  scratch_image='alpine:3.20'
+  docker pull --quiet "$scratch_image" >/dev/null
+fi
+
+scratch_container_name="fitback-observability-contract-${RANDOM}"
+cleanup_scratch_container() {
+  docker rm -f "$scratch_container_name" >/dev/null 2>&1 || true
+}
+trap cleanup_scratch_container EXIT
+
+docker create \
+  --pull=never \
+  --name "$scratch_container_name" \
+  --log-driver=awslogs \
+  --log-opt awslogs-region=ap-northeast-2 \
+  --log-opt awslogs-group=/fitback/prod/backend \
+  --log-opt 'tag=backend/{{.Name}}/{{.FullID}}' \
+  --log-opt awslogs-create-group=false \
+  "$scratch_image" true >/dev/null
+test "$(docker inspect --format '{{.HostConfig.LogConfig.Type}}' "$scratch_container_name")" = 'awslogs'
+test "$(docker inspect --format '{{index .HostConfig.LogConfig.Config "tag"}}' "$scratch_container_name")" = 'backend/{{.Name}}/{{.FullID}}'
+
+if [ "${REQUIRE_PRODUCTION_DOCKER_SERVER_VERSION:-false}" = 'true' ]; then
+  test "$docker_server_version" = "$production_docker_server_version"
+fi
+
+echo "Docker $docker_server_version accepted the production awslogs tag on a stopped scratch container."
+
 ruby <<'RUBY'
 require 'json'
 require 'yaml'
