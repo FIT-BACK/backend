@@ -1,0 +1,18 @@
+{
+  "query": {
+    "imageId": "query-01",
+    "imagePath": "images/query.jpg"
+  },
+  "candidates": [
+    {"imageId": "candidate-01", "imagePath": "images/candidate-01.jpg", "relationLabel": "NEAR_DUPLICATE"},
+    {"imageId": "candidate-02", "imagePath": "images/candidate-02.jpg", "relationLabel": "VISUALLY_SIMILAR"},
+    {"imageId": "candidate-03", "imagePath": "images/candidate-03.jpg", "relationLabel": "SAME_CATEGORY_DIFFERENT_DESIGN"},
+    {"imageId": "candidate-04", "imagePath": "images/candidate-04.jpg", "relationLabel": "UNRELATED"},
+    {"imageId": "candidate-05", "imagePath": "images/candidate-05.jpg", "relationLabel": "UNRELATED"},
+    {"imageId": "candidate-06", "imagePath": "images/candidate-06.jpg", "relationLabel": "UNRELATED"},
+    {"imageId": "candidate-07", "imagePath": "images/candidate-07.jpg", "relationLabel": "UNRELATED"},
+    {"imageId": "candidate-08", "imagePath": "images/candidate-08.jpg", "relationLabel": "UNRELATED"},
+    {"imageId": "candidate-09", "imagePath": "images/candidate-09.jpg", "relationLabel": "UNRELATED"},
+    {"imageId": "candidate-10", "imagePath": "images/candidate-10.jpg", "relationLabel": "UNRELATED"}
+  ]
+}

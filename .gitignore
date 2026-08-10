@@ -22,6 +22,8 @@ logs/
 .env.*
 !.env.example
 /.local/
+/scripts/poc/fashion-clip/dataset/
+**/__pycache__/
 application-local.properties
 application-local.yaml
 application-secret.properties
