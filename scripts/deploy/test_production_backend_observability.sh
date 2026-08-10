@@ -36,7 +36,7 @@ production_docker_server_version='25.0.16'
 docker_server_version="$(docker version --format '{{.Server.Version}}')"
 test -n "$docker_server_version"
 
-scratch_image="$(docker image ls --format '{{.Repository}}:{{.Tag}}' | sed '/^<none>:/d' | head -n 1)"
+scratch_image="$(docker image ls --format '{{.Repository}}:{{.Tag}}' | sed '/^<none>:/d' | sed -n '1p')"
 if [ -z "$scratch_image" ]; then
   scratch_image='alpine:3.20'
   docker pull --quiet "$scratch_image" >/dev/null
