@@ -254,8 +254,10 @@ EC2 role policy를 다시 읽기 전용으로 확인한다.
 
 - backend stdout/stderr만 `/fitback/prod/backend`로 전송하며 보존 기간은 30일이다. Nginx는 기존
   logging 구성을 유지한다.
-- Docker `awslogs-stream-prefix=backend`를 사용해 container마다
-  `backend/<container-name>/<container-id>` 형태의 고유 stream을 만든다.
+- Docker Engine 25.0.16이 지원하는 `tag=backend/{{.Name}}/{{.FullID}}`를 사용해 container마다
+  `backend/<compose-container-name>/<full-container-id>` 형태의 고유 stream을 만든다. 명시적
+  `awslogs-stream`도 지원되지만 정적 이름은 container 재생성 및 scale-out에서 stream을 공유하므로
+  사용하지 않는다.
 - log group은 stack이 먼저 생성하며 `awslogs-create-group=false`를 유지한다. 따라서 EC2 role에는
   해당 log group ARN으로 제한한 `logs:CreateLogStream`, `logs:PutLogEvents`만 추가하고
   `logs:CreateLogGroup`은 부여하지 않는다.
@@ -308,6 +310,14 @@ aws logs test-metric-filter \
   --log-event-messages \
   'AI tag provider logical request completed. provider=openai model=synthetic logicalRequestCount=1 providerAttemptCount=2 attemptCount=2 recoveredByRetry=true final5xx=false logicalLatencyMillis=1 attemptLatencyMillis=1 xRequestId=unavailable' \
   'AI tag provider logical request completed. provider=openai model=synthetic logicalRequestCount=1 providerAttemptCount=1 attemptCount=1 recoveredByRetry=false final5xx=false logicalLatencyMillis=1 attemptLatencyMillis=1 xRequestId=unavailable'
+```
+
+실제 production Docker Engine 버전까지 고정해 확인할 때는 다음처럼 실행한다. CI에서는 hosted
+runner의 Docker 버전 변동으로 계약 검증이 불필요하게 깨지지 않도록 이 옵션을 생략하지만,
+production 검증에서는 `25.0.16`과 일치하지 않으면 실패한다.
+
+```bash
+REQUIRE_PRODUCTION_DOCKER_SERVER_VERSION=true bash scripts/deploy/test_production_backend_observability.sh
 ```
 
 `test-metric-filter` 결과는 첫 번째 synthetic event의 `eventNumber`만 포함해야 한다. 이 API는 sample

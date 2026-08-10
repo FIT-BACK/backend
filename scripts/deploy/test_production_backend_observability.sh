@@ -33,6 +33,43 @@ export COMPOSE_CONFIG_JSON="$compose_json"
 export OBSERVABILITY_TEMPLATE="$repo_root/deploy/aws/production-backend-observability.yaml"
 export DEPLOYMENT_DOC="$repo_root/docs/DEPLOYMENT.md"
 
+production_docker_server_version='25.0.16'
+docker_server_version="$(docker version --format '{{.Server.Version}}')"
+test -n "$docker_server_version"
+
+scratch_image="$(docker image ls --format '{{.Repository}}:{{.Tag}}' | sed '/^<none>:/d' | sed -n '1p')"
+if [ -z "$scratch_image" ]; then
+  scratch_image='alpine:3.20'
+  docker pull --quiet "$scratch_image" >/dev/null
+fi
+
+scratch_container_name="fitback-observability-contract-${RANDOM}"
+scratch_container_id=''
+cleanup_scratch_container() {
+  if [ -n "$scratch_container_id" ]; then
+    docker rm -f "$scratch_container_id" >/dev/null 2>&1 || true
+  fi
+}
+
+scratch_container_id="$(docker create \
+  --pull=never \
+  --name "$scratch_container_name" \
+  --log-driver=awslogs \
+  --log-opt awslogs-region=ap-northeast-2 \
+  --log-opt awslogs-group=/fitback/prod/backend \
+  --log-opt 'tag=backend/{{.Name}}/{{.FullID}}' \
+  --log-opt awslogs-create-group=false \
+  "$scratch_image" true)"
+trap cleanup_scratch_container EXIT
+test "$(docker inspect --format '{{.HostConfig.LogConfig.Type}}' "$scratch_container_id")" = 'awslogs'
+test "$(docker inspect --format '{{index .HostConfig.LogConfig.Config "tag"}}' "$scratch_container_id")" = 'backend/{{.Name}}/{{.FullID}}'
+
+if [ "${REQUIRE_PRODUCTION_DOCKER_SERVER_VERSION:-false}" = 'true' ]; then
+  test "$docker_server_version" = "$production_docker_server_version"
+fi
+
+echo "Docker $docker_server_version accepted the production awslogs tag on a stopped scratch container."
+
 ruby <<'RUBY'
 require 'json'
 require 'yaml'
@@ -61,8 +98,31 @@ options = logging.fetch('options')
 assert(logging['driver'] == 'awslogs', 'Backend logging driver must be awslogs.')
 assert(options['awslogs-region'] == 'ap-northeast-2', 'Backend logs must use ap-northeast-2.')
 assert(options['awslogs-group'] == '/fitback/prod/backend', 'Unexpected backend log group.')
-assert(options['awslogs-stream-prefix'] == 'backend', 'Backend log streams need the backend prefix.')
 assert(options['awslogs-create-group'] == 'false', 'The EC2 role must not create log groups.')
+
+production_docker_server_version = '25.0.16'
+supported_awslogs_options = %w[
+  awslogs-create-group
+  awslogs-credentials-endpoint
+  awslogs-datetime-format
+  awslogs-endpoint
+  awslogs-force-flush-interval-seconds
+  awslogs-format
+  awslogs-group
+  awslogs-max-buffered-events
+  awslogs-multiline-pattern
+  awslogs-region
+  awslogs-stream
+  tag
+]
+unsupported_awslogs_options = options.keys - supported_awslogs_options
+assert(
+  unsupported_awslogs_options.empty?,
+  "Docker #{production_docker_server_version} does not support awslogs options: #{unsupported_awslogs_options.join(', ')}"
+)
+assert(options['tag'] == 'backend/{{.Name}}/{{.FullID}}', 'Backend log streams need a readable, unique Docker tag template.')
+assert(options['awslogs-create-group'] == 'false', 'Backend logging must keep awslogs-create-group=false.')
+assert(!options.key?('awslogs-stream'), 'A static awslogs stream would collide across recreation or scale-out.')
 
 template_path = ENV.fetch('OBSERVABILITY_TEMPLATE')
 template = YAML.safe_load(
