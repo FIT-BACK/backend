@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 
 public final class AiTagRequestFactory {
 
-    static final int MAX_GARMENTS = GarmentPiece.values().length;
+    static final int MAX_GARMENTS = 3;
     static final int MAX_TAGS_PER_GARMENT = 8;
 
     public AiTagModelRequest create(List<Tag> catalog) {
@@ -32,10 +32,12 @@ public final class AiTagRequestFactory {
                 .collect(Collectors.joining("\n"));
 
         String prompt = """
-                Analyze the visible fashion item or outfit in the image. The image may show a
-                person-worn outfit or a product-only fashion image. Return one garment object in
-                the TOP, BOTTOM, or SHOES field for each visible piece, and null for each
-                non-visible piece. Do not merge tags from different pieces.
+                Analyze the visible fashion item in the crop. The crop normally contains one
+                primary garment and may show a person-worn garment or a product-only fashion
+                image. Classify each returned garment as exactly TOP, BOTTOM, DRESS, or OUTER.
+                Return one garment object in the TOP, BOTTOM, DRESS, or OUTER field for each
+                visible piece, and null for each non-visible piece. Do not classify DRESS or OUTER
+                as TOP. Do not merge tags from different pieces.
 
                 For every garment, inspect all five dimensions independently: SILHOUETTE, COLOR,
                 DETAIL, STYLE, and MATERIAL. A dimension may have no result when it is not visibly
@@ -154,11 +156,14 @@ public final class AiTagRequestFactory {
                         "properties", garmentsProperties,
                         "required", garmentPieceNames(),
                         "anyOf", List.of(GarmentPiece.values()).stream()
-                                .map(piece -> garmentsSchemaWithNonNullPiece(
-                                        garmentsProperties,
-                                        garmentItem,
-                                        piece
-                                ))
+                                .flatMap(nonNullPiece -> List.of(GarmentPiece.values()).stream()
+                                        .filter(nullPiece -> nullPiece != nonNullPiece)
+                                        .map(nullPiece -> garmentsSchemaWithBoundedPieceCount(
+                                                garmentsProperties,
+                                                garmentItem,
+                                                nonNullPiece,
+                                                nullPiece
+                                        )))
                                 .toList()
                 )
         ));
@@ -191,13 +196,15 @@ public final class AiTagRequestFactory {
         );
     }
 
-    private static Map<String, Object> garmentsSchemaWithNonNullPiece(
+    private static Map<String, Object> garmentsSchemaWithBoundedPieceCount(
             Map<String, Object> garmentsProperties,
             Map<String, Object> garmentItem,
-            GarmentPiece nonNullPiece
+            GarmentPiece nonNullPiece,
+            GarmentPiece nullPiece
     ) {
         Map<String, Object> properties = new LinkedHashMap<>(garmentsProperties);
         properties.put(nonNullPiece.name(), garmentItem);
+        properties.put(nullPiece.name(), Map.of("type", "null"));
         return Map.of(
                 "type", "object",
                 "additionalProperties", false,

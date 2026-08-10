@@ -5,24 +5,46 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fitback.backend.domain.tag.entity.TagType;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 
 class AiTagResponseParserTest {
 
     private final AiTagResponseParser parser = new AiTagResponseParser(new ObjectMapper());
 
+    @ParameterizedTest
+    @ValueSource(strings = {"TOP", "BOTTOM", "DRESS", "OUTER"})
+    void parsesEveryCropScopedGarmentPiece(String pieceName) {
+        String json = """
+                {
+                  "garments": [
+                    {
+                      "piece": "%s",
+                      "canonicalTags": [{"type": "COLOR", "name": "베이지"}],
+                      "suggestedTags": []
+                    }
+                  ]
+                }
+                """.formatted(pieceName);
+
+        AiTagModelOutput output = parser.parse(json);
+
+        assertThat(output.garments()).singleElement().satisfies(garment ->
+                assertThat(garment.piece()).isEqualTo(GarmentPiece.valueOf(pieceName))
+        );
+    }
+
     @Test
-    void parsesPieceKeyedGarmentsWithoutAllowingDuplicatePieces() {
+    void parsesPieceKeyedGarmentWithMultipleNullableFields() {
         String json = """
                 {
                   "garments": {
-                    "TOP": {
-                      "canonicalTags": [{"type": "STYLE", "name": "캐주얼"}],
-                      "suggestedTags": []
-                    },
+                    "TOP": null,
                     "BOTTOM": null,
-                    "SHOES": {
-                      "canonicalTags": [{"type": "MATERIAL", "name": "가죽"}],
+                    "DRESS": null,
+                    "OUTER": {
+                      "canonicalTags": [{"type": "STYLE", "name": "캐주얼"}],
                       "suggestedTags": []
                     }
                   }
@@ -33,7 +55,7 @@ class AiTagResponseParserTest {
 
         assertThat(output.garments())
                 .extracting(AiTagGarment::piece)
-                .containsExactly(GarmentPiece.TOP, GarmentPiece.SHOES);
+                .containsExactly(GarmentPiece.OUTER);
     }
 
     @Test
@@ -43,7 +65,8 @@ class AiTagResponseParserTest {
                   "garments": {
                     "TOP": {"canonicalTags": [{"type": "STYLE", "name": "캐주얼"}], "suggestedTags": []},
                     "BOTTOM": null,
-                    "SHOES": null,
+                    "DRESS": null,
+                    "OUTER": null,
                     "ACCESSORY": {"canonicalTags": [{"type": "STYLE", "name": "캐주얼"}], "suggestedTags": []}
                   }
                 }
@@ -74,9 +97,9 @@ class AiTagResponseParserTest {
                       ]
                     },
                     {
-                      "piece": "SHOES",
+                      "piece": "DRESS",
                       "canonicalTags": [
-                        {"type": "MATERIAL", "name": "가죽"}
+                        {"type": "MATERIAL", "name": "시폰"}
                       ],
                       "suggestedTags": []
                     }
@@ -100,7 +123,7 @@ class AiTagResponseParserTest {
                 assertThat(tag.evidence()).isEqualTo("상의의 밝은 크림색 표면");
             });
         });
-        assertThat(output.garments().get(1).piece()).isEqualTo(GarmentPiece.SHOES);
+        assertThat(output.garments().get(1).piece()).isEqualTo(GarmentPiece.DRESS);
     }
 
     @Test
@@ -143,6 +166,62 @@ class AiTagResponseParserTest {
         assertThatThrownBy(() -> parser.parse(json))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("garment tags must not be empty");
+    }
+
+    @Test
+    void rejectsAllNullPieceKeyedGarments() {
+        String json = """
+                {
+                  "garments": {
+                    "TOP": null,
+                    "BOTTOM": null,
+                    "DRESS": null,
+                    "OUTER": null
+                  }
+                }
+                """;
+
+        assertThatThrownBy(() -> parser.parse(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("garments must contain between 1 and 3 items");
+    }
+
+    @Test
+    void rejectsMoreThanThreeGarments() {
+        String json = """
+                {
+                  "garments": [
+                    {"piece": "TOP", "canonicalTags": [{"type": "STYLE", "name": "캐주얼"}], "suggestedTags": []},
+                    {"piece": "BOTTOM", "canonicalTags": [{"type": "MATERIAL", "name": "데님"}], "suggestedTags": []},
+                    {"piece": "DRESS", "canonicalTags": [{"type": "COLOR", "name": "베이지"}], "suggestedTags": []},
+                    {"piece": "OUTER", "canonicalTags": [{"type": "DETAIL", "name": "단추"}], "suggestedTags": []}
+                  ]
+                }
+                """;
+
+        assertThatThrownBy(() -> parser.parse(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("garments must contain between 1 and 3 items");
+    }
+
+    @Test
+    void rejectsLegacyShoesModelOutput() {
+        String json = """
+                {
+                  "garments": [
+                    {
+                      "piece": "SHOES",
+                      "canonicalTags": [{"type": "MATERIAL", "name": "가죽"}],
+                      "suggestedTags": []
+                    }
+                  ]
+                }
+                """;
+
+        assertThatThrownBy(() -> parser.parse(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("No enum constant")
+                .hasMessageContaining("GarmentPiece.SHOES");
     }
 
     @Test

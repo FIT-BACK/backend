@@ -15,6 +15,17 @@ import org.junit.jupiter.api.Test;
 class AiTagRequestFactoryTest {
 
     @Test
+    void exposesOnlyCropScopedGarmentPieces() {
+        assertThat(GarmentPiece.values()).containsExactly(
+                GarmentPiece.TOP,
+                GarmentPiece.BOTTOM,
+                GarmentPiece.DRESS,
+                GarmentPiece.OUTER
+        );
+        assertThat(AiTagRequestFactory.MAX_GARMENTS).isEqualTo(3);
+    }
+
+    @Test
     void createsGarmentScopedCanonicalAndFreeFormSuggestionSchema() {
         AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
                 Tag.create("와이드핏", TagType.SILHOUETTE, List.of(TagTargetClothing.PANTS)),
@@ -45,13 +56,14 @@ class AiTagRequestFactoryTest {
         Map<String, Object> suggestedTags = map(garmentProperties.get("suggestedTags"));
         Map<String, Object> suggestionName = itemProperty(suggestedTags, "name");
         List<Map<String, Object>> requiredTagAlternatives = maps(topGarment.get("anyOf"));
+        String normalizedPrompt = request.prompt().replaceAll("\\s+", " ");
 
         assertThat(request.jsonSchema().get("required")).isEqualTo(List.of("garments"));
         assertThat(garments)
                 .containsEntry("type", "object")
                 .containsEntry("additionalProperties", false)
-                .containsEntry("required", List.of("TOP", "BOTTOM", "SHOES"));
-        assertThat(garmentsProperties).containsOnlyKeys("TOP", "BOTTOM", "SHOES");
+                .containsEntry("required", List.of("TOP", "BOTTOM", "DRESS", "OUTER"));
+        assertThat(garmentsProperties).containsOnlyKeys("TOP", "BOTTOM", "DRESS", "OUTER");
         assertThat(topOptions).anySatisfy(option -> assertThat(option).containsEntry("type", "null"));
         assertThat(topGarment.get("required"))
                 .isEqualTo(List.of("canonicalTags", "suggestedTags"));
@@ -80,16 +92,18 @@ class AiTagRequestFactoryTest {
         assertThat(requiredTagAlternatives).anySatisfy(alternative -> assertThat(
                 map(map(alternative.get("properties")).get("suggestedTags"))
         ).containsEntry("minItems", 1));
-        assertThat(request.prompt()).contains(
+        assertThat(normalizedPrompt).contains(
                 "product-only fashion image",
-                "TOP, BOTTOM, or SHOES field",
+                "normally contains one primary garment",
+                "TOP, BOTTOM, DRESS, or OUTER field",
+                "Do not classify DRESS or OUTER as TOP",
                 "SILHOUETTE, COLOR",
                 "DETAIL, STYLE, and MATERIAL",
                 "Korean",
                 "Do not copy an exact canonical tag into suggestedTags",
                 "At least one of canonicalTags or suggestedTags must contain a tag",
                 "visible evidence"
-        );
+        ).doesNotContain("SHOES");
     }
 
     @Test
@@ -135,11 +149,12 @@ class AiTagRequestFactoryTest {
 
         Map<String, Object> garments = map(map(request.jsonSchema().get("properties")).get("garments"));
         Map<String, Object> garmentsProperties = map(garments.get("properties"));
-        List<Map<String, Object>> nonNullGarmentAlternatives = maps(garments.get("anyOf"));
+        List<Map<String, Object>> validGarmentAlternatives = maps(garments.get("anyOf"));
         Map<GarmentPiece, Boolean> allNullPieces = Map.of(
                 GarmentPiece.TOP, false,
                 GarmentPiece.BOTTOM, false,
-                GarmentPiece.SHOES, false
+                GarmentPiece.DRESS, false,
+                GarmentPiece.OUTER, false
         );
 
         for (GarmentPiece piece : GarmentPiece.values()) {
@@ -150,27 +165,50 @@ class AiTagRequestFactoryTest {
                     .anySatisfy(option -> assertThat(option).containsEntry("type", "null"))
                     .anySatisfy(option -> assertThat(option).containsEntry("type", "object"));
         }
-        assertThat(nonNullGarmentAlternatives).hasSize(GarmentPiece.values().length);
+        assertThat(validGarmentAlternatives).hasSize(
+                GarmentPiece.values().length * (GarmentPiece.values().length - 1)
+        );
         for (GarmentPiece nonNullPiece : GarmentPiece.values()) {
-            assertThat(nonNullGarmentAlternatives).anySatisfy(alternative -> {
+            assertThat(validGarmentAlternatives).anySatisfy(alternative -> {
                 assertThat(alternative)
                         .containsEntry("type", "object")
                         .containsEntry("additionalProperties", false)
-                        .containsEntry("required", List.of("TOP", "BOTTOM", "SHOES"));
+                        .containsEntry(
+                                "required",
+                                List.of("TOP", "BOTTOM", "DRESS", "OUTER")
+                        );
                 assertThat(map(map(alternative.get("properties")).get(nonNullPiece.name())))
                         .containsEntry("type", "object");
             });
         }
-        assertThat(allowsGarmentPieceCombination(nonNullGarmentAlternatives, allNullPieces)).isFalse();
+        assertThat(allowsGarmentPieceCombination(validGarmentAlternatives, allNullPieces)).isFalse();
         for (GarmentPiece nonNullPiece : GarmentPiece.values()) {
             Map<GarmentPiece, Boolean> singleNonNullPiece = new HashMap<>(allNullPieces);
             singleNonNullPiece.put(nonNullPiece, true);
 
             assertThat(allowsGarmentPieceCombination(
-                    nonNullGarmentAlternatives,
+                    validGarmentAlternatives,
                     singleNonNullPiece
             )).isTrue();
         }
+        assertThat(allowsGarmentPieceCombination(
+                validGarmentAlternatives,
+                Map.of(
+                        GarmentPiece.TOP, true,
+                        GarmentPiece.BOTTOM, true,
+                        GarmentPiece.DRESS, true,
+                        GarmentPiece.OUTER, true
+                )
+        )).isFalse();
+        assertThat(allowsGarmentPieceCombination(
+                validGarmentAlternatives,
+                Map.of(
+                        GarmentPiece.TOP, true,
+                        GarmentPiece.BOTTOM, true,
+                        GarmentPiece.DRESS, true,
+                        GarmentPiece.OUTER, false
+                )
+        )).isTrue();
     }
 
     @Test
@@ -204,7 +242,13 @@ class AiTagRequestFactoryTest {
                     Map<String, Object> pieceSchema = map(
                             map(alternative.get("properties")).get(piece.name())
                     );
-                    return !"object".equals(pieceSchema.get("type")) || nonNullPieces.get(piece);
+                    if ("object".equals(pieceSchema.get("type"))) {
+                        return nonNullPieces.get(piece);
+                    }
+                    if ("null".equals(pieceSchema.get("type"))) {
+                        return !nonNullPieces.get(piece);
+                    }
+                    return true;
                 }));
     }
 
