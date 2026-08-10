@@ -231,6 +231,63 @@ class AnalysisReportSaveServiceTest {
     }
 
     @Test
+    void preservesRequestOrderRegardlessOfCategoryEnumDeclarationOrder() {
+        // ProductCategory enum 선언 순서는 TOP이 BOTTOM보다 앞이지만, 요청은 BOTTOM을
+        // 먼저 보낸다 — 응답 순서가 enum 순서(TOP, BOTTOM)가 아니라 요청 순서(BOTTOM, TOP)를
+        // 따라야 한다(EnumMap 순회에 의존하면 이 순서가 깨진다).
+        Member member = member(1L);
+        AnalysisReport report = currentReport(501L, member);
+        Product top = product(101L, ProductCategory.TOP, "셔츠", new BigDecimal("28900"));
+        Product bottom = product(
+                202L,
+                ProductCategory.BOTTOM,
+                "슬랙스",
+                new BigDecimal("34900")
+        );
+        when(analysisReportRepository.findOwnedReportForSave(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
+                1L,
+                ClosetTargetType.ANALYSIS_REPORT,
+                501L
+        )).thenReturn(Optional.empty());
+        when(recommendedItemRepository.findByReportIdOrderByCategoryAscRankNoAsc(501L))
+                .thenReturn(List.of(
+                        recommendation(report, top, ProductCategory.TOP, 1),
+                        recommendation(report, bottom, ProductCategory.BOTTOM, 1)
+                ));
+        when(closetSaveRepository.saveAndFlush(any(ClosetSave.class)))
+                .thenAnswer(invocation -> {
+                    ClosetSave save = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(save, "id", 902L);
+                    ReflectionTestUtils.setField(
+                            save,
+                            "createdAt",
+                            LocalDateTime.parse("2026-07-26T09:00:00")
+                    );
+                    return save;
+                });
+        when(savedAnalysisItemRepository.saveAll(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AnalysisReportSaveService.SaveOutcome outcome = service.save(
+                1L,
+                501L,
+                request(
+                        selected(ProductCategory.BOTTOM, 202L),
+                        selected(ProductCategory.TOP, 101L)
+                )
+        );
+
+        assertThat(outcome.response().selectedItems())
+                .extracting("category", "productId")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(ProductCategory.BOTTOM, 202L),
+                        org.assertj.core.groups.Tuple.tuple(ProductCategory.TOP, 101L)
+                );
+    }
+
+    @Test
     void returnsExistingSaveWithoutReplacingSnapshots() {
         Member member = member(1L);
         AnalysisReport report = currentReport(501L, member);

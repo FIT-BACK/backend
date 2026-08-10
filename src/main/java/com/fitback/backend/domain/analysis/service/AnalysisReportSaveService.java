@@ -256,11 +256,14 @@ public class AnalysisReportSaveService {
                         ),
                         Function.identity()
                 ));
-        return requestedByCategory.entrySet().stream()
-                .map(entry -> {
+        // requestedByCategory는 EnumMap이라 entrySet()이 요청 순서가 아니라 enum 선언
+        // 순서로 순회된다 — 응답의 selectedItems 순서가 요청 순서와 달라질 수 있으므로,
+        // 중복 검증에는 requestedByCategory를 쓰되 조회는 원래 요청 순서(request.selectedItems())를 순회한다.
+        return request.selectedItems().stream()
+                .map(selectedItem -> {
                     RecommendedItem selected = itemsBySelection.get(new SelectionKey(
-                            entry.getKey(),
-                            entry.getValue().productId()
+                            selectedItem.category(),
+                            selectedItem.productId()
                     ));
                     if (selected == null) {
                         throw invalidSelection();
