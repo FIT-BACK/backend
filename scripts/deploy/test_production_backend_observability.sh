@@ -60,8 +60,30 @@ options = logging.fetch('options')
 assert(logging['driver'] == 'awslogs', 'Backend logging driver must be awslogs.')
 assert(options['awslogs-region'] == 'ap-northeast-2', 'Backend logs must use ap-northeast-2.')
 assert(options['awslogs-group'] == '/fitback/prod/backend', 'Unexpected backend log group.')
-assert(options['awslogs-stream-prefix'] == 'backend', 'Backend log streams need the backend prefix.')
 assert(options['awslogs-create-group'] == 'false', 'The EC2 role must not create log groups.')
+
+production_docker_server_version = '25.0.16'
+supported_awslogs_options = %w[
+  awslogs-create-group
+  awslogs-credentials-endpoint
+  awslogs-datetime-format
+  awslogs-endpoint
+  awslogs-force-flush-interval-seconds
+  awslogs-format
+  awslogs-group
+  awslogs-max-buffered-events
+  awslogs-multiline-pattern
+  awslogs-region
+  awslogs-stream
+  tag
+]
+unsupported_awslogs_options = options.keys - supported_awslogs_options
+assert(
+  unsupported_awslogs_options.empty?,
+  "Docker #{production_docker_server_version} does not support awslogs options: #{unsupported_awslogs_options.join(', ')}"
+)
+assert(options['tag'] == 'backend/{{.Name}}/{{.FullID}}', 'Backend log streams need a readable, unique Docker tag template.')
+assert(!options.key?('awslogs-stream'), 'A static awslogs stream would collide across recreation or scale-out.')
 
 template_path = ENV.fetch('OBSERVABILITY_TEMPLATE')
 template = YAML.safe_load(

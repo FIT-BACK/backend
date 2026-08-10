@@ -10,7 +10,7 @@ services:
       options:
         awslogs-region: ap-northeast-2
         awslogs-group: /fitback/prod/backend
-        awslogs-stream-prefix: backend
+        tag: "backend/{{.Name}}/{{.FullID}}"
         awslogs-create-group: "false"
     environment:
       SPRING_PROFILES_ACTIVE: prod

@@ -254,8 +254,10 @@ EC2 role policy를 다시 읽기 전용으로 확인한다.
 
 - backend stdout/stderr만 `/fitback/prod/backend`로 전송하며 보존 기간은 30일이다. Nginx는 기존
   logging 구성을 유지한다.
-- Docker `awslogs-stream-prefix=backend`를 사용해 container마다
-  `backend/<container-name>/<container-id>` 형태의 고유 stream을 만든다.
+- Docker Engine 25.0.16이 지원하는 `tag=backend/{{.Name}}/{{.FullID}}`를 사용해 container마다
+  `backend/<compose-container-name>/<full-container-id>` 형태의 고유 stream을 만든다. 명시적
+  `awslogs-stream`도 지원되지만 정적 이름은 container 재생성 및 scale-out에서 stream을 공유하므로
+  사용하지 않는다.
 - log group은 stack이 먼저 생성하며 `awslogs-create-group=false`를 유지한다. 따라서 EC2 role에는
   해당 log group ARN으로 제한한 `logs:CreateLogStream`, `logs:PutLogEvents`만 추가하고
   `logs:CreateLogGroup`은 부여하지 않는다.
