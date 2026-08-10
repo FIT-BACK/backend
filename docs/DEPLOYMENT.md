@@ -277,7 +277,9 @@ EC2 role policy를 다시 읽기 전용으로 확인한다.
   `fitback-prod-openai-provider-retry` topic을 만든다. 이 topic은 자동 rotation을 켠 전용 customer-managed
   KMS key로 암호화한다. key policy는 같은 account의 해당 CloudWatch alarm에만
   `kms:Decrypt`, `kms:GenerateDataKey*`를 허용하고, topic policy는 같은 alarm에만 `sns:Publish`를
-  허용한다. production 적용 전 운영자가 실제 알림을 받을 subscription을 별도 승인·확정해야 한다.
+  허용한다. SNS service에는 같은 alarm source와 topic encryption context로 제한한
+  `kms:Decrypt`, `kms:GenerateDataKey`만 허용한다. production 적용 전 운영자가 실제 알림을 받을
+  subscription을 별도 승인·확정해야 한다.
   기존 topic이 생기면 같은 KMS와 publish 계약을 확인한 뒤에만 `ExistingAlarmTopicArn` parameter로
   재사용한다.
 - logical summary는 `recoveredByRetry=true`와 `final5xx=true`를 구분할 수 있지만, 첫 적용은 custom
@@ -334,8 +336,8 @@ CloudFormation stack을 backend release보다 먼저 적용해야 한다.
    기존 topic을 재사용할 때만 `ExistingAlarmTopicArn=<approved-topic-arn>`을 전달한다.
 3. stack output, `/fitback/prod/backend`의 30일 retention, metric filter, alarm, EC2 inline policy의
    두 Logs action을 확인한다. fallback topic의 KMS key ARN, key rotation, CloudWatch 전용
-   `kms:Decrypt`/`kms:GenerateDataKey*`, topic의 CloudWatch 전용 `sns:Publish`, subscription 수를
-   확인한다. 승인 전 subscription 수는 0을 유지한다.
+   `kms:Decrypt`/`kms:GenerateDataKey*`, SNS 전용 `kms:Decrypt`/`kms:GenerateDataKey`, topic의
+   CloudWatch 전용 `sns:Publish`, subscription 수를 확인한다. 승인 전 subscription 수는 0을 유지한다.
 4. `develop → main` release PR과 Backend CD를 통해 새 Compose 설정을 배포한다. application release와
    stack 변경을 독립적으로 추적하고, rollback 전에도 log group과 IAM policy는 유지한다.
 5. public Nginx health와 backend readiness가 정상인지 확인한 뒤 다음과 같이 message 원문 없이 stream과

@@ -128,7 +128,7 @@ assert(notification_key['UpdateReplacePolicy'] == 'Retain', 'Replaced notificati
 assert(notification_key.dig('Properties', 'EnableKeyRotation') == true, 'Notification key rotation must be enabled.')
 
 key_statements = notification_key.dig('Properties', 'KeyPolicy', 'Statement')
-assert(key_statements.is_a?(Array) && key_statements.length == 2, 'Notification key policy must have two statements.')
+assert(key_statements.is_a?(Array) && key_statements.length == 3, 'Notification key policy must have three statements.')
 key_admin = key_statements.find { |statement| statement['Sid'] == 'AllowAccountKeyAdministration' }
 assert(!key_admin.nil?, 'Notification key policy must retain account administration.')
 assert(key_admin.dig('Principal', 'AWS').value == 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root', 'Only the owning account may administer the notification key.')
@@ -161,6 +161,15 @@ assert(Array(cloudwatch_key['Action']).sort == %w[kms:Decrypt kms:GenerateDataKe
 assert(cloudwatch_key['Resource'] == '*', 'KMS key policies must scope use to the key itself.')
 assert(cloudwatch_key.dig('Condition', 'StringEquals', 'aws:SourceAccount').value == 'AWS::AccountId', 'CloudWatch KMS use must be account-scoped.')
 assert(cloudwatch_key.dig('Condition', 'ArnEquals', 'aws:SourceArn').value.include?('alarm:fitback-prod-openai-provider-retry'), 'CloudWatch KMS use must be alarm-scoped.')
+
+sns_key = key_statements.find { |statement| statement['Sid'] == 'AllowSnsTopicEncryption' }
+assert(!sns_key.nil?, 'Notification key policy must allow SNS topic encryption.')
+assert(sns_key.dig('Principal', 'Service') == 'sns.amazonaws.com', 'Only SNS may use the topic encryption statement.')
+assert(Array(sns_key['Action']).sort == %w[kms:Decrypt kms:GenerateDataKey].sort, 'SNS KMS actions must remain minimal.')
+assert(sns_key['Resource'] == '*', 'KMS key policies must scope SNS use to the key itself.')
+assert(sns_key.dig('Condition', 'StringEquals', 'aws:SourceAccount').value == 'AWS::AccountId', 'SNS KMS use must be account-scoped.')
+assert(sns_key.dig('Condition', 'ArnEquals', 'aws:SourceArn').value.include?('alarm:fitback-prod-openai-provider-retry'), 'SNS KMS use must be alarm-scoped.')
+assert(sns_key.dig('Condition', 'StringEquals', 'kms:EncryptionContext:aws:sns:topicArn').value.include?('fitback-prod-openai-provider-retry'), 'SNS KMS use must be topic-scoped.')
 
 topic_policy = resources.fetch('AlarmNotificationTopicPolicy')
 assert(topic_policy['Type'] == 'AWS::SNS::TopicPolicy', 'Fallback topic must have an SNS topic policy.')

@@ -100,6 +100,20 @@ Resources:
                 aws:SourceAccount: !Ref AWS::AccountId
               ArnEquals:
                 aws:SourceArn: !Sub arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:fitback-prod-openai-provider-retry
+          - Sid: AllowSnsTopicEncryption
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                kms:EncryptionContext:aws:sns:topicArn: !Sub arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:fitback-prod-openai-provider-retry
+              ArnEquals:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:fitback-prod-openai-provider-retry
 
   AlarmNotificationTopic:
     Type: AWS::SNS::Topic
