@@ -30,9 +30,12 @@ reasonCode도 이 데이터셋의 정답에 포함하지 않는다.
 2. 주 의류 이외의 의류, 가림, 강한 조명 왜곡, 저해상도, 또는 판정하기 어려운 속성이 있으면
    제외한다. 보이지 않는 소재·핏·디테일·스타일을 추론해 라벨하지 않는다.
 3. `expectedCanonicalTags`에는
-   [`canonical-catalog.v25.json`](../scripts/poc/ai-tag-evaluation/canonical-catalog.v25.json)의
+   새 production-contract 평가에는
+   [`canonical-catalog.production.json`](../scripts/poc/ai-tag-evaluation/canonical-catalog.production.json)의
    정확한 `(type, name)` 쌍만 넣는다. 대소문자·띄어쓰기·슬래시를 포함해 이름을 바꾸거나
-   free-form tag을 추가하지 않는다.
+   free-form tag을 추가하지 않는다. 기존
+   [`canonical-catalog.v25.json`](../scripts/poc/ai-tag-evaluation/canonical-catalog.v25.json)은
+   V25 43-tag historical baseline 재현용으로만 보존한다.
 
 ### MATERIAL 판정 규칙
 
@@ -40,8 +43,8 @@ Gold label의 `MATERIAL`은 이미지에서 시각적 특성을 신뢰성 있게
 데님, 니트, 가죽, 트위드, 시폰은 시각적 특징이 충분히 명확하면 허용하고, 린넨은 질감 등
 시각적 근거가 명확한 경우에만 허용한다. 코튼처럼 이미지 단독으로 실제 섬유 조성을 신뢰성
 있게 판별하기 어려운 소재는 Gold label에서 제외한다. 천연/인조, 혼방 여부처럼 이미지에서
-확인할 수 없는 소재 속성은 추정하지 않는다. 이 규칙은 Gold 정답 작성 기준이며 V25 canonical
-catalog 자체를 변경하지 않는다.
+확인할 수 없는 소재 속성은 추정하지 않는다. 이 규칙은 Gold 정답 작성 기준이며 production
+canonical catalog나 보존된 V25 historical catalog 자체를 변경하지 않는다.
 
 4. Review provenance는 human Reviewer A, AI-assisted independent Reviewer B, human adjudication으로
    기록한다. Reviewer A는 human review를 수행하고 Reviewer B는 AI-assisted independent review를

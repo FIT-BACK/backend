@@ -8,10 +8,13 @@ import com.fitback.backend.global.exception.BusinessException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -23,6 +26,8 @@ import tools.jackson.databind.ObjectMapper;
 public final class OpenAiTagEvaluationMain {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    static final int REPORT_SCHEMA_VERSION = 2;
+    static final int CATALOG_IDENTITY_VERSION = 1;
     private static final Set<String> DATASET_FIELDS = Set.of("cases");
     private static final Set<String> CASE_FIELDS = Set.of(
             "imageId", "imagePath", "expectedCanonicalTags"
@@ -62,7 +67,9 @@ public final class OpenAiTagEvaluationMain {
         Files.createDirectories(outputDirectory);
         OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValue(
                 outputDirectory.resolve("openai-tag-evaluation.json").toFile(),
-                new EvaluationReport(Instant.now().toString(), openAi.model(), summarize(results), results));
+                new EvaluationReport(
+                        REPORT_SCHEMA_VERSION, catalogIdentity(catalogPath, catalog),
+                        Instant.now().toString(), openAi.model(), summarize(results), results));
     }
 
     static CaseResult successfulCase(
@@ -304,6 +311,18 @@ public final class OpenAiTagEvaluationMain {
         return List.copyOf(tags);
     }
 
+    static CatalogIdentity catalogIdentity(Path path, List<Tag> catalog) throws IOException {
+        return new CatalogIdentity(CATALOG_IDENTITY_VERSION, catalog.size(), sha256(Files.readAllBytes(path)));
+    }
+
+    private static String sha256(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
     private static void validateExpectedTags(List<EvaluationCase> cases, Set<TagKey> catalogKeys) {
         if (cases.stream().flatMap(evaluationCase -> evaluationCase.expectedCanonicalTags().stream())
                 .map(OpenAiTagEvaluationMain::tagKey).anyMatch(tag -> !catalogKeys.contains(tag))) {
@@ -423,11 +442,18 @@ public final class OpenAiTagEvaluationMain {
     }
 
     private static String requiredText(JsonNode node, String field) {
-        String value = node.path(field).asText();
+        JsonNode valueNode = node.path(field);
+        if (!valueNode.isTextual()) {
+            throw new IllegalArgumentException(field + " must be text");
+        }
+        String value = valueNode.asText();
         if (value.isBlank()) {
             throw new IllegalArgumentException(field + " must not be blank");
         }
-        return value.trim();
+        if (!value.equals(value.trim())) {
+            throw new IllegalArgumentException(field + " must not have leading or trailing whitespace");
+        }
+        return value;
     }
 
     private static Path requiredPath(String name) {
@@ -655,7 +681,17 @@ public final class OpenAiTagEvaluationMain {
         long nextLong(long boundExclusive);
     }
 
-    record EvaluationReport(String generatedAt, String model, EvaluationSummary summary, List<CaseResult> cases) {
+    record EvaluationReport(
+            int reportSchemaVersion,
+            CatalogIdentity catalog,
+            String generatedAt,
+            String model,
+            EvaluationSummary summary,
+            List<CaseResult> cases
+    ) {
+    }
+
+    record CatalogIdentity(int identityVersion, int tagCount, String sha256) {
     }
 
     record EvaluationSummary(

@@ -314,6 +314,25 @@ class OpenAiTagEvaluationMainTest {
     }
 
     @Test
+    void rejectsWhitespaceMutatedGoldTagInsteadOfNormalizing(@TempDir Path directory) throws Exception {
+        Path dataset = directory.resolve("gold-labels.json");
+        Files.writeString(dataset, """
+                {
+                  "cases": [{
+                    "imageId": "top-01",
+                    "imagePath": "images/top-01.jpg",
+                    "expectedCanonicalTags": [{"type": "STYLE", "name": "캐주얼 "}]
+                  }]
+                }
+                """);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> OpenAiTagEvaluationMain.readDataset(dataset)
+        ).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("name must not have leading or trailing whitespace");
+    }
+
+    @Test
     void rejectsImageSymlinkThatResolvesOutsideTheDataset(@TempDir Path directory) throws Exception {
         Path datasetDirectory = Files.createDirectory(directory.resolve("dataset"));
         Path imagesDirectory = Files.createDirectory(datasetDirectory.resolve("images"));
@@ -332,6 +351,67 @@ class OpenAiTagEvaluationMainTest {
         assertThat(new ObjectMapper().readTree(Files.readString(schema))
                 .path("properties").path("cases").path("items").path("properties")
                 .path("expectedCanonicalTags").path("uniqueItems").asBoolean()).isTrue();
+    }
+
+    @Test
+    void reportSchemaV2IncludesSafeCatalogIdentityForExactCatalogBytes(@TempDir Path directory) throws Exception {
+        Path catalogPath = directory.resolve("catalog.json");
+        Files.writeString(catalogPath, """
+                [
+                  {"type": "STYLE", "name": "캐주얼"},
+                  {"type": "DETAIL", "name": "포켓"}
+                ]
+                """);
+        List<com.fitback.backend.domain.tag.entity.Tag> catalog = List.of(
+                com.fitback.backend.domain.tag.entity.Tag.create("캐주얼", TagType.STYLE),
+                com.fitback.backend.domain.tag.entity.Tag.create("포켓", TagType.DETAIL));
+        OpenAiTagEvaluationMain.EvaluationReport report = new OpenAiTagEvaluationMain.EvaluationReport(
+                OpenAiTagEvaluationMain.REPORT_SCHEMA_VERSION,
+                OpenAiTagEvaluationMain.catalogIdentity(catalogPath, catalog),
+                "2026-08-11T00:00:00Z",
+                "gpt-5.6-luna",
+                OpenAiTagEvaluationMain.summarize(List.of()),
+                List.of());
+
+        String serialized = new ObjectMapper().writeValueAsString(report);
+
+        assertThat(report.catalog().identityVersion()).isEqualTo(OpenAiTagEvaluationMain.CATALOG_IDENTITY_VERSION);
+        assertThat(report.catalog().tagCount()).isEqualTo(2);
+        assertThat(report.catalog().sha256()).matches("[0-9a-f]{64}");
+        assertThat(serialized)
+                .contains("\"reportSchemaVersion\":2", "\"identityVersion\":1", "\"tagCount\":2")
+                .doesNotContain(catalogPath.toString(), "test-key", "data:image", "x-request-id", "model-output");
+    }
+
+    @Test
+    void catalogIdentityIsDeterministicForExactBytesAndChangesWhenBytesChange(@TempDir Path directory)
+            throws Exception {
+        String catalogJson = """
+                [
+                  {"type": "STYLE", "name": "캐주얼"},
+                  {"type": "DETAIL", "name": "포켓"}
+                ]
+                """;
+        Path firstPath = directory.resolve("catalog-first.json");
+        Path identicalPath = directory.resolve("catalog-identical.json");
+        Path changedPath = directory.resolve("catalog-changed.json");
+        Files.writeString(firstPath, catalogJson);
+        Files.writeString(identicalPath, catalogJson);
+        Files.writeString(changedPath, catalogJson.stripTrailing());
+        List<com.fitback.backend.domain.tag.entity.Tag> catalog = List.of(
+                com.fitback.backend.domain.tag.entity.Tag.create("캐주얼", TagType.STYLE),
+                com.fitback.backend.domain.tag.entity.Tag.create("포켓", TagType.DETAIL));
+
+        OpenAiTagEvaluationMain.CatalogIdentity first =
+                OpenAiTagEvaluationMain.catalogIdentity(firstPath, catalog);
+        OpenAiTagEvaluationMain.CatalogIdentity identical =
+                OpenAiTagEvaluationMain.catalogIdentity(identicalPath, catalog);
+        OpenAiTagEvaluationMain.CatalogIdentity changed =
+                OpenAiTagEvaluationMain.catalogIdentity(changedPath, catalog);
+
+        assertThat(identical).isEqualTo(first);
+        assertThat(changed.tagCount()).isEqualTo(first.tagCount());
+        assertThat(changed.sha256()).isNotEqualTo(first.sha256());
     }
 
     private static OpenAiTagEvaluationMain.EvaluationCall sequence(
