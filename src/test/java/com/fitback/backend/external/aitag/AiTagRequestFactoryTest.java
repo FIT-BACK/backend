@@ -107,38 +107,49 @@ class AiTagRequestFactoryTest {
     }
 
     @Test
-    void includesPrecisionFirstCanonicalTagSelectionPolicy() {
+    void includesEvidenceBalancedCanonicalTagSelectionPolicy() {
         AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
                 Tag.create("와이드핏", TagType.SILHOUETTE, List.of(TagTargetClothing.PANTS)),
                 Tag.create("코튼", TagType.MATERIAL, List.of(TagTargetClothing.ALL)),
                 Tag.create("단추", TagType.DETAIL, List.of(TagTargetClothing.ALL)),
                 Tag.create("캐주얼", TagType.STYLE, List.of(TagTargetClothing.ALL))
         ));
+        String normalizedPrompt = request.prompt().replaceAll("\\s+", " ");
 
-        assertThat(request.prompt()).contains(
+        assertThat(normalizedPrompt).contains(
+                "inspect the garment in two passes",
+                "whole-garment outline and proportions",
+                "local structures and surface texture",
                 "Return a sparse set of only high-confidence, visibly supported tags",
                 "does not require a tag from every type",
                 "Do not choose the closest canonical tag",
                 "Do not return competing tags for the same attribute",
+                "COLOR: Judge the stable garment color across a broad, well-lit region",
                 "Return a tag only when positive surface evidence distinguishes it from",
                 "Do not infer composition from color, drape, opacity",
                 "우븐/시어 is not a fallback for",
-                "regular knit loops or ribs support 니트",
+                "regular knit loops or ribs indicate 니트",
+                "트위드 requires a visibly woven",
                 "If multiple materials remain plausible, omit MATERIAL",
-                "Return fit or rise tags only when directly observable",
-                "Mere visibility is insufficient",
-                "Return a DETAIL only when it is a",
-                "dominant, discriminative design cue",
-                "Omit routine functional fastenings",
-                "standard waist or neckline",
-                "construction is not identity-defining by itself",
+                "garment geometry separately from body fit",
+                "Evaluate shape or fit and length as independent attributes",
+                "A clearly visible neckline, pocket, or pleat can be canonical",
+                "button, zipper, or belt only when it is a design-defining feature",
                 "Prefer one dominant STYLE tag",
-                "examples, not exhaustive definitions",
-                "mentally correct its orientation",
+                "Do not infer STYLE from the garment piece or one isolated detail",
+                "스트릿 requires explicit street cues",
+                "오피스룩 requires tailored or business construction",
+                "미니멀 can remain dominant",
+                "correct its orientation",
                 "use a precise, high-confidence suggested",
                 "tag with visible evidence instead of guessing a canonical tag",
                 "must still contain at least one canonical or suggested tag"
-        ).doesNotContain("Return every canonical tag with its matching type");
+        ).doesNotContain(
+                "Return every canonical tag with its matching type",
+                "Mere visibility is insufficient",
+                "standard waist or neckline construction is not identity-defining by itself",
+                "Do not infer body fit from a flat or hanging product image"
+        );
     }
 
     @Test
