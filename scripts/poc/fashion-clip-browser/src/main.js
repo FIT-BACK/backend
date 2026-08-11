@@ -55,7 +55,9 @@ async function createSession() {
       executionProviders: requestedProviders,
       graphOptimizationLevel: 'all',
     });
-    elements.runtime.textContent = requestedProviders.join(' → ');
+    elements.runtime.textContent = canTryWebGpu
+      ? 'webgpu session; wasm fallback armed'
+      : 'wasm';
     elements.model.textContent = MODEL_ID;
     elements.modelLoad.textContent = `${formatMilliseconds(performance.now() - started)} ms`;
     return session;
