@@ -35,7 +35,10 @@ class PrototypeAiTagAnalyzerTest {
 
         PrototypeAiTagAnalyzer analyzer = new PrototypeAiTagAnalyzer(tagRepository);
 
-        assertThat(analyzer.analyze(image))
+        AiTagAnalysisResult result = analyzer.analyze(image);
+
+        assertThat(result.garmentPiece()).isEmpty();
+        assertThat(result.canonicalTags())
                 .extracting(Tag::getTagName)
                 .containsExactly("미니멀", "와이드핏", "베이지");
     }

@@ -10,14 +10,14 @@ final class AiTagResults {
 
     static List<AiTagGarment> validateGarments(List<AiTagGarment> garments) {
         List<AiTagGarment> result = List.copyOf(garments);
-        if (result.isEmpty() || result.size() > AiTagRequestFactory.MAX_GARMENTS) {
-            throw new IllegalArgumentException("garments must contain between 1 and 3 items");
-        }
         EnumSet<GarmentPiece> pieces = EnumSet.noneOf(GarmentPiece.class);
         for (AiTagGarment garment : result) {
             if (!pieces.add(garment.piece())) {
                 throw new IllegalArgumentException("garment pieces must be unique");
             }
+        }
+        if (result.size() != AiTagRequestFactory.MAX_GARMENTS) {
+            throw new IllegalArgumentException("garments must contain exactly 1 item");
         }
         return result;
     }

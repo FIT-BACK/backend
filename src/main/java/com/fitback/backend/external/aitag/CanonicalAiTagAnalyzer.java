@@ -1,5 +1,6 @@
 package com.fitback.backend.external.aitag;
 
+import com.fitback.backend.domain.analysis.service.AiTagAnalysisResult;
 import com.fitback.backend.domain.analysis.service.AiTagAnalyzer;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.tag.entity.Tag;
@@ -38,7 +39,7 @@ public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
     }
 
     @Override
-    public List<Tag> analyze(MultipartFile image) {
+    public AiTagAnalysisResult analyze(MultipartFile image) {
         try {
             return analyze(new AiTagImage(image.getBytes(), image.getContentType()));
         } catch (IOException | IllegalArgumentException exception) {
@@ -47,11 +48,11 @@ public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
     }
 
     @Override
-    public List<Tag> analyze(Image image) {
+    public AiTagAnalysisResult analyze(Image image) {
         return analyze(imageContentLoader.load(image));
     }
 
-    private List<Tag> analyze(AiTagImage image) {
+    private AiTagAnalysisResult analyze(AiTagImage image) {
         List<Tag> catalog = tagRepository.findAllByOrderByIdAsc();
         if (catalog.isEmpty()) {
             log.warn(
@@ -64,8 +65,8 @@ public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
                 Function.identity()
         ));
         AiTagModelResult result = modelClient.analyze(image, requestFactory.create(catalog));
-        List<TagKey> predictedKeys = result.garments().stream()
-                .flatMap(garment -> garment.canonicalTags().stream())
+        AiTagGarment garment = result.garments().getFirst();
+        List<TagKey> predictedKeys = garment.canonicalTags().stream()
                 .map(prediction -> new TagKey(prediction.type(), prediction.name()))
                 .distinct()
                 .toList();
@@ -94,7 +95,10 @@ public final class CanonicalAiTagAnalyzer implements AiTagAnalyzer {
                 result.outputTokens(),
                 result.elapsedMillis()
         );
-        return predictedKeys.stream().map(canonicalTags::get).toList();
+        return AiTagAnalysisResult.withGarmentPiece(
+                garment.piece(),
+                predictedKeys.stream().map(canonicalTags::get).toList()
+        );
     }
 
     private String validationFailureCategory(List<TagKey> predictedKeys, Map<TagKey, Tag> canonicalTags) {

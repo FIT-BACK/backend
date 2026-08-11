@@ -27,19 +27,21 @@ public class PrototypeAiTagAnalyzer implements AiTagAnalyzer {
     private final TagRepository tagRepository;
 
     @Override
-    public List<Tag> analyze(MultipartFile image) {
+    public AiTagAnalysisResult analyze(MultipartFile image) {
         throw new BusinessException(ErrorCode.ANALYSIS_IMAGE_UPLOAD_FLOW_REQUIRED);
     }
 
     @Override
-    public List<Tag> analyze(Image image) {
+    public AiTagAnalysisResult analyze(Image image) {
         Map<String, Tag> tagsByName = tagRepository.findAllByTagNameIn(PROTOTYPE_TAG_NAMES).stream()
                 .collect(Collectors.toMap(Tag::getTagName, Function.identity()));
         if (tagsByName.size() != PROTOTYPE_TAG_NAMES.size()) {
             throw new BusinessException(ErrorCode.ANALYSIS_NOT_READY);
         }
-        return PROTOTYPE_TAG_NAMES.stream()
-                .map(tagsByName::get)
-                .toList();
+        return AiTagAnalysisResult.withoutGarmentPiece(
+                PROTOTYPE_TAG_NAMES.stream()
+                        .map(tagsByName::get)
+                        .toList()
+        );
     }
 }

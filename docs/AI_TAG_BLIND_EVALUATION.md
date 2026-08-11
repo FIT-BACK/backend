@@ -2,11 +2,11 @@
 
 OpenAI와 Amazon Bedrock 모델을 동일한 이미지, 프롬프트, JSON Schema, 태그 카탈로그로
 호출한다. 운영에서는 두 공급자 모두 `CanonicalAiTagAnalyzer`를 사용하므로
-`AnalysisService`가 의존하는 `AiTagAnalyzer` 계약은 바뀌지 않는다.
+`AnalysisService`는 동일한 `AiTagAnalyzer` 계약으로 가먼트피스와 canonical 태그를 받는다.
 
 모델 응답은 crop UI 범위인 `TOP`, `BOTTOM`, `DRESS`, `OUTER` 가먼트피스별 객체를 반환하며
 네 키를 모두 required로 포함한다. 보이지 않는 피스는 `null`을 사용하고 non-null garment는
-1~3개만 허용한다. 각 객체는 다음 두 목록을 함께 가진다. 프롬프트는 각 피스에서
+정확히 1개만 허용한다. 해당 객체는 다음 두 목록을 함께 가진다. 프롬프트는 단일 피스에서
 `SILHOUETTE`, `COLOR`, `DETAIL`, `STYLE`, `MATERIAL`을 독립적으로 확인한다.
 
 AI 결과의 `GarmentPiece`는 모델 결과를 묶기 위한 `TOP`, `BOTTOM`, `DRESS`, `OUTER` 계약이다.
@@ -22,9 +22,9 @@ V25 태그 마스터의 적용 복종 `TagTargetClothing`은 `TOP`, `PANTS`, `SK
 
 `suggestedTags`는 분석 결과나 태그 테이블에 자동 저장하지 않는다. 유사어 정규화와 중복
 병합을 거친 뒤 관리자가 승인한 후보만 별도 카탈로그 변경으로 반영한다. 현재
-`AiTagAnalyzer`와 분석 리포트 DB 계약에는 가먼트피스 컬럼이 없으므로 운영 저장 경계에서는
-피스별 canonical 태그를 중복 제거한 합집합으로 변환한다. 가먼트피스 구조는 모델 응답과
-블라인드 평가 결과에 보존한다.
+`AiTagAnalyzer`는 가먼트피스를 canonical 태그와 함께 상위 계층에 반환하지만 분석 리포트 DB
+계약에는 가먼트피스 컬럼이 없다. `AnalysisService`는 현재 canonical 태그만 저장하며,
+가먼트피스 구조는 모델 응답과 블라인드 평가 결과 및 서비스 반환 경계에 보존한다.
 
 ## 운영 공급자 선택
 
