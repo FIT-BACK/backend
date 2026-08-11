@@ -297,7 +297,7 @@ public class AnalysisReportSaveService {
 
     private List<SavedAnalysisItemResponse> selectedItems(ClosetSave save) {
         return savedAnalysisItemRepository
-                .findByClosetSaveIdOrderByCategoryAsc(save.getId())
+                .findByClosetSaveIdOrderByIdAsc(save.getId())
                 .stream()
                 .map(SavedAnalysisItemResponse::from)
                 .toList();

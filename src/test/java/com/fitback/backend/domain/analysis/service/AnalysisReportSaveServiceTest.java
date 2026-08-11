@@ -309,7 +309,7 @@ class AnalysisReportSaveServiceTest {
                 ClosetTargetType.ANALYSIS_REPORT,
                 501L
         )).thenReturn(Optional.of(save));
-        when(savedAnalysisItemRepository.findByClosetSaveIdOrderByCategoryAsc(900L))
+        when(savedAnalysisItemRepository.findByClosetSaveIdOrderByIdAsc(900L))
                 .thenReturn(List.of());
 
         AnalysisReportSaveService.SaveOutcome outcome = service.save(
@@ -324,6 +324,53 @@ class AnalysisReportSaveServiceTest {
         verify(recommendedItemRepository, never())
                 .findByReportIdOrderByCategoryAscRankNoAsc(any());
         verify(closetSaveRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void reReadingAnExistingSavePreservesOriginalInsertionOrderNotCategoryOrder() {
+        // 이미 저장된 걸 재조회할 때도(재저장 시도 시 기존 저장 그대로 반환하는 경로),
+        // 최초 저장 당시 순서(BOTTOM 먼저, TOP 나중)를 그대로 유지해야 한다 — enum 선언
+        // 순서(TOP이 BOTTOM보다 앞)로 재조합되면 안 된다.
+        Member member = member(1L);
+        AnalysisReport report = currentReport(501L, member);
+        ClosetSave save = ClosetSave.create(member, ClosetTargetType.ANALYSIS_REPORT, 501L);
+        ReflectionTestUtils.setField(save, "id", 900L);
+        ReflectionTestUtils.setField(
+                save,
+                "createdAt",
+                LocalDateTime.parse("2026-07-26T09:00:00")
+        );
+        Product bottom = product(202L, ProductCategory.BOTTOM, "슬랙스", new BigDecimal("34900"));
+        Product top = product(101L, ProductCategory.TOP, "셔츠", new BigDecimal("28900"));
+        SavedAnalysisItem bottomItem = SavedAnalysisItem.from(
+                save,
+                recommendation(report, bottom, ProductCategory.BOTTOM, 1)
+        );
+        SavedAnalysisItem topItem = SavedAnalysisItem.from(
+                save,
+                recommendation(report, top, ProductCategory.TOP, 1)
+        );
+
+        when(analysisReportRepository.findOwnedReportForSave(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
+                1L,
+                ClosetTargetType.ANALYSIS_REPORT,
+                501L
+        )).thenReturn(Optional.of(save));
+        // BOTTOM이 먼저 저장됐던 순서 그대로 반환(=ID/삽입 순서 기준) — 카테고리 오름차순이면 TOP이 먼저 와야 함
+        when(savedAnalysisItemRepository.findByClosetSaveIdOrderByIdAsc(900L))
+                .thenReturn(List.of(bottomItem, topItem));
+
+        AnalysisReportSaveService.SaveOutcome outcome = service.save(
+                1L,
+                501L,
+                request(selected(ProductCategory.TOP, 101L))
+        );
+
+        assertThat(outcome.response().selectedItems())
+                .extracting("category")
+                .containsExactly(ProductCategory.BOTTOM, ProductCategory.TOP);
     }
 
     private AnalysisReportSaveRequest request(
