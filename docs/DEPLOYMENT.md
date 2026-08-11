@@ -477,13 +477,17 @@ version `0`으로 baseline한 뒤 `V1__create_image_table.sql`,
 `V22__seed_member_style_tags.sql`,
 `V23__classify_style_tags.sql`,
 `V24__create_login_attempt_table.sql`,
-`V25__seed_tag_master_taxonomy.sql`을 순서대로 적용하고 Hibernate
+`V25__seed_tag_master_taxonomy.sql`,
+`V26__add_trend_tag_relevance_weight.sql`,
+`V27__seed_trend_contents.sql`을 순서대로 적용하고 Hibernate
 `ddl-auto=validate`를 수행한다. 새 빈 DB에서는 선행 도메인 테이블(`member`,
 `analysis_report` 등)이 먼저 준비되어 있어야 한다.
 V23은 `미니멀`, `스트릿`, `러블리`, `캐주얼`, `포멀`의 타입을 `DETAIL`에서
 `STYLE`로 재분류한다.
 V25는 확정 태그 43개와 복종 매핑 70개를 멱등하게 구성하고 legacy `베이지톤` 참조를
 `베이지`로 수렴시킨다.
+V27은 트렌드 콘텐츠용 STYLE 태그 4개를 `ALL` 대상으로 추가하므로 현재 migration 완료
+contract는 태그 47개와 복종 매핑 74개다.
 
 ### V23 실패 migration 복구
 
@@ -566,7 +570,7 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | rollback 자체 실패 | mock test | 비정상 종료 코드 반환 |
 | 활성화 실패 및 INT/TERM | mock test | 직전 release 복원 |
 | DB/JWT/HMAC/Kakao/메일 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
-| Flyway V1~V25 MySQL 적용 | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4에 모든 migration 적용, 태그 43개·복종 매핑 70개와 기존 주요 제약조건 확인 |
+| Flyway V1~V27 MySQL 적용 | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4에 모든 migration 적용, 태그 47개·복종 매핑 74개가 production evaluation catalog와 정확히 일치하는지 및 기존 주요 제약조건 확인 |
 | V21 notification 세부 DDL assertion | 미구현 | migration 적용 성공은 확인하지만 notification 컬럼·FK·index를 별도로 조회하는 assertion은 아직 없음 |
 
 검증 명령:
