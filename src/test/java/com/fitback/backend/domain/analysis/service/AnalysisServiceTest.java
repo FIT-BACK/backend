@@ -40,6 +40,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -133,6 +134,10 @@ class AnalysisServiceTest {
         assertThat(response.imageUrl()).isEqualTo("https://cdn.example.com/signed-image");
         assertThat(response.matchPercentage()).isEqualTo(50);
         assertThat(response.suggestedTags()).extracting("tagName").containsExactly("미니멀");
+        ArgumentCaptor<AnalysisReport> reportCaptor =
+                ArgumentCaptor.forClass(AnalysisReport.class);
+        verify(analysisReportRepository).save(reportCaptor.capture());
+        assertThat(reportCaptor.getValue().getGarmentPiece()).isEqualTo(GarmentPiece.TOP);
     }
 
     @Test
@@ -169,6 +174,38 @@ class AnalysisServiceTest {
                         org.assertj.core.groups.Tuple.tuple(10L, "미니멀"),
                         org.assertj.core.groups.Tuple.tuple(20L, "와이드핏")
                 );
+        ArgumentCaptor<AnalysisReport> reportCaptor =
+                ArgumentCaptor.forClass(AnalysisReport.class);
+        verify(analysisReportRepository).save(reportCaptor.capture());
+        assertThat(reportCaptor.getValue().getGarmentPiece()).isEqualTo(GarmentPiece.OUTER);
+    }
+
+    @Test
+    void createsReportWithoutGarmentPieceWhenAnalyzerDoesNotProvideOne() {
+        Member member = member(1L);
+        MockMultipartFile image = new MockMultipartFile(
+                "image",
+                "look.jpg",
+                "image/jpeg",
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF}
+        );
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(imageStorage.store(image)).thenReturn("/uploads/look.jpg");
+        when(aiTagAnalyzer.analyze(image)).thenReturn(
+                AiTagAnalysisResult.withoutGarmentPiece(List.of())
+        );
+        when(analysisReportRepository.save(any(AnalysisReport.class))).thenAnswer(invocation -> {
+            AnalysisReport report = invocation.getArgument(0);
+            ReflectionTestUtils.setField(report, "id", 503L);
+            return report;
+        });
+
+        analysisService.create(1L, image);
+
+        ArgumentCaptor<AnalysisReport> reportCaptor =
+                ArgumentCaptor.forClass(AnalysisReport.class);
+        verify(analysisReportRepository).save(reportCaptor.capture());
+        assertThat(reportCaptor.getValue().getGarmentPiece()).isNull();
     }
 
     @Test
