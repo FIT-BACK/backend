@@ -61,11 +61,23 @@ FITBACK_AI_REQUEST_TIMEOUT=PT30S \
 않고 재검증할 수 있다. 이 identity가 없는 기존 결과는 historical artifact이며 현재 gate의
 입력으로 인정하지 않는다.
 
-평가 runner는 동일한 prompt/request를 유지한 채 provider HTTP `500`, `502`, `503`, `504`에만
-최대 2회 추가 시도한다. 첫 retry는 `250–500ms`, 두 번째 retry는 `500–1000ms`의 짧은
-exponential backoff+jitter를 사용한다. 4xx/429, timeout·transport, response parsing·schema·canonical
-실패는 자동 retry하지 않는다. production `OpenAiTagModelClient` 호출 경로에는 이 정책이 적용되지 않는다.
-backoff 대기 중 인터럽트되면 남은 시도를 중단하고 `EVALUATION_RETRY_INTERRUPTED`를 기록한다.
+평가 runner는 동일한 prompt/request를 유지한 채 최대 2회 추가 시도한다. provider HTTP `500`,
+`502`, `503`, `504`는 기존과 동일하게 첫 retry `250–500ms`, 두 번째 retry `500–1000ms`의
+짧은 exponential backoff+jitter를 사용한다. HTTP `429`는 evaluator에서만 다음 조건으로 제한한다.
+
+- `Retry-After` 또는 소진된 request/token/project-token 차원의 `x-ratelimit-reset-*` 대기값이
+  있으면 provider가 제시한 최소 대기시간을 줄이지 않고 `250–500ms` jitter를 더한다. 관측된
+  대기값이 `60s`를 넘으면 자동 retry하지 않는다.
+- 안전하게 분류된 `rate_limit_exceeded`인데 유효한 대기 header가 없으면 첫 retry `5–10s`,
+  두 번째 retry `10–20s`의 exponential backoff+jitter를 사용한다.
+- `credit_balance_exhausted`, organization/project spend limit, organization usage limit,
+  `insufficient_quota`는 대기로 해소되지 않으므로 retry하지 않는다. 알 수 없는 429도 유효한
+  대기 header가 없으면 retry하지 않는다.
+
+모든 provider retry를 합쳐 총 시도는 최대 3회이고 retry sleep 예산은 최대 `121s`다. 그 밖의
+4xx, timeout·transport, response parsing·schema·canonical 실패는 자동 retry하지 않는다.
+production `OpenAiTagModelClient`의 P1 정책은 그대로이며 429를 retry하지 않는다. backoff 대기 중
+인터럽트되면 남은 시도를 중단하고 `EVALUATION_RETRY_INTERRUPTED`를 기록한다.
 
 ## 결과 해석
 
@@ -83,6 +95,9 @@ backoff 대기 중 인터럽트되면 남은 시도를 중단하고 `EVALUATION_
 - 각 사례에는 총 호출 횟수 `attemptCount`와 최종 평가 상태 `finalStatus`(`SUCCESS` 또는 `FAILED`)를
   기록한다. provider 실패 시 `providerHttpStatus`, `providerErrorCategory`, `responseParsingCategory`는
   최종 시도의 안전한 메타데이터만 보존하며, raw response·API key·image bytes/data URL은 기록하지 않는다.
+- 각 provider 시도의 `attempts`에는 allowlist로 제한한 `providerErrorCode`와 숫자로 파싱·상한 검증한
+  `Retry-After`, `x-ratelimit-remaining-*`, `x-ratelimit-reset-*`만 기록할 수 있다. 임의 header,
+  provider error message/type, raw header 값은 기록하지 않는다.
 
 추천 rank 및 reasonCode 평가는 이 runner의 범위에 포함하지 않는다.
 

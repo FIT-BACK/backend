@@ -11,6 +11,8 @@ import com.fitback.backend.external.aitag.config.AiTagProperties;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
@@ -24,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
@@ -39,7 +43,20 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     private static final long RETRY_DELAY_MIN_MILLIS = 250L;
     private static final long RETRY_DELAY_RANGE_MILLIS = 251L;
     private static final long MIN_RETRY_ATTEMPT_MILLIS = 250L;
+    private static final long MAX_RATE_LIMIT_DURATION_MILLIS = Duration.ofHours(24).toMillis();
+    private static final int MAX_RATE_LIMIT_HEADER_LENGTH = 64;
     private static final Set<Integer> RETRYABLE_PROVIDER_STATUSES = Set.of(500, 502, 503, 504);
+    private static final Set<String> SAFE_PROVIDER_ERROR_CODES = Set.of(
+            "rate_limit_exceeded",
+            "credit_balance_exhausted",
+            "organization_spend_limit_exceeded",
+            "project_spend_limit_exceeded",
+            "organization_usage_limit_exceeded",
+            "insufficient_quota"
+    );
+    private static final Pattern RATE_LIMIT_DURATION_COMPONENT = Pattern.compile(
+            "(\\d+(?:\\.\\d+)?)(ms|s|m|h)"
+    );
     private static final String UNAVAILABLE_X_REQUEST_ID = AiTagRequestIdSanitizer.UNAVAILABLE;
     private static final Logger log = LoggerFactory.getLogger(OpenAiTagModelClient.class);
 
@@ -262,7 +279,8 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             log.warn(
                     "AI tag provider returned an error. provider=openai model={} httpStatus={} "
                             + "responseStatus={} incompleteDetailsReason={} outputTypes={} contentTypes={} "
-                            + "providerErrorCategory={} elapsedMillis={} attemptCount={} "
+                            + "providerErrorCategory={} providerErrorCode={} rateLimitMetadata={} "
+                            + "elapsedMillis={} attemptCount={} "
                             + "attemptLatencyMillis={} xRequestId={}",
                     properties.model(),
                     response.statusCode(),
@@ -271,6 +289,8 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     metadata.outputTypes(),
                     metadata.contentTypes(),
                     providerErrorCategory(response.statusCode()),
+                    metadata.providerErrorCode(),
+                    response.rateLimitMetadata(),
                     elapsedMillis(startedAt),
                     attemptCount,
                     elapsedMillis(startedAt),
@@ -278,7 +298,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             );
             throw providerFailure(
                     response.statusCode(), providerErrorCategory(response.statusCode()), null, startedAt,
-                    response.xRequestId()
+                    response.xRequestId(), metadata.providerErrorCode(), response.rateLimitMetadata()
             );
         }
         JsonNode root;
@@ -436,8 +456,14 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         return new ResponseMetadata(
                 safeToken(root.path("incomplete_details").path("reason")),
                 typeNames(root.path("output")),
-                contentTypeNames(root.path("output"))
+                contentTypeNames(root.path("output")),
+                safeProviderErrorCode(root.path("error").path("code"))
         );
+    }
+
+    private static String safeProviderErrorCode(JsonNode node) {
+        String code = safeToken(node);
+        return SAFE_PROVIDER_ERROR_CODES.contains(code) ? code : "UNKNOWN";
     }
 
     private static List<String> typeNames(JsonNode outputs) {
@@ -678,11 +704,12 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     private record ResponseMetadata(
             String incompleteDetailsReason,
             List<String> outputTypes,
-            List<String> contentTypes
+            List<String> contentTypes,
+            String providerErrorCode
     ) {
 
         private static ResponseMetadata unavailable() {
-            return new ResponseMetadata("UNKNOWN", List.of(), List.of());
+            return new ResponseMetadata("UNKNOWN", List.of(), List.of(), "UNKNOWN");
         }
     }
 
@@ -707,7 +734,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     ) {
         return providerFailure(
                 providerHttpStatus, providerErrorCategory, responseParsingCategory, startedAt,
-                UNAVAILABLE_X_REQUEST_ID
+                UNAVAILABLE_X_REQUEST_ID, "UNKNOWN", null
         );
     }
 
@@ -723,7 +750,29 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                 providerErrorCategory,
                 responseParsingCategory,
                 elapsedMillis(startedAt),
-                sanitizeXRequestId(xRequestId)
+                sanitizeXRequestId(xRequestId),
+                "UNKNOWN",
+                null
+        );
+    }
+
+    private ProviderFailure providerFailure(
+            Integer providerHttpStatus,
+            String providerErrorCategory,
+            String responseParsingCategory,
+            long startedAt,
+            String xRequestId,
+            String providerErrorCode,
+            RateLimitMetadata rateLimitMetadata
+    ) {
+        return new ProviderFailure(
+                providerHttpStatus,
+                providerErrorCategory,
+                responseParsingCategory,
+                elapsedMillis(startedAt),
+                sanitizeXRequestId(xRequestId),
+                providerErrorCode,
+                rateLimitMetadata
         );
     }
 
@@ -734,13 +783,17 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         private final String responseParsingCategory;
         private final long elapsedMillis;
         private final String xRequestId;
+        private final String providerErrorCode;
+        private final RateLimitMetadata rateLimitMetadata;
 
         private ProviderFailure(
                 Integer providerHttpStatus,
                 String providerErrorCategory,
                 String responseParsingCategory,
                 long elapsedMillis,
-                String xRequestId
+                String xRequestId,
+                String providerErrorCode,
+                RateLimitMetadata rateLimitMetadata
         ) {
             super(ErrorCode.ANALYSIS_NOT_READY);
             this.providerHttpStatus = providerHttpStatus;
@@ -748,6 +801,11 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             this.responseParsingCategory = responseParsingCategory;
             this.elapsedMillis = elapsedMillis;
             this.xRequestId = xRequestId;
+            this.providerErrorCode = providerErrorCode != null
+                    && SAFE_PROVIDER_ERROR_CODES.contains(providerErrorCode)
+                    ? providerErrorCode
+                    : "UNKNOWN";
+            this.rateLimitMetadata = rateLimitMetadata;
         }
 
         public Integer providerHttpStatus() {
@@ -768,6 +826,14 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
 
         public String xRequestId() {
             return xRequestId;
+        }
+
+        public String providerErrorCode() {
+            return providerErrorCode;
+        }
+
+        public RateLimitMetadata rateLimitMetadata() {
+            return rateLimitMetadata;
         }
     }
 
@@ -792,9 +858,18 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         long nextLong(long boundExclusive);
     }
 
-    record TransportResponse(int statusCode, String body, String xRequestId) {
+    record TransportResponse(
+            int statusCode,
+            String body,
+            String xRequestId,
+            RateLimitMetadata rateLimitMetadata
+    ) {
         TransportResponse(int statusCode, String body) {
-            this(statusCode, body, UNAVAILABLE_X_REQUEST_ID);
+            this(statusCode, body, UNAVAILABLE_X_REQUEST_ID, null);
+        }
+
+        TransportResponse(int statusCode, String body, String xRequestId) {
+            this(statusCode, body, xRequestId, null);
         }
 
         TransportResponse {
@@ -808,6 +883,136 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
 
     static String sanitizeXRequestId(String value) {
         return AiTagRequestIdSanitizer.sanitize(value);
+    }
+
+    static RateLimitMetadata rateLimitMetadata(HttpHeaders headers) {
+        if (headers == null) {
+            return null;
+        }
+        RateLimitMetadata metadata = new RateLimitMetadata(
+                parseRetryAfterMillis(headers.firstValue("retry-after").orElse(null)),
+                parseNonNegativeLong(headers.firstValue("x-ratelimit-remaining-requests").orElse(null)),
+                parseNonNegativeLong(headers.firstValue("x-ratelimit-remaining-tokens").orElse(null)),
+                parseDurationMillis(headers.firstValue("x-ratelimit-reset-requests").orElse(null)),
+                parseDurationMillis(headers.firstValue("x-ratelimit-reset-tokens").orElse(null)),
+                parseNonNegativeLong(
+                        headers.firstValue("x-ratelimit-remaining-project-tokens").orElse(null)
+                ),
+                parseDurationMillis(
+                        headers.firstValue("x-ratelimit-reset-project-tokens").orElse(null)
+                )
+        );
+        return metadata.isEmpty() ? null : metadata;
+    }
+
+    private static Long parseRetryAfterMillis(String value) {
+        if (!isBoundedHeaderValue(value)) {
+            return null;
+        }
+        try {
+            BigDecimal millis = new BigDecimal(value).multiply(BigDecimal.valueOf(1_000L));
+            return boundedDurationMillis(millis);
+        } catch (NumberFormatException | ArithmeticException exception) {
+            return null;
+        }
+    }
+
+    private static Long parseNonNegativeLong(String value) {
+        if (!isBoundedHeaderValue(value) || !value.chars().allMatch(Character::isDigit)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    private static Long parseDurationMillis(String value) {
+        if (!isBoundedHeaderValue(value)) {
+            return null;
+        }
+        Matcher matcher = RATE_LIMIT_DURATION_COMPONENT.matcher(value);
+        int position = 0;
+        BigDecimal totalMillis = BigDecimal.ZERO;
+        try {
+            while (matcher.find()) {
+                if (matcher.start() != position) {
+                    return null;
+                }
+                BigDecimal component = new BigDecimal(matcher.group(1));
+                BigDecimal multiplier = switch (matcher.group(2)) {
+                    case "ms" -> BigDecimal.ONE;
+                    case "s" -> BigDecimal.valueOf(1_000L);
+                    case "m" -> BigDecimal.valueOf(60_000L);
+                    case "h" -> BigDecimal.valueOf(3_600_000L);
+                    default -> throw new IllegalStateException("unexpected duration unit");
+                };
+                totalMillis = totalMillis.add(component.multiply(multiplier));
+                if (totalMillis.compareTo(BigDecimal.valueOf(MAX_RATE_LIMIT_DURATION_MILLIS)) > 0) {
+                    return null;
+                }
+                position = matcher.end();
+            }
+            if (position == 0 || position != value.length()) {
+                return null;
+            }
+            return boundedDurationMillis(totalMillis);
+        } catch (NumberFormatException | ArithmeticException exception) {
+            return null;
+        }
+    }
+
+    private static boolean isBoundedHeaderValue(String value) {
+        return value != null && !value.isBlank() && value.length() <= MAX_RATE_LIMIT_HEADER_LENGTH;
+    }
+
+    private static Long boundedDurationMillis(BigDecimal millis) {
+        if (millis.signum() < 0
+                || millis.compareTo(BigDecimal.valueOf(MAX_RATE_LIMIT_DURATION_MILLIS)) > 0) {
+            return null;
+        }
+        return millis.setScale(0, RoundingMode.CEILING).longValueExact();
+    }
+
+    public record RateLimitMetadata(
+            Long retryAfterMillis,
+            Long remainingRequests,
+            Long remainingTokens,
+            Long resetRequestsMillis,
+            Long resetTokensMillis,
+            Long remainingProjectTokens,
+            Long resetProjectTokensMillis
+    ) {
+        public RateLimitMetadata {
+            retryAfterMillis = boundedDuration(retryAfterMillis);
+            remainingRequests = nonNegative(remainingRequests);
+            remainingTokens = nonNegative(remainingTokens);
+            resetRequestsMillis = boundedDuration(resetRequestsMillis);
+            resetTokensMillis = boundedDuration(resetTokensMillis);
+            remainingProjectTokens = nonNegative(remainingProjectTokens);
+            resetProjectTokensMillis = boundedDuration(resetProjectTokensMillis);
+        }
+
+        private static Long boundedDuration(Long value) {
+            return value != null && value >= 0L && value <= MAX_RATE_LIMIT_DURATION_MILLIS
+                    ? value
+                    : null;
+        }
+
+        private static Long nonNegative(Long value) {
+            return value != null && value >= 0L ? value : null;
+        }
+
+        private boolean isEmpty() {
+            return retryAfterMillis == null
+                    && remainingRequests == null
+                    && remainingTokens == null
+                    && resetRequestsMillis == null
+                    && resetTokensMillis == null
+                    && remainingProjectTokens == null
+                    && resetProjectTokensMillis == null;
+        }
     }
 
     private static final class JdkTransport implements Transport {
@@ -836,7 +1041,8 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
                     HttpResponse.BodyHandlers.ofString()
             );
             return new TransportResponse(
-                    response.statusCode(), response.body(), sanitizeXRequestId(response.headers())
+                    response.statusCode(), response.body(), sanitizeXRequestId(response.headers()),
+                    rateLimitMetadata(response.headers())
             );
         }
     }
