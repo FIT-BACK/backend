@@ -4,15 +4,15 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 기준일 | 2026-08-05 |
-| 적용 범위 | 회원·프로필 이미지, 이미지 생명주기, 분석·추천·상품·저장·룩북, 알림 설정·이력·알림 목록 |
-| 기준 코드 | `develop` `4870b52`, JPA Entity, Flyway V1~V25 |
+| 기준일 | 2026-08-11 |
+| 적용 범위 | 회원·프로필 이미지, 이미지 생명주기, 분석·추천·상품·저장·룩북·트렌드, 알림 설정·이력·알림 목록 |
+| 기준 코드 | `develop` `74cf8638`, JPA Entity, Flyway V1~V27 |
 | 연동 참고 | Recommendation은 기존 분석 입력을 읽거나 요청의 확정 태그·매칭값을 멱등 반영 |
 | 문서 성격 | 현재 애플리케이션·migration이 보장하는 계약과 의도적인 scalar 참조 경계를 기록 |
 
 이 문서는 기존 Recommendation/Product 설계에 현재 구현된 이미지, 회원 프로필,
 알림 설정·동의 이력·알림 테이블을 포함한다. 운영 DDL의 단일 출처는
-`src/main/resources/db/migration` 아래 V1~V25이며, 이 문서는 DDL을 대체하지 않는다.
+`src/main/resources/db/migration` 아래 V1~V27이며, 이 문서는 DDL을 대체하지 않는다.
 
 ---
 
@@ -840,6 +840,9 @@ Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
   추가·재분류한다.
 - V25는 STYLE 5개, SILHOUETTE 12개, MATERIAL 8개, DETAIL 10개, COLOR 8개의 최종
   43개 taxonomy와 복종 매핑 70개를 구성한다.
+- V27은 트렌드 콘텐츠 계약에 필요한 STYLE 4개(`뉴트럴`, `페미닌`, `데일리룩`,
+  `오피스룩`)를 `ALL` 대상으로 추가한다. 현재 migration 완료 상태는 태그 47개와 복종 매핑
+  74개다.
 - prototype 분석기는 최종 taxonomy의 `미니멀(STYLE)`, `와이드핏(SILHOUETTE)`,
   `베이지(COLOR)`를 결정적 end-to-end 검증 데이터로 사용한다.
 - DB에 legacy `베이지톤`이 있으면 tag ID와 참조 관계를 보존하면서 `베이지`로 수렴시킨다.
@@ -859,7 +862,7 @@ Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
 ### 7.8 트렌드
 
 - V26은 `trend_tag.relevance_weight`와 양수 CHECK 제약을 추가한다.
-- V27은 프론트에서 참조하는 트렌드 1~6번과 관련 태그 가중치를 등록한다.
+- V27은 프론트에서 참조하는 트렌드 1~6번, STYLE 태그 4개와 관련 태그 가중치를 등록한다.
 
 ---
 

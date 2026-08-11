@@ -1419,6 +1419,51 @@ if [ "$tag_taxonomy_contract" != '9:12:8:10:8:47:74' ]; then
   exit 1
 fi
 
+production_catalog_path='scripts/poc/ai-tag-evaluation/canonical-catalog.production.json'
+expected_production_tag_set="$(python3 - "$production_catalog_path" <<'PY' | LC_ALL=C sort
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as catalog_file:
+    catalog = json.load(catalog_file)
+
+allowed_types = {"STYLE", "SILHOUETTE", "MATERIAL", "DETAIL", "COLOR"}
+if not isinstance(catalog, list) or len(catalog) != 47:
+    raise SystemExit("Production canonical catalog must contain exactly 47 tags")
+
+pairs = []
+for item in catalog:
+    if not isinstance(item, dict) or set(item) != {"type", "name"}:
+        raise SystemExit("Production canonical catalog entries must contain type and name only")
+    tag_type = item["type"]
+    tag_name = item["name"]
+    if tag_type not in allowed_types or not isinstance(tag_name, str) or not tag_name.strip():
+        raise SystemExit("Production canonical catalog contains an invalid tag")
+    pairs.append((tag_type, tag_name))
+
+if len(set(pairs)) != len(pairs):
+    raise SystemExit("Production canonical catalog tags must be unique by type and name")
+
+for tag_type, tag_name in pairs:
+    print(f"{tag_name}|{tag_type}")
+PY
+)"
+
+actual_production_tag_set="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT DISTINCT CONCAT(t.tag_name, '|', t.tag_type)
+      FROM fitback.tag t
+      JOIN fitback.tag_target_clothing target ON target.tag_id = t.tag_id;" \
+  | LC_ALL=C sort)"
+
+if [ "$actual_production_tag_set" != "$expected_production_tag_set" ]; then
+  echo 'Migrated tag set differs from the production evaluation catalog:' >&2
+  diff -u <(printf '%s\n' "$expected_production_tag_set") \
+    <(printf '%s\n' "$actual_production_tag_set") >&2 || true
+  exit 1
+fi
+
 actual_tag_taxonomy="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CONCAT(

@@ -1258,12 +1258,12 @@ DTO를 반환한다. `isSaved`, `isLiked` 필드는 항상 포함하며 익명 �
 
 `tagType`은 `STYLE`, `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 중 하나다.
 `targetClothing` 값은 `TOP`, `PANTS`, `SKIRT`, `DRESS`, `OUTER`, `ALL`이다. 개별 복종 배열은
-앞의 다섯 값 순서로 정렬하고, `ALL`은 개별 복종 값과 함께 반환하지 않는다. 마스터는 STYLE
-5개, SILHOUETTE 12개, MATERIAL 8개, DETAIL 10개, COLOR 8개로 총 43개다.
+앞의 다섯 값 순서로 정렬하고, `ALL`은 개별 복종 값과 함께 반환하지 않는다. V27 적용 후
+마스터는 STYLE 9개, SILHOUETTE 12개, MATERIAL 8개, DETAIL 10개, COLOR 8개로 총 47개다.
 
 | 타입 | 태그와 적용 복종 |
 | --- | --- |
-| `STYLE` | 미니멀, 스트릿, 러블리, 캐주얼, 포멀 — 모두 `ALL` |
+| `STYLE` | 미니멀, 스트릿, 러블리, 캐주얼, 포멀, 뉴트럴, 페미닌, 데일리룩, 오피스룩 — 모두 `ALL` |
 | `SILHOUETTE` | 와이드핏(`PANTS`), 슬림핏(`TOP/PANTS/SKIRT/DRESS/OUTER`), 오버사이즈(`TOP/DRESS/OUTER`), 레귤러핏(`TOP/PANTS/SKIRT/DRESS/OUTER`), A라인(`SKIRT/DRESS/OUTER`), H라인(`SKIRT/DRESS`), 크롭(`TOP/DRESS/OUTER`), 로우라이즈·하이라이즈·숏기장·미디기장·롱기장(`PANTS/SKIRT`) |
 | `MATERIAL` | 데님, 니트, 코튼, 린넨, 가죽, 트위드, 시폰, 우븐/시어 — 모두 `ALL` |
 | `DETAIL` | 브이넥·터틀넥·라운드넥(`TOP/DRESS/OUTER`), 러플/프릴·지퍼·벨트·포켓·슬릿·단추(`ALL`), 턱(`PANTS/SKIRT`) |

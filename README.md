@@ -139,7 +139,7 @@ CREATE DATABASE fitback;
 쇼핑 공급자 contract test도 외부 네트워크 없이 fixture Adapter를 기준으로 실행합니다.
 GitHub Actions의 Backend CI는 이 Gradle 빌드와 함께
 `bash scripts/ci/test_mysql_migrations.sh`를 실행하여 MySQL 8.4 컨테이너에서
-현재 Flyway `V1`~`V25` 마이그레이션과 주요 제약조건을 검증합니다.
+현재 Flyway `V1`~`V27` 마이그레이션과 주요 제약조건을 검증합니다.
 ECR 이미지 발행, Nginx 공개 진입점, 원격 배포 payload 계약까지 포함한 전체 CI 명령은
 [AGENTS.md의 CI 규칙](AGENTS.md#15-ci-규칙)과
 [workflow 정의](.github/workflows/backend-ci.yml)를 기준으로 합니다.
