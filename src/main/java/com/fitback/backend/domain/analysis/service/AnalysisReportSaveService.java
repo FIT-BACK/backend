@@ -238,10 +238,13 @@ public class AnalysisReportSaveService {
             }
         }
 
+        // 카테고리마다 하나씩 고르도록 강제하지 않는다 — 마음에 드는 상품 1개만 골라도
+        // 저장할 수 있어야 하므로, 요청된 카테고리가 추천 결과 안에 실제로 존재하는지만
+        // 검증한다(추천에 없는 카테고리를 요청하면 거부).
         Set<ProductCategory> availableCategories = recommendedItems.stream()
                 .map(RecommendedItem::getCategory)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (!availableCategories.equals(requestedByCategory.keySet())) {
+        if (!availableCategories.containsAll(requestedByCategory.keySet())) {
             throw invalidSelection();
         }
 
@@ -253,13 +256,14 @@ public class AnalysisReportSaveService {
                         ),
                         Function.identity()
                 ));
-        return availableCategories.stream()
-                .map(category -> {
-                    AnalysisReportSaveRequest.SelectedItem requested =
-                            requestedByCategory.get(category);
+        // requestedByCategory는 EnumMap이라 entrySet()이 요청 순서가 아니라 enum 선언
+        // 순서로 순회된다 — 응답의 selectedItems 순서가 요청 순서와 달라질 수 있으므로,
+        // 중복 검증에는 requestedByCategory를 쓰되 조회는 원래 요청 순서(request.selectedItems())를 순회한다.
+        return request.selectedItems().stream()
+                .map(selectedItem -> {
                     RecommendedItem selected = itemsBySelection.get(new SelectionKey(
-                            category,
-                            requested.productId()
+                            selectedItem.category(),
+                            selectedItem.productId()
                     ));
                     if (selected == null) {
                         throw invalidSelection();
@@ -293,7 +297,7 @@ public class AnalysisReportSaveService {
 
     private List<SavedAnalysisItemResponse> selectedItems(ClosetSave save) {
         return savedAnalysisItemRepository
-                .findByClosetSaveIdOrderByCategoryAsc(save.getId())
+                .findByClosetSaveIdOrderByIdAsc(save.getId())
                 .stream()
                 .map(SavedAnalysisItemResponse::from)
                 .toList();

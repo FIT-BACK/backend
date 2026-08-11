@@ -46,7 +46,8 @@ class OpenAiTagModelClientTest {
                         "evidence", "하의의 짙은 청색 표면"
                 ))
         ));
-        garments.put("SHOES", null);
+        garments.put("DRESS", null);
+        garments.put("OUTER", null);
         String outputText = objectMapper.writeValueAsString(Map.of("garments", garments));
         String responseBody = objectMapper.writeValueAsString(Map.of(
                 "output", List.of(Map.of(
@@ -761,7 +762,8 @@ class OpenAiTagModelClientTest {
                 "canonicalTags", List.of(Map.of("type", "MATERIAL", "name", "데님")),
                 "suggestedTags", List.of()
         ));
-        garments.put("SHOES", null);
+        garments.put("DRESS", null);
+        garments.put("OUTER", null);
         String outputText = objectMapper.writeValueAsString(Map.of(
                 "garments", garments
         ));

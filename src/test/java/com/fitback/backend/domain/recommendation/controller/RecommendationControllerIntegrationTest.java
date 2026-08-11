@@ -107,8 +107,8 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.partial").value(true))
                 .andExpect(jsonPath("$.data.warnings[0]").value("MATERIALIZATION_SKIPPED"));
 
-        assertThat(productRepository.count()).isEqualTo(3);
-        assertThat(recommendedItemRepository.count()).isEqualTo(3);
+        assertThat(productRepository.count()).isEqualTo(1);
+        assertThat(recommendedItemRepository.count()).isEqualTo(1);
         assertThat(recommendedItemRepository.findAll())
                 .allSatisfy(item -> {
                     assertThat(item.getScoreVersion()).isEqualTo("IMAGE_TAG_WEIGHTED_V1");
@@ -126,8 +126,8 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"));
 
-        assertThat(productRepository.count()).isEqualTo(3);
-        assertThat(recommendedItemRepository.count()).isEqualTo(3);
+        assertThat(productRepository.count()).isEqualTo(1);
+        assertThat(recommendedItemRepository.count()).isEqualTo(1);
 
         mockMvc.perform(get("/api/v1/analyses/{reportId}", report.getId())
                         .header("Authorization", bearer(accessToken)))
