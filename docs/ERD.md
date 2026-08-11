@@ -553,7 +553,7 @@ V17 migration은 `closet_save`와 `trend_tag`의 같은 복합 키 중 가장 �
 | --- | --- | --- | --- |
 | `image_url` | `VARCHAR(2048)` | Y | multipart 호환 이미지 URL. `original_image_id`와 상호 배타 |
 | `original_image_id` | `VARCHAR(36)` | Y | Presigned 업로드 이미지 ID |
-| `garment_piece` | `VARCHAR(20)` | Y | 실제 AI가 판별한 단일 의류 분류. 기존·Demo·Prototype 결과는 `NULL` |
+| `garment_piece` | `VARCHAR(20)` | Y | 단일 의류 분류. 기존 리포트는 `NULL`일 수 있고 Demo·Prototype 신규 결과는 `TOP` 저장 |
 | `deleted_at` | `DATETIME(6)` | Y | soft delete 시각 |
 | `purge_after` | `DATETIME(6)` | Y | 물리 정리 가능 시각 |
 | `recommendation_input_revision` | `INT` | N | Analysis가 결과 변경 시 증가시키는 version |
@@ -580,11 +580,12 @@ CHK_ANALYSIS_RESULT_METADATA(
 ```
 
 Recommendation의 body 요청은 확정 입력이 실제로 달라질 때만 입력 revision을 증가시킨다.
-저장 직전에 현재 revision, 태그 key, 매칭값을 요청 snapshot과 비교하며 같을 때만 현재 추천
-세트와 result metadata를 교체한다.
+저장 직전에 현재 revision, 태그 key, 매칭값, 의류 category를 요청 snapshot과 비교하며 같을 때만
+현재 추천 세트와 result metadata를 교체한다.
 항목이 0개여도 metadata를 남겨 미생성과 빈 성공 결과를 구분한다.
 `garment_piece`는 분석 생성 시점의 AI 결과를 저장하며 이후 변경하지 않는다. API 요청·응답에는
-노출하지 않고 추천 category와도 자동 매핑하지 않는다.
+노출하지 않지만 추천 후보 검색 시 `TOP`, `BOTTOM`, `DRESS`, `OUTER`를 같은 이름의
+`ProductCategory`로 변환한다. 이 값이 없는 기존 리포트는 추천을 생성할 수 없다.
 
 ```text
 recommendation_generated_at IS NULL -> NOT_GENERATED

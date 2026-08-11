@@ -495,6 +495,24 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
 임계값 필터는 적용하지 않는다. body에 기본값과 같은 `50`을 명시한 경우에는 50점 미만 후보를
 제외하고 `IMAGE_TAG_WEIGHTED_THR_V1`로 저장한다.
 
+상품 category는 클라이언트가 입력하지 않는다. 서버가 분석 리포트의 `garmentPiece`를 다음과
+같이 내부 검색 category로 변환한다.
+
+```text
+TOP -> TOP
+BOTTOM -> BOTTOM
+DRESS -> DRESS
+OUTER -> OUTER
+```
+
+변환된 category는 모든 상품 검색 요청에 전달되며, 공급자가 다른 category 후보를 반환해도
+추천 후보와 저장 결과에서 제외한다. `garmentPiece`가 `NULL`인 기존 리포트는 body 유무와
+관계없이 `ANALYSIS409_1`로 추천 생성을 거부한다.
+
+Demo와 Prototype 분석기는 실제 AI 의류 분류 결과가 없는 흐름 검증용 구현이므로 신규 분석에
+`GarmentPiece.TOP`을 고정 저장한다. Shopify 검색 요청의 category는 검색어 보강에만 사용하며,
+상품 category 판정에는 공급자 categoryPath를 우선 사용하고 값이 없으면 상품명을 사용한다.
+
 ### Response `200 OK`
 
 아래 예시는 TOP에만 결과가 있고 나머지 7개 그룹은 비어 있는 경우다.
@@ -553,8 +571,8 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
 
 ```text
 1. 리포트 소유권을 검증하고, body가 있으면 확정 태그와 매칭값을 write lock에서 멱등 반영한다.
-2. 현재 입력 revision, 매칭값, 정렬된 기본·직접 입력 태그 key를 snapshot으로 캡처한다.
-3. DB transaction 밖에서 쇼핑 API 후보 조회, 정규화, category mapping, 중복 제거,
+2. 현재 입력 revision, 매칭값, 의류 category, 정렬된 기본·직접 입력 태그 key를 snapshot으로 캡처한다.
+3. DB transaction 밖에서 의류 category를 포함한 쇼핑 API 후보 조회, category 재검증, 정규화, 중복 제거,
    similarity score 계산을 수행한다.
 4. 짧은 write transaction에서 입력 version을 다시 비교한다.
 5. 입력이 같을 때만 기존 현재 세트를 새 세트로 원자적으로 교체하고 결과 metadata를 갱신한다.
@@ -562,7 +580,8 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
 
 - 외부 호출을 DB transaction 안에서 수행하지 않는다.
 - 새 세트 저장에 성공하기 전 기존 세트를 삭제하지 않는다.
-- 입력 revision, 태그 key 또는 매칭값이 달라지면 `RECOMMENDATION409_1`을 반환하고 기존 세트를 유지한다.
+- 입력 revision, 태그 key, 매칭값 또는 의류 category가 달라지면 `RECOMMENDATION409_1`을 반환하고
+  기존 세트를 유지한다.
 - body 요청은 `matchPercentage` 미만 후보를 materialization 전에 제외하고
   `IMAGE_TAG_WEIGHTED_THR_V1`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
 - body 없는 하위 호환 요청은 임계값 필터 없이 `IMAGE_TAG_WEIGHTED_V1`로 저장한다.

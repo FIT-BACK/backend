@@ -2,6 +2,7 @@ package com.fitback.backend.domain.analysis.service;
 
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.tag.repository.TagRepository;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -16,14 +17,16 @@ public class DemoAiTagAnalyzer implements AiTagAnalyzer {
 
     @Override
     public AiTagAnalysisResult analyze(MultipartFile image) {
-        return AiTagAnalysisResult.withoutGarmentPiece(
+        return AiTagAnalysisResult.withGarmentPiece(
+                GarmentPiece.TOP,
                 tagRepository.findTop3ByOrderByIdAsc()
         );
     }
 
     @Override
     public AiTagAnalysisResult analyze(Image image) {
-        return AiTagAnalysisResult.withoutGarmentPiece(
+        return AiTagAnalysisResult.withGarmentPiece(
+                GarmentPiece.TOP,
                 tagRepository.findTop3ByOrderByIdAsc()
         );
     }
