@@ -3,6 +3,7 @@ package com.fitback.backend.domain.recommendation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,6 +76,7 @@ class RecommendationServiceTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(candidateMapper.category(any())).thenReturn(ProductCategory.TOP);
         recommendationService = recommendationService(TEST_CANDIDATE_LIMIT);
     }
 
@@ -163,6 +165,7 @@ class RecommendationServiceTest {
                 501L,
                 1L,
                 1,
+                ProductCategory.TOP,
                 List.of(
                         new TagInput(10L, "Fixture", TagType.DETAIL),
                         new TagInput(20L, "Perfect", TagType.COLOR)
@@ -318,6 +321,7 @@ class RecommendationServiceTest {
                 1L,
                 1,
                 70,
+                ProductCategory.TOP,
                 List.of(),
                 List.of("Fixture")
         );
@@ -325,7 +329,7 @@ class RecommendationServiceTest {
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(new ProductSearchQuery(
                 "Fixture",
-                null,
+                ProductCategory.TOP,
                 null,
                 20
         ))).thenReturn(new ProductSearchResult(List.of(candidate), null));
@@ -359,6 +363,7 @@ class RecommendationServiceTest {
                 1L,
                 1,
                 70,
+                ProductCategory.TOP,
                 List.of(
                         new TagInput(10L, "Fixture", TagType.STYLE),
                         new TagInput(20L, "unmatched", TagType.DETAIL)
@@ -369,7 +374,7 @@ class RecommendationServiceTest {
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(new ProductSearchQuery(
                 "unmatched",
-                null,
+                ProductCategory.TOP,
                 null,
                 20
         ))).thenReturn(new ProductSearchResult(List.of(candidate), null));
@@ -382,7 +387,7 @@ class RecommendationServiceTest {
 
         verify(productCatalogPort, never()).search(new ProductSearchQuery(
                 "Fixture",
-                null,
+                ProductCategory.TOP,
                 null,
                 20
         ));
@@ -408,6 +413,7 @@ class RecommendationServiceTest {
                 1L,
                 1,
                 70,
+                ProductCategory.TOP,
                 List.of(
                         new TagInput(10L, "실루엣", TagType.SILHOUETTE),
                         new TagInput(20L, "색상", TagType.COLOR),
@@ -430,6 +436,34 @@ class RecommendationServiceTest {
         assertThat(queryCaptor.getAllValues())
                 .extracting(ProductSearchQuery::keyword)
                 .containsExactly("실루엣", "색상", "디테일", "소재", "사용자 태그");
+        assertThat(queryCaptor.getAllValues())
+                .extracting(ProductSearchQuery::category)
+                .containsOnly(ProductCategory.TOP);
+    }
+
+    @Test
+    void excludesCandidatesOutsideAnalysisCategory() {
+        RecommendationInputSnapshot input = input();
+        ExternalProductCandidate top = candidate(1, null, true);
+        ExternalProductCandidate outer = candidate(2, null, true);
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "Fixture",
+                ProductCategory.TOP,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(top, outer), null));
+        when(candidateMapper.category(top)).thenReturn(ProductCategory.TOP);
+        when(candidateMapper.category(outer)).thenReturn(ProductCategory.OUTER);
+        when(materializationService.materializeForRecommendation(top))
+                .thenReturn(new RecommendationMaterializationResult(1L, true));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L);
+
+        verify(materializationService).materializeForRecommendation(top);
+        verify(materializationService, never()).materializeForRecommendation(outer);
+        verify(scorer, never()).score(input.tags(), new BigDecimal("70"), outer);
     }
 
     @Test
@@ -440,6 +474,7 @@ class RecommendationServiceTest {
                 1L,
                 1,
                 70,
+                ProductCategory.TOP,
                 List.of(
                         new TagInput(10L, "first", TagType.DETAIL),
                         new TagInput(20L, "second", TagType.COLOR)
@@ -453,7 +488,7 @@ class RecommendationServiceTest {
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(new ProductSearchQuery(
                 "first",
-                null,
+                ProductCategory.TOP,
                 null,
                 20
         ))).thenReturn(new ProductSearchResult(
@@ -462,7 +497,7 @@ class RecommendationServiceTest {
         ));
         when(productCatalogPort.search(new ProductSearchQuery(
                 "second",
-                null,
+                ProductCategory.TOP,
                 null,
                 20
         ))).thenReturn(new ProductSearchResult(
@@ -503,6 +538,7 @@ class RecommendationServiceTest {
                 1L,
                 1,
                 70,
+                ProductCategory.TOP,
                 List.of(new TagInput(10L, "스타일", TagType.STYLE)),
                 List.of()
         );
@@ -528,6 +564,7 @@ class RecommendationServiceTest {
                 1L,
                 2,
                 100,
+                ProductCategory.TOP,
                 List.of(
                         new TagInput(10L, "Fixture", TagType.DETAIL),
                         new TagInput(20L, "Unmatched", TagType.COLOR)
@@ -569,6 +606,7 @@ class RecommendationServiceTest {
                 1L,
                 2,
                 79,
+                ProductCategory.TOP,
                 List.of(
                         new TagInput(10L, "Fixture", TagType.DETAIL),
                         new TagInput(20L, "Perfect", TagType.COLOR)
@@ -605,6 +643,7 @@ class RecommendationServiceTest {
                 501L,
                 1L,
                 1,
+                ProductCategory.TOP,
                 List.of(new TagInput(10L, "Fixture", TagType.DETAIL))
         );
     }

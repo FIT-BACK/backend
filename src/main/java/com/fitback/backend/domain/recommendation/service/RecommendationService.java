@@ -89,6 +89,7 @@ public class RecommendationService {
                 ? inputCommandService.confirmAndRead(memberId, reportId, request)
                 : inputReader.read(memberId, reportId);
         CandidateCollection candidateCollection = collectCandidates(
+                input.category(),
                 input.tags(),
                 input.customTagNames()
         );
@@ -123,6 +124,7 @@ public class RecommendationService {
     }
 
     private CandidateCollection collectCandidates(
+            ProductCategory category,
             List<TagInput> tags,
             List<String> customTagNames
     ) {
@@ -143,12 +145,14 @@ public class RecommendationService {
         for (String tagName : searchTagNames) {
             try {
                 ProductSearchResult searchResult = productCatalogPort.search(
-                        new ProductSearchQuery(tagName, null, null, SEARCH_PAGE_SIZE)
+                        new ProductSearchQuery(tagName, category, null, SEARCH_PAGE_SIZE)
                 );
                 successfulSearches++;
 
                 // 검색어 내부의 공급자 상품 순위 보존을 위한 결과 목록 단위 저장
-                candidateBatches.add(searchResult.items());
+                candidateBatches.add(searchResult.items().stream()
+                        .filter(candidate -> candidateMapper.category(candidate) == category)
+                        .toList());
             } catch (ProductProviderException exception) {
                 // 전체 실패와 부분 실패를 구분하기 위한 공급자 오류 누적
                 failures.add(ProductProviderErrorMapper.toBusinessException(exception));

@@ -18,6 +18,7 @@ import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepos
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -104,8 +105,8 @@ class RecommendationControllerIntegrationTest {
                         "$.data.recommendationGroups[1].items[0].reasonCodes[1]"
                 ).value("HIGH_SIMILARITY"))
                 .andExpect(jsonPath("$.data.recommendationGroups[7].category").value("OTHER"))
-                .andExpect(jsonPath("$.data.partial").value(true))
-                .andExpect(jsonPath("$.data.warnings[0]").value("MATERIALIZATION_SKIPPED"));
+                .andExpect(jsonPath("$.data.partial").value(false))
+                .andExpect(jsonPath("$.data.warnings").isEmpty());
 
         assertThat(productRepository.count()).isEqualTo(1);
         assertThat(recommendedItemRepository.count()).isEqualTo(1);
@@ -144,6 +145,25 @@ class RecommendationControllerIntegrationTest {
         String email = "recommendation-not-ready@fitback.com";
         String accessToken = signUpAndGetAccessToken(email);
         AnalysisReport report = report(email);
+
+        mockMvc.perform(post(
+                                "/api/v1/analyses/{reportId}/recommendations",
+                                report.getId()
+                        )
+                        .header("Authorization", bearer(accessToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ANALYSIS409_1"));
+
+        assertThat(recommendedItemRepository.count()).isZero();
+        AnalysisReport persisted = analysisReportRepository.findById(report.getId()).orElseThrow();
+        assertThat(persisted.getRecommendationGeneratedAt()).isNull();
+    }
+
+    @Test
+    void rejectsLegacyReportWithoutGarmentCategory() throws Exception {
+        String email = "recommendation-legacy-category@fitback.com";
+        String accessToken = signUpAndGetAccessToken(email);
+        AnalysisReport report = legacyReport(email, "Fixture");
 
         mockMvc.perform(post(
                                 "/api/v1/analyses/{reportId}/recommendations",
@@ -426,11 +446,24 @@ class RecommendationControllerIntegrationTest {
     }
 
     private AnalysisReport report(String email, String... tagNames) {
+        return report(email, GarmentPiece.TOP, tagNames);
+    }
+
+    private AnalysisReport legacyReport(String email, String... tagNames) {
+        return report(email, null, tagNames);
+    }
+
+    private AnalysisReport report(
+            String email,
+            GarmentPiece garmentPiece,
+            String... tagNames
+    ) {
         Member member = memberRepository.findByEmail(email).orElseThrow();
         AnalysisReport report = AnalysisReport.create(
                 member,
                 "https://example.com/analysis.jpg",
-                70
+                70,
+                garmentPiece
         );
         for (String tagName : tagNames) {
             Tag tag = tagRepository.save(Tag.create(tagName, TagType.DETAIL));

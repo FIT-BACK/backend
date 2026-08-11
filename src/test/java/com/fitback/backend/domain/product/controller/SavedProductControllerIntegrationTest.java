@@ -18,6 +18,7 @@ import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepos
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -289,7 +290,8 @@ class SavedProductControllerIntegrationTest {
         AnalysisReport report = AnalysisReport.create(
                 member,
                 "https://example.com/saved-product-analysis.jpg",
-                70
+                70,
+                GarmentPiece.TOP
         );
         Tag tag = tagRepository.save(Tag.create(tagName, TagType.DETAIL));
         report.addAiSuggestedTag(tag);

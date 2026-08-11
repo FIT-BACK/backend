@@ -3,6 +3,7 @@ package com.fitback.backend.domain.analysis.service;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.repository.TagRepository;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.util.List;
@@ -38,7 +39,8 @@ public class PrototypeAiTagAnalyzer implements AiTagAnalyzer {
         if (tagsByName.size() != PROTOTYPE_TAG_NAMES.size()) {
             throw new BusinessException(ErrorCode.ANALYSIS_NOT_READY);
         }
-        return AiTagAnalysisResult.withoutGarmentPiece(
+        return AiTagAnalysisResult.withGarmentPiece(
+                GarmentPiece.TOP,
                 PROTOTYPE_TAG_NAMES.stream()
                         .map(tagsByName::get)
                         .toList()

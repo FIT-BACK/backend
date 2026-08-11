@@ -65,7 +65,6 @@ public final class ShopifyGlobalCatalogAdapter implements ProductCatalogPort {
                 query.cursor(),
                 query.pageSize()
         );
-        String requestedCategory = query.category() == null ? null : query.category().name();
         List<ExternalProductCandidate> items = page.items().stream()
                 .map(item -> candidate(
                         ProviderProductRef.stable(
@@ -75,11 +74,7 @@ public final class ShopifyGlobalCatalogAdapter implements ProductCatalogPort {
                                 item.merchantId()
                         ),
                         item,
-                        firstNonBlank(
-                                item.categoryPath(),
-                                requestedCategory,
-                                item.title()
-                        )
+                        item.categoryPath()
                 ))
                 .toList();
         return new ProductSearchResult(items, page.nextCursor());
@@ -102,7 +97,7 @@ public final class ShopifyGlobalCatalogAdapter implements ProductCatalogPort {
                 .map(item -> candidate(
                         providerRef,
                         item,
-                        firstNonBlank(item.categoryPath(), item.title())
+                        item.categoryPath()
                 ));
     }
 
@@ -192,12 +187,4 @@ public final class ShopifyGlobalCatalogAdapter implements ProductCatalogPort {
         return null;
     }
 
-    private static String firstNonBlank(String... candidates) {
-        for (String candidate : candidates) {
-            if (candidate != null && !candidate.isBlank()) {
-                return candidate;
-            }
-        }
-        return null;
-    }
 }

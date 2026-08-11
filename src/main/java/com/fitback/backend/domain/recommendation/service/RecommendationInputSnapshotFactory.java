@@ -2,9 +2,11 @@ package com.fitback.backend.domain.recommendation.service;
 
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.entity.ReportCustomTag;
+import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot.TagInput;
 import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -33,6 +35,7 @@ public class RecommendationInputSnapshotFactory {
                 memberId,
                 report.getRecommendationInputRevision(),
                 report.getMatchPercentage(),
+                toProductCategory(report.getGarmentPiece()),
                 tags,
                 customTagNames
         );
@@ -45,7 +48,20 @@ public class RecommendationInputSnapshotFactory {
         RecommendationInputSnapshot current = from(report, expected.memberId());
         return Objects.equals(current.inputRevision(), expected.inputRevision())
                 && Objects.equals(current.matchPercentage(), expected.matchPercentage())
+                && Objects.equals(current.category(), expected.category())
                 && current.tags().equals(expected.tags())
                 && current.customTagNames().equals(expected.customTagNames());
+    }
+
+    static ProductCategory toProductCategory(GarmentPiece garmentPiece) {
+        if (garmentPiece == null) {
+            return null;
+        }
+        return switch (garmentPiece) {
+            case TOP -> ProductCategory.TOP;
+            case BOTTOM -> ProductCategory.BOTTOM;
+            case DRESS -> ProductCategory.DRESS;
+            case OUTER -> ProductCategory.OUTER;
+        };
     }
 }
