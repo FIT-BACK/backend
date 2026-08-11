@@ -424,6 +424,10 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
             throw new ResponseParsingException("MISSING_OUTPUT");
         }
         for (JsonNode output : outputs) {
+            String outputType = output.path("type").asText();
+            if (!outputType.isBlank() && !"message".equals(outputType)) {
+                continue;
+            }
             JsonNode contents = output.path("content");
             if (!contents.isArray()) {
                 throw new ResponseParsingException("INVALID_RESPONSE_SHAPE");
