@@ -16,6 +16,19 @@ export function l2Norm(values) {
   return Math.sqrt(squared);
 }
 
+export function normalizeL2(values) {
+  const norm = l2Norm(values);
+  if (!Number.isFinite(norm) || norm === 0) {
+    throw new Error('embedding norm must be finite and non-zero');
+  }
+
+  const normalized = new Float32Array(values.length);
+  for (let index = 0; index < values.length; index += 1) {
+    normalized[index] = values[index] / norm;
+  }
+  return normalized;
+}
+
 export function cosineSimilarity(left, right) {
   if (!left || !right || left.length === 0 || right.length === 0) {
     throw new Error('embeddings must not be null or empty');
