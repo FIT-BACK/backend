@@ -1353,6 +1353,168 @@ case "${MODE}" in
     echo "Remaining trend lookbook samples prepared: ${OUTPUT_FILE}"
     exit 0
     ;;
+  --prepare-additional-trend-lookbook-samples)
+    require_env FITBACK_DEMO_CONTENT_EMAIL
+    require_env FITBACK_DEMO_CONTENT_PASSWORD
+    for name in \
+      FITBACK_DEMO_TREND_MINIMAL_02_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_MINIMAL_02_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_MINIMAL_03_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_MINIMAL_03_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_STREET_02_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_STREET_02_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_STREET_03_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_STREET_03_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_LOVELY_02_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_LOVELY_02_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_LOVELY_03_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_LOVELY_03_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_02_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_02_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_03_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_03_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_FORMAL_02_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_FORMAL_02_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_FORMAL_03_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_FORMAL_03_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_FORMAL_02_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_FORMAL_02_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_FORMAL_03_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_FORMAL_03_MATCHED_IMAGE; do
+      require_env "${name}"
+    done
+
+    content_token="$(login_or_sign_up \
+      "${FITBACK_DEMO_CONTENT_EMAIL}" "${FITBACK_DEMO_CONTENT_PASSWORD}")"
+    all_tags_response="$(api_call GET "/api/v1/tags" "${content_token}")"
+    require_success "${all_tags_response}" "Additional trend sample tag lookup"
+
+    # 트렌드별 3개 구성을 완성하도록 기존 01 샘플에 02·03 샘플을 추가한다.
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 1 \
+      "미니멀 와이드핏 슬랙스 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_MINIMAL_02_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_MINIMAL_02_MATCHED_IMAGE}" \
+      "미니멀" "와이드핏" >"${temporary_output}.trend-1-2"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 1 \
+      "미니멀 뉴트럴 울 셔츠 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_MINIMAL_03_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_MINIMAL_03_MATCHED_IMAGE}" \
+      "미니멀" "뉴트럴" >"${temporary_output}.trend-1-3"
+
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 2 \
+      "스트릿 오버사이즈 카고 팬츠 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_STREET_02_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_STREET_02_MATCHED_IMAGE}" \
+      "스트릿" "오버사이즈" >"${temporary_output}.trend-2-2"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 2 \
+      "스트릿 오버사이즈 봄버 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_STREET_03_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_STREET_03_MATCHED_IMAGE}" \
+      "스트릿" "오버사이즈" >"${temporary_output}.trend-2-3"
+
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 3 \
+      "러블리 페미닌 플리츠 스커트 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_LOVELY_02_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_LOVELY_02_MATCHED_IMAGE}" \
+      "러블리" "페미닌" >"${temporary_output}.trend-3-2"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 3 \
+      "러블리 페미닌 라벤더 가디건 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_LOVELY_03_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_LOVELY_03_MATCHED_IMAGE}" \
+      "러블리" "페미닌" >"${temporary_output}.trend-3-3"
+
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 4 \
+      "캐주얼 데일리룩 데님 셔츠 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_CASUAL_02_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_CASUAL_02_MATCHED_IMAGE}" \
+      "캐주얼" "데일리룩" >"${temporary_output}.trend-4-2"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 4 \
+      "캐주얼 데일리룩 필드 재킷 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_CASUAL_03_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_CASUAL_03_MATCHED_IMAGE}" \
+      "캐주얼" "데일리룩" >"${temporary_output}.trend-4-3"
+
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 5 \
+      "포멀 오피스룩 아이보리 블라우스 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_FORMAL_02_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_FORMAL_02_MATCHED_IMAGE}" \
+      "포멀" "오피스룩" >"${temporary_output}.trend-5-2"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 5 \
+      "포멀 오피스룩 네이비 슬랙스 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_FORMAL_03_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_FORMAL_03_MATCHED_IMAGE}" \
+      "포멀" "오피스룩" >"${temporary_output}.trend-5-3"
+
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 6 \
+      "캐주얼 포멀 니트 폴로 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_CASUAL_FORMAL_02_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_CASUAL_FORMAL_02_MATCHED_IMAGE}" \
+      "캐주얼" "포멀" >"${temporary_output}.trend-6-2"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 6 \
+      "캐주얼 포멀 차콜 블레이저 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_CASUAL_FORMAL_03_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_CASUAL_FORMAL_03_MATCHED_IMAGE}" \
+      "캐주얼" "포멀" >"${temporary_output}.trend-6-3"
+
+    # 생성 결과를 샘플 키별로 남겨 재실행 시 이미지 ID와 룩북 ID를 재사용한다.
+    jq \
+      --arg preparedAt "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+      --arg mode "${MODE}" \
+      --slurpfile minimal02 "${temporary_output}.trend-1-2" \
+      --slurpfile minimal03 "${temporary_output}.trend-1-3" \
+      --slurpfile street02 "${temporary_output}.trend-2-2" \
+      --slurpfile street03 "${temporary_output}.trend-2-3" \
+      --slurpfile lovely02 "${temporary_output}.trend-3-2" \
+      --slurpfile lovely03 "${temporary_output}.trend-3-3" \
+      --slurpfile casual02 "${temporary_output}.trend-4-2" \
+      --slurpfile casual03 "${temporary_output}.trend-4-3" \
+      --slurpfile formal02 "${temporary_output}.trend-5-2" \
+      --slurpfile formal03 "${temporary_output}.trend-5-3" \
+      --slurpfile casualFormal02 "${temporary_output}.trend-6-2" \
+      --slurpfile casualFormal03 "${temporary_output}.trend-6-3" \
+      '. + {
+        preparedAt: $preparedAt,
+        mode: $mode,
+        trendLookbookSamples: ((.trendLookbookSamples // {}) + {
+          minimal02: $minimal02[0],
+          minimal03: $minimal03[0],
+          street02: $street02[0],
+          street03: $street03[0],
+          lovely02: $lovely02[0],
+          lovely03: $lovely03[0],
+          casual02: $casual02[0],
+          casual03: $casual03[0],
+          formal02: $formal02[0],
+          formal03: $formal03[0],
+          casualFormal02: $casualFormal02[0],
+          casualFormal03: $casualFormal03[0]
+        })
+      }' "${OUTPUT_FILE}" >"${temporary_output}"
+    mv "${temporary_output}" "${OUTPUT_FILE}"
+    rm -f \
+      "${temporary_output}.trend-1-2" "${temporary_output}.trend-1-3" \
+      "${temporary_output}.trend-2-2" "${temporary_output}.trend-2-3" \
+      "${temporary_output}.trend-3-2" "${temporary_output}.trend-3-3" \
+      "${temporary_output}.trend-4-2" "${temporary_output}.trend-4-3" \
+      "${temporary_output}.trend-5-2" "${temporary_output}.trend-5-3" \
+      "${temporary_output}.trend-6-2" "${temporary_output}.trend-6-3"
+    chmod 600 "${OUTPUT_FILE}"
+    trap - EXIT
+    echo "Additional trend lookbook samples prepared: ${OUTPUT_FILE}"
+    exit 0
+    ;;
   --replace-trend-lookbook-matched-images)
     require_env FITBACK_DEMO_CONTENT_EMAIL
     require_env FITBACK_DEMO_CONTENT_PASSWORD
@@ -1437,7 +1599,7 @@ case "${MODE}" in
     exit 0
     ;;
   *)
-    echo "Usage: $0 [prepare|--save-existing|--prepare-interactions|--prepare-trend-lookbook-sample|--prepare-remaining-trend-lookbook-samples|--replace-trend-lookbook-matched-images]" >&2
+    echo "Usage: $0 [prepare|--save-existing|--prepare-interactions|--prepare-trend-lookbook-sample|--prepare-remaining-trend-lookbook-samples|--prepare-additional-trend-lookbook-samples|--replace-trend-lookbook-matched-images]" >&2
     exit 1
     ;;
 esac
