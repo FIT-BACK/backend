@@ -37,7 +37,7 @@ class EntityInvariantTest {
 
         report.changeMatchPercentage(null);
 
-        assertThat(report.getMatchPercentage()).isEqualTo(70);
+        assertThat(report.getMatchPercentage()).isEqualTo(50);
     }
 
     @Test

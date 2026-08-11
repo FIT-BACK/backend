@@ -37,7 +37,7 @@ import org.hibernate.annotations.OnDeleteAction;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AnalysisReport extends BaseTimeEntity {
 
-    private static final int DEFAULT_MATCH_PERCENTAGE = 70;
+    private static final int DEFAULT_MATCH_PERCENTAGE = 50;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

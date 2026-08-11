@@ -127,6 +127,7 @@ class AnalysisServiceTest {
 
         assertThat(response.reportId()).isEqualTo(502L);
         assertThat(response.imageUrl()).isEqualTo("https://cdn.example.com/signed-image");
+        assertThat(response.matchPercentage()).isEqualTo(50);
         assertThat(response.suggestedTags()).extracting("tagName").containsExactly("미니멀");
     }
 
@@ -154,7 +155,7 @@ class AnalysisServiceTest {
 
         assertThat(response.reportId()).isEqualTo(501L);
         assertThat(response.imageUrl()).isEqualTo("/uploads/look.jpg");
-        assertThat(response.matchPercentage()).isEqualTo(70);
+        assertThat(response.matchPercentage()).isEqualTo(50);
         assertThat(response.suggestedTags())
                 .extracting("tagId", "tagName")
                 .containsExactly(

@@ -141,6 +141,8 @@ OTHER
 ### 2.2 추천 입력
 
 - Request body를 생략하면 기존 `AnalysisReport`의 표시 가능한 분석 태그와 현재 매칭값을 사용한다.
+- 신규 `AnalysisReport`의 현재 매칭값은 50으로 시작한다. 사용자가 이후 명시적으로 변경한 값은
+  해당 리포트의 현재 값으로 유지한다.
 - Request body를 보내면 `confirmedTagIds`, `customTagNames`, `matchPercentage`를 하나의 추천 입력으로
   확정한다. `memberId`는 받지 않는다.
 - 기본 태그와 직접 입력 태그는 중복 제거 후 합계 1~8개이며, 직접 입력 태그는 각 1~50자다.
@@ -488,7 +490,10 @@ Issue #119에서 인증 회원의 기존 분석 결과를 사용하거나 요청
 ```
 
 body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입력 태그 합계는 중복 제거 후 1~8개다.
-기존 body 없는 호출도 하위 호환으로 유지한다.
+예시의 `70`은 사용자가 명시적으로 선택한 값이며 신규 분석의 서버 기본값이 아니다. 기존 body 없는
+호출도 하위 호환으로 유지하며, 이 경우 리포트에 현재 저장된 `matchPercentage`를 응답하지만
+임계값 필터는 적용하지 않는다. body에 기본값과 같은 `50`을 명시한 경우에는 50점 미만 후보를
+제외하고 `IMAGE_TAG_WEIGHTED_THR_V1`로 저장한다.
 
 ### Response `200 OK`
 
@@ -1027,6 +1032,27 @@ S3 객체가 없으면 `404 IMAGE404_2`, S3 timeout·연결 실패·429·5xx 및
 
 성공 시 `201 Created`로 `reportId`, signed `imageUrl`, `matchPercentage`, `suggestedTags`를
 반환한다. 기존 `multipart/form-data`의 `image` part 계약은 로컬 개발 프로필에서만 유지한다.
+신규 분석 리포트의 기본 `matchPercentage`는 50이며, 응답에도 같은 값이 포함된다.
+
+```json
+{
+  "success": true,
+  "code": "COMMON201_1",
+  "message": "리소스가 생성되었습니다.",
+  "data": {
+    "reportId": 501,
+    "imageUrl": "https://signed-cdn.example/image",
+    "matchPercentage": 50,
+    "suggestedTags": [
+      {
+        "tagId": 10,
+        "tagName": "미니멀"
+      }
+    ]
+  }
+}
+```
+
 운영 프로필에서 multipart 분석을 요청하면 로컬 파일을 생성하지 않고 `ANALYSIS400_3`으로
 거절하므로, 클라이언트는 Presigned POST 완료 후 `imageId` JSON 계약을 사용해야 한다.
 
