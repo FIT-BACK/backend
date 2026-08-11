@@ -25,6 +25,9 @@ const elements = {
   runtime: document.querySelector('#runtime'),
   model: document.querySelector('#model'),
   modelLoad: document.querySelector('#model-load'),
+  modelSecondLoad: document.querySelector('#model-second-load'),
+  modelArtifactSummary: document.querySelector('#model-artifact-summary'),
+  modelLoadRuns: document.querySelector('#model-load-runs tbody'),
   inference: document.querySelector('#inference'),
   rawCosine: document.querySelector('#raw-cosine'),
   normalizedCosine: document.querySelector('#normalized-cosine'),
@@ -49,6 +52,7 @@ const elements = {
 let sessionPromise;
 let runtimeState = 'unknown';
 let fallbackUsed = false;
+const modelLoadRuns = [];
 
 function setStatus(message) {
   elements.status.textContent = message;
@@ -63,19 +67,67 @@ async function loadSession() {
 
 async function createSession() {
   const started = performance.now();
+  const run = {
+    run: modelLoadRuns.length + 1,
+    urlResolveMs: 0,
+    webgpuInitMs: 0,
+    headersMs: 0,
+    downloadMs: 0,
+    bytes: 0,
+    contentLength: null,
+    sessionCreationMs: 0,
+    totalMs: 0,
+    redirected: false,
+  };
+  const urlStarted = performance.now();
+  const resolvedModelUrl = new URL(MODEL_URL, document.baseURI).href;
+  run.urlResolveMs = performance.now() - urlStarted;
   const canTryWebGpu = 'gpu' in navigator;
   const requestedProviders = canTryWebGpu ? ['webgpu', 'wasm'] : ['wasm'];
+  const webgpuInitStarted = performance.now();
+  if (canTryWebGpu) {
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        throw new Error('WebGPU adapter unavailable');
+      }
+      const device = await adapter.requestDevice();
+      if (typeof device.destroy === 'function') {
+        device.destroy();
+      }
+    } catch (error) {
+      setStatus(`WebGPU preflight unavailable (${errorMessage(error)}); session fallback remains armed.`);
+    }
+  }
+  run.webgpuInitMs = performance.now() - webgpuInitStarted;
+
+  const fetchStarted = performance.now();
+  const response = await fetch(resolvedModelUrl, { cache: 'default', credentials: 'omit' });
+  run.headersMs = performance.now() - fetchStarted;
+  if (!response.ok) {
+    throw new Error(`model fetch failed with HTTP ${response.status}`);
+  }
+  run.redirected = response.redirected;
+  run.contentLength = response.headers.get('content-length');
+  const bodyStarted = performance.now();
+  const modelBytes = await response.arrayBuffer();
+  run.downloadMs = performance.now() - bodyStarted;
+  run.bytes = modelBytes.byteLength;
+  elements.modelArtifactSummary.textContent = `${MODEL_ID} revision ${MODEL_REVISION}; received ${formatBytes(run.bytes)}; Content-Length ${run.contentLength ? formatBytes(Number(run.contentLength)) : 'unavailable'}; final URL redirected ${run.redirected ? 'yes' : 'no'}`;
   try {
-    const session = await ort.InferenceSession.create(MODEL_URL, {
+    const sessionStarted = performance.now();
+    const session = await ort.InferenceSession.create(modelBytes, {
       executionProviders: requestedProviders,
       graphOptimizationLevel: 'all',
     });
+    run.sessionCreationMs = performance.now() - sessionStarted;
     runtimeState = canTryWebGpu ? 'webgpu' : 'wasm';
     elements.runtime.textContent = canTryWebGpu
       ? 'webgpu session; wasm fallback armed'
       : 'wasm';
     elements.model.textContent = MODEL_ID;
-    elements.modelLoad.textContent = `${formatMilliseconds(performance.now() - started)} ms`;
+    run.totalMs = performance.now() - started;
+    recordModelLoadRun(run);
     return session;
   } catch (error) {
     if (!canTryWebGpu) {
@@ -84,10 +136,12 @@ async function createSession() {
     setStatus(`WebGPU failed (${errorMessage(error)}); retrying with WASM.`);
     let session;
     try {
-      session = await ort.InferenceSession.create(MODEL_URL, {
+      const sessionStarted = performance.now();
+      session = await ort.InferenceSession.create(modelBytes, {
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'all',
       });
+      run.sessionCreationMs = performance.now() - sessionStarted;
     } catch (fallbackError) {
       throw new Error(`WebGPU: ${errorMessage(error)}; WASM: ${errorMessage(fallbackError)}`);
     }
@@ -95,9 +149,38 @@ async function createSession() {
     fallbackUsed = true;
     elements.runtime.textContent = 'wasm (WebGPU unavailable)';
     elements.model.textContent = MODEL_ID;
-    elements.modelLoad.textContent = `${formatMilliseconds(performance.now() - started)} ms`;
+    run.totalMs = performance.now() - started;
+    recordModelLoadRun(run);
     return session;
   }
+}
+
+function recordModelLoadRun(run) {
+  modelLoadRuns.push(run);
+  elements.modelLoad.textContent = `${formatMilliseconds(run.totalMs)} ms`;
+  elements.modelSecondLoad.disabled = false;
+  const row = document.createElement('tr');
+  const cells = [
+    run.run,
+    formatMilliseconds(run.urlResolveMs),
+    formatMilliseconds(run.webgpuInitMs),
+    formatMilliseconds(run.headersMs),
+    formatMilliseconds(run.downloadMs),
+    `${formatBytes(run.bytes)} / ${run.contentLength ? formatBytes(Number(run.contentLength)) : 'unavailable'}`,
+    formatMilliseconds(run.sessionCreationMs),
+    formatMilliseconds(run.totalMs),
+    run.redirected ? 'yes' : 'no',
+  ];
+  for (const cell of cells) {
+    const cellElement = document.createElement('td');
+    cellElement.textContent = String(cell);
+    row.append(cellElement);
+  }
+  elements.modelLoadRuns.append(row);
+}
+
+function formatBytes(bytes) {
+  return `${bytes.toLocaleString('en-US')} B`;
 }
 
 function errorMessage(error) {
@@ -526,6 +609,26 @@ function median(values) {
 function formatMilliseconds(milliseconds) {
   return milliseconds.toFixed(1);
 }
+
+elements.modelSecondLoad.addEventListener('click', async () => {
+  elements.modelSecondLoad.disabled = true;
+  elements.run.disabled = true;
+  elements.benchmarkRun.disabled = true;
+  elements.urlRun.disabled = true;
+  setStatus('Measuring second model load with the browser HTTP cache available…');
+  sessionPromise = null;
+  try {
+    await loadSession();
+    setStatus('Second model load measured.');
+  } catch (error) {
+    setStatus(`Blocked: ${errorMessage(error)}`);
+    elements.modelSecondLoad.disabled = false;
+  } finally {
+    elements.run.disabled = false;
+    elements.benchmarkRun.disabled = false;
+    elements.urlRun.disabled = false;
+  }
+});
 
 elements.run.addEventListener('click', async () => {
   const queryFile = elements.queryFile.files[0];

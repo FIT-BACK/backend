@@ -63,6 +63,18 @@
         <dt>Inference (last run)</dt><dd id="inference">-</dd>
       </dl>
 
+      <section aria-label="Model load diagnostics">
+        <h2>Model load diagnostics</h2>
+        <p id="model-artifact-summary">No model load measured.</p>
+        <button id="model-second-load" type="button" disabled>Measure second model load</button>
+        <table id="model-load-runs">
+          <thead>
+            <tr><th>Run</th><th>URL resolve (ms)</th><th>WebGPU init (ms)</th><th>Headers (ms)</th><th>Body download (ms)</th><th>Bytes / Content-Length</th><th>Session create/readiness (ms)</th><th>Total (ms)</th><th>Redirected</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
       <table>
         <thead>
           <tr><th>Embedding</th><th>Dimension</th><th>Finite</th><th>Raw L2 norm</th><th>Normalized L2 norm</th></tr>
