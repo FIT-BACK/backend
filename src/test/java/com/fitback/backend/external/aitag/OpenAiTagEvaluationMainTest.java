@@ -109,6 +109,64 @@ class OpenAiTagEvaluationMainTest {
     }
 
     @Test
+    void pacesFiveCasesInOrderWithFourFixedWaitsIncludingAfterAFailedCase() throws Exception {
+        List<OpenAiTagEvaluationMain.EvaluationCase> cases = List.of(
+                evaluationCase("top-01"),
+                evaluationCase("public-bottom-01"),
+                evaluationCase("ai-bottom-02"),
+                evaluationCase("ai-dress-01"),
+                evaluationCase("outer-01")
+        );
+        List<String> evaluatedCaseIds = new ArrayList<>();
+        List<Long> delays = new ArrayList<>();
+
+        List<OpenAiTagEvaluationMain.CaseResult> results = OpenAiTagEvaluationMain.evaluateCases(
+                cases,
+                evaluationCase -> {
+                    evaluatedCaseIds.add(evaluationCase.imageId());
+                    return OpenAiTagEvaluationMain.CaseResult.failed(evaluationCase, "ANALYSIS409_1");
+                },
+                delays::add
+        );
+
+        assertThat(OpenAiTagEvaluationMain.INTER_CASE_DELAY_MILLIS).isEqualTo(30_000L);
+        assertThat(evaluatedCaseIds).containsExactly(
+                "top-01", "public-bottom-01", "ai-bottom-02", "ai-dress-01", "outer-01"
+        );
+        assertThat(results).extracting(OpenAiTagEvaluationMain.CaseResult::imageId)
+                .containsExactlyElementsOf(evaluatedCaseIds);
+        assertThat(delays).containsExactly(30_000L, 30_000L, 30_000L, 30_000L);
+        assertThat(delays.stream().mapToLong(Long::longValue).sum()).isEqualTo(120_000L);
+    }
+
+    @Test
+    void stopsBeforeTheNextCaseAndRestoresInterruptFlagWhenPacingIsInterrupted() {
+        AtomicInteger evaluatedCases = new AtomicInteger();
+        List<OpenAiTagEvaluationMain.EvaluationCase> cases = List.of(
+                evaluationCase("top-01"),
+                evaluationCase("public-bottom-01")
+        );
+
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> OpenAiTagEvaluationMain.evaluateCases(
+                    cases,
+                    evaluationCase -> {
+                        evaluatedCases.incrementAndGet();
+                        return OpenAiTagEvaluationMain.CaseResult.failed(evaluationCase, "ANALYSIS409_1");
+                    },
+                    ignoredDelay -> {
+                        throw new InterruptedException("interrupted");
+                    }
+            )).isInstanceOf(InterruptedException.class);
+
+            assertThat(evaluatedCases).hasValue(1);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
     void retries500OnceThenReturnsSuccessWithSingleFinalCase() {
         List<Long> delays = new ArrayList<>();
         AiTagModelResult result = modelResult();
@@ -566,6 +624,14 @@ class OpenAiTagEvaluationMainTest {
     ) {
         AtomicInteger index = new AtomicInteger();
         return () -> attempts[index.getAndIncrement()];
+    }
+
+    private static OpenAiTagEvaluationMain.EvaluationCase evaluationCase(String imageId) {
+        return new OpenAiTagEvaluationMain.EvaluationCase(
+                imageId,
+                "images/" + imageId + ".jpeg",
+                List.of(new AiTagPrediction(TagType.STYLE, "캐주얼"))
+        );
     }
 
     private static OpenAiTagEvaluationMain.EvaluationAttempt providerFailure(

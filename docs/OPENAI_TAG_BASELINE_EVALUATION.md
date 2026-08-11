@@ -61,6 +61,13 @@ FITBACK_AI_REQUEST_TIMEOUT=PT30S \
 않고 재검증할 수 있다. 이 identity가 없는 기존 결과는 historical artifact이며 현재 gate의
 입력으로 인정하지 않는다.
 
+평가 runner는 dataset의 case 순서를 유지하고, 각 case가 성공 또는 실패로 끝난 뒤 마지막 case를
+제외한 모든 경계에서 정확히 `30s` 대기한다. 고정된 5-case validation에는 4회, 총 `120s`의
+inter-case pacing이 적용된다. 이 대기는 아래의 case 내부 provider retry sleep과 별도이며, 마지막
+case 뒤에는 대기하지 않는다. 성공 response의 token usage만으로는 적용 중인 TPM 한도나 실패 요청의
+token 차감 여부를 알 수 없으므로 token-aware 가변 대기는 사용하지 않는다. 이 고정 pacing은
+evaluator에만 적용되며 production `OpenAiTagModelClient` 호출 경로에는 적용되지 않는다.
+
 평가 runner는 동일한 prompt/request를 유지한 채 최대 2회 추가 시도한다. provider HTTP `500`,
 `502`, `503`, `504`는 기존과 동일하게 첫 retry `250–500ms`, 두 번째 retry `500–1000ms`의
 짧은 exponential backoff+jitter를 사용한다. HTTP `429`는 evaluator에서만 다음 조건으로 제한한다.

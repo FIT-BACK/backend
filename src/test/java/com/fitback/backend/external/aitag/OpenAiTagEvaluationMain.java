@@ -34,6 +34,7 @@ public final class OpenAiTagEvaluationMain {
             "imageId", "imagePath", "expectedCanonicalTags"
     );
     private static final Set<String> TAG_FIELDS = Set.of("type", "name");
+    static final long INTER_CASE_DELAY_MILLIS = 30_000L;
     private static final int MAX_ATTEMPTS = 3;
     private static final long MAX_RATE_LIMIT_HINT_MILLIS = 60_000L;
     private static final long MAX_TOTAL_RETRY_SLEEP_MILLIS = 121_000L;
@@ -82,16 +83,39 @@ public final class OpenAiTagEvaluationMain {
                 openAi, Duration.parse(env("FITBACK_AI_REQUEST_TIMEOUT", "PT30S")), OBJECT_MAPPER);
         AiTagModelRequest request = new AiTagRequestFactory().create(catalog);
 
-        List<CaseResult> results = new ArrayList<>();
-        for (EvaluationCase evaluationCase : cases) {
-            results.add(evaluate(client, request, datasetPath.getParent(), evaluationCase, catalogKeys));
-        }
+        List<CaseResult> results = evaluateCases(
+                cases,
+                evaluationCase -> evaluate(
+                        client, request, datasetPath.getParent(), evaluationCase, catalogKeys
+                ),
+                SYSTEM_SLEEPER
+        );
         Files.createDirectories(outputDirectory);
         OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValue(
                 outputDirectory.resolve("openai-tag-evaluation.json").toFile(),
                 new EvaluationReport(
                         REPORT_SCHEMA_VERSION, catalogSnapshot.identity(),
                         Instant.now().toString(), openAi.model(), summarize(results), results));
+    }
+
+    static List<CaseResult> evaluateCases(
+            List<EvaluationCase> cases,
+            CaseEvaluator evaluator,
+            Sleeper sleeper
+    ) throws InterruptedException {
+        List<CaseResult> results = new ArrayList<>();
+        for (int caseIndex = 0; caseIndex < cases.size(); caseIndex++) {
+            results.add(evaluator.evaluate(cases.get(caseIndex)));
+            if (caseIndex < cases.size() - 1) {
+                try {
+                    sleeper.sleep(INTER_CASE_DELAY_MILLIS);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw exception;
+                }
+            }
+        }
+        return List.copyOf(results);
     }
 
     static CaseResult successfulCase(
@@ -797,6 +821,11 @@ public final class OpenAiTagEvaluationMain {
     @FunctionalInterface
     interface EvaluationCall {
         EvaluationAttempt invoke();
+    }
+
+    @FunctionalInterface
+    interface CaseEvaluator {
+        CaseResult evaluate(EvaluationCase evaluationCase);
     }
 
     @FunctionalInterface
