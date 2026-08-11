@@ -990,6 +990,52 @@ prepare_demo_interactions() {
     '{accounts: $accounts, finalLikeCount: $finalLikeCount}'
 }
 
+prepare_account_trend_lookbook_interactions() {
+  local alias="$1"
+  local email="$2"
+  local password="$3"
+  shift 3
+
+  local token
+  token="$(login_or_sign_up "${email}" "${password}")"
+  local results='[]'
+  local lookbook_id
+  for lookbook_id in "$@"; do
+    # 좋아요 API와 마이 클로젯 저장 함수는 이미 처리된 요청을 성공으로 재사용한다.
+    local like_response
+    like_response="$(api_call POST "/api/v1/lookbooks/${lookbook_id}/likes" "${token}")"
+    require_success "${like_response}" "${alias} trend lookbook like"
+    ensure_closet_saved "${token}" "LOOKBOOK" "${lookbook_id}"
+
+    local lookbook_detail
+    lookbook_detail="$(api_call GET "/api/v1/lookbooks/${lookbook_id}" "${token}")"
+    require_success "${lookbook_detail}" "${alias} trend lookbook verification"
+    if [[ "$(jq -r '.data.isLiked' <<<"${lookbook_detail}")" != "true" ]]; then
+      echo "${alias} trend lookbook ${lookbook_id} like verification failed" >&2
+      exit 1
+    fi
+    if ! closet_contains_target "${token}" "LOOKBOOK" "${lookbook_id}"; then
+      echo "${alias} trend lookbook ${lookbook_id} save verification failed" >&2
+      exit 1
+    fi
+
+    results="$(jq -c \
+      --argjson lookbookId "${lookbook_id}" \
+      --argjson likeCount "$(jq '.data.likeCount' <<<"${lookbook_detail}")" \
+      '. + [{
+        lookbookId: $lookbookId,
+        isLiked: true,
+        lookbookSaved: true,
+        likeCount: $likeCount
+      }]' <<<"${results}")"
+  done
+
+  jq -nc \
+    --arg alias "${alias}" \
+    --argjson lookbooks "${results}" \
+    '{alias: $alias, lookbooks: $lookbooks}'
+}
+
 prepare_account() {
   local alias="$1"
   local email="$2"
@@ -1145,7 +1191,7 @@ done
 
 mkdir -p "$(dirname "${OUTPUT_FILE}")"
 temporary_output="$(mktemp)"
-trap 'rm -f "${temporary_output}" "${temporary_output}.0" "${temporary_output}.1" "${temporary_output}.content" "${temporary_output}.interactions" "${temporary_output}.trend-sample" "${temporary_output}.trend-2" "${temporary_output}.trend-3" "${temporary_output}.trend-4" "${temporary_output}.trend-5" "${temporary_output}.trend-6" "${temporary_output}.replace-1" "${temporary_output}.replace-2" "${temporary_output}.replace-3" "${temporary_output}.replace-4" "${temporary_output}.replace-5" "${temporary_output}.replace-6"' EXIT
+trap 'rm -f "${temporary_output}" "${temporary_output}.0" "${temporary_output}.1" "${temporary_output}.content" "${temporary_output}.interactions" "${temporary_output}.trend-interactions-0" "${temporary_output}.trend-interactions-1" "${temporary_output}.trend-sample" "${temporary_output}.trend-2" "${temporary_output}.trend-3" "${temporary_output}.trend-4" "${temporary_output}.trend-5" "${temporary_output}.trend-6" "${temporary_output}.replace-1" "${temporary_output}.replace-2" "${temporary_output}.replace-3" "${temporary_output}.replace-4" "${temporary_output}.replace-5" "${temporary_output}.replace-6"' EXIT
 
 case "${MODE}" in
   prepare)
@@ -1224,6 +1270,70 @@ case "${MODE}" in
     chmod 600 "${OUTPUT_FILE}"
     trap - EXIT
     echo "Demo interactions prepared: ${OUTPUT_FILE}"
+    exit 0
+    ;;
+  --prepare-trend-lookbook-interactions)
+    require_env FITBACK_DEMO_0_EMAIL
+    require_env FITBACK_DEMO_0_PASSWORD
+    require_env FITBACK_DEMO_1_EMAIL
+    require_env FITBACK_DEMO_1_PASSWORD
+    if [[ ! -f "${OUTPUT_FILE}" ]] || ! jq -e . "${OUTPUT_FILE}" >/dev/null 2>&1; then
+      echo "Trend sample result is missing: ${OUTPUT_FILE}" >&2
+      exit 1
+    fi
+
+    # 두 데모 계정이 각 트렌드에서 서로 다른 룩북을 사용하도록 02·03 샘플을 나눈다.
+    mapfile -t demo_0_lookbook_ids < <(jq -r '
+      [
+        .trendLookbookSamples.minimal02.lookbookId,
+        .trendLookbookSamples.street02.lookbookId,
+        .trendLookbookSamples.lovely02.lookbookId,
+        .trendLookbookSamples.casual02.lookbookId,
+        .trendLookbookSamples.formal02.lookbookId,
+        .trendLookbookSamples.casualFormal02.lookbookId
+      ][] // empty
+    ' "${OUTPUT_FILE}")
+    mapfile -t demo_1_lookbook_ids < <(jq -r '
+      [
+        .trendLookbookSamples.minimal03.lookbookId,
+        .trendLookbookSamples.street03.lookbookId,
+        .trendLookbookSamples.lovely03.lookbookId,
+        .trendLookbookSamples.casual03.lookbookId,
+        .trendLookbookSamples.formal03.lookbookId,
+        .trendLookbookSamples.casualFormal03.lookbookId
+      ][] // empty
+    ' "${OUTPUT_FILE}")
+    if [[ "${#demo_0_lookbook_ids[@]}" -ne 6 || "${#demo_1_lookbook_ids[@]}" -ne 6 ]]; then
+      echo "Trend lookbook samples must be prepared before interactions" >&2
+      exit 1
+    fi
+
+    prepare_account_trend_lookbook_interactions \
+      "Demo-0" "${FITBACK_DEMO_0_EMAIL}" "${FITBACK_DEMO_0_PASSWORD}" \
+      "${demo_0_lookbook_ids[@]}" >"${temporary_output}.trend-interactions-0"
+    prepare_account_trend_lookbook_interactions \
+      "Demo-1" "${FITBACK_DEMO_1_EMAIL}" "${FITBACK_DEMO_1_PASSWORD}" \
+      "${demo_1_lookbook_ids[@]}" >"${temporary_output}.trend-interactions-1"
+
+    jq \
+      --arg preparedAt "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+      --arg mode "${MODE}" \
+      --slurpfile demo0 "${temporary_output}.trend-interactions-0" \
+      --slurpfile demo1 "${temporary_output}.trend-interactions-1" \
+      '. + {
+        preparedAt: $preparedAt,
+        mode: $mode,
+        trendLookbookInteractions: {
+          accounts: [$demo0[0], $demo1[0]]
+        }
+      }' "${OUTPUT_FILE}" >"${temporary_output}"
+    mv "${temporary_output}" "${OUTPUT_FILE}"
+    rm -f \
+      "${temporary_output}.trend-interactions-0" \
+      "${temporary_output}.trend-interactions-1"
+    chmod 600 "${OUTPUT_FILE}"
+    trap - EXIT
+    echo "Trend lookbook interactions prepared: ${OUTPUT_FILE}"
     exit 0
     ;;
   --prepare-trend-lookbook-sample)
@@ -1599,7 +1709,7 @@ case "${MODE}" in
     exit 0
     ;;
   *)
-    echo "Usage: $0 [prepare|--save-existing|--prepare-interactions|--prepare-trend-lookbook-sample|--prepare-remaining-trend-lookbook-samples|--prepare-additional-trend-lookbook-samples|--replace-trend-lookbook-matched-images]" >&2
+    echo "Usage: $0 [prepare|--save-existing|--prepare-interactions|--prepare-trend-lookbook-interactions|--prepare-trend-lookbook-sample|--prepare-remaining-trend-lookbook-samples|--prepare-additional-trend-lookbook-samples|--replace-trend-lookbook-matched-images]" >&2
     exit 1
     ;;
 esac
