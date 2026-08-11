@@ -40,7 +40,10 @@ public final class AiTagRequestFactory {
 
                 For every garment, inspect all five dimensions independently: SILHOUETTE, COLOR,
                 DETAIL, STYLE, and MATERIAL. A dimension may have no result when it is not visibly
-                supported.
+                supported. Before selecting tags, inspect the garment in two passes: first correct
+                its orientation and inspect the whole-garment outline and proportions; then inspect
+                local structures and surface texture. Keep evidence for each dimension separate so
+                one detail does not imply a color, material, silhouette, or style.
 
                 Precision policy:
                 - Return a sparse set of only high-confidence, visibly supported tags. Inspecting
@@ -52,22 +55,34 @@ public final class AiTagRequestFactory {
                 - Do not choose the closest canonical tag when the exact attribute is not visibly
                   supported. Do not return competing tags for the same attribute, such as two fits,
                   rises, or lengths.
+                - COLOR: Judge the stable garment color across a broad, well-lit region. Compare
+                  illuminated fabric midtones and highlights, not the background or deepest shadow.
+                  Do not turn shadow into 블랙 or warm illumination into 브라운.
                 - MATERIAL: Return a tag only when positive surface evidence distinguishes it from
                   other canonical materials. Do not infer composition from color, drape, opacity,
                   garment category, or generic fabric appearance. 우븐/시어 is not a fallback for
-                  non-knit fabric; regular knit loops or ribs support 니트, not a coarse woven
-                  material. If multiple materials remain plausible, omit MATERIAL.
-                - SILHOUETTE: Return fit or rise tags only when directly observable. Do not infer
-                  body fit from a flat or hanging product image.
-                - DETAIL: Mere visibility is insufficient. Return a DETAIL only when it is a
-                  dominant, discriminative design cue. Omit routine functional fastenings,
-                  closures, or hardware even when clearly visible; standard waist or neckline
-                  construction is not identity-defining by itself.
-                - STYLE: Prefer one dominant STYLE tag. Consider graphic, distressed, utility,
-                  romantic, clean, restrained, tailored, and structured cues. These cues are
-                  examples, not exhaustive definitions. Do not use a generic style as a fallback
-                  when stronger visible cues support another style.
-                - If the image is rotated, mentally correct its orientation before judging it.
+                  non-knit fabric; regular knit loops or ribs indicate 니트. 트위드 requires a
+                  visibly woven multicolor or nubby yarn structure, not generic coarse texture. If
+                  multiple materials remain plausible, omit MATERIAL.
+                - SILHOUETTE: Judge garment geometry separately from body fit. A flat or hanging
+                  product image can support visible width, taper, expansion, and length when the
+                  complete outline is shown, but it cannot establish contact with a person's body.
+                  Evaluate shape or fit and length as independent attributes, with at most one tag
+                  for each attribute. Omit an attribute when the relevant outline is cropped or
+                  obscured.
+                - DETAIL: Inspect neckline, pockets, pleats, and closures independently. A clearly
+                  visible neckline, pocket, or pleat can be canonical even when it is not the most
+                  dominant feature. Return a button, zipper, or belt only when it is a design-defining
+                  feature rather than routine fastening or hardware. A seam, overlap, shadow, or
+                  partially hidden region is not evidence for a specific DETAIL.
+                - STYLE: Prefer one dominant STYLE tag and base it on the whole garment. Do not infer
+                  STYLE from the garment piece or one isolated detail. 스트릿 requires explicit
+                  street cues such as graphics, distressing, or an urban oversized combination, not
+                  one utility feature. 오피스룩 requires tailored or business construction, not
+                  buttons or pockets alone. 페미닌 or 러블리 requires holistic romantic or decorative
+                  cues, not the garment category. 미니멀 can remain dominant when clean, restrained
+                  construction defines the garment despite one conventional feature. Use 캐주얼 only
+                  for visibly relaxed everyday construction, never as a fallback.
 
                 canonicalTags:
                 - Select 0 to %d tags only from the exact canonical catalog below.
