@@ -284,6 +284,362 @@ find_owned_content_lookbook_id() {
   ' <<<"${list_response}")
 }
 
+find_owned_lookbook_id_by_comment() {
+  local token="$1"
+  local comment="$2"
+  local list_response
+  list_response="$(api_call GET "/api/v1/lookbooks?pageSize=20" "${token}")"
+  require_success "${list_response}" "Content lookbook sample lookup"
+
+  local lookbook_id detail_response
+  while read -r lookbook_id; do
+    [[ -n "${lookbook_id}" ]] || continue
+    detail_response="$(api_call GET "/api/v1/lookbooks/${lookbook_id}" "${token}")"
+    if jq -e --arg comment "${comment}" '
+        .success == true
+        and .data.isOwner == true
+        and .data.comment == $comment
+      ' >/dev/null 2>&1 <<<"${detail_response}"; then
+      printf '%s' "${lookbook_id}"
+      return
+    fi
+  done < <(jq -r '.data.items[].lookbookId' <<<"${list_response}")
+}
+
+prepare_minimal_trend_lookbook_sample() {
+  local email="$1"
+  local password="$2"
+  local original_image_path="$3"
+  local matched_image_path="$4"
+  local comment="미니멀 뉴트럴 상의 매칭 룩북"
+  local token
+  token="$(login_or_sign_up "${email}" "${password}")"
+
+  # 같은 설명의 샘플이 남아 있으면 이미지와 룩북을 다시 생성하지 않는다.
+  local existing_lookbook_id
+  existing_lookbook_id="$(find_owned_lookbook_id_by_comment "${token}" "${comment}")"
+  if [[ -n "${existing_lookbook_id}" ]]; then
+    jq -nc \
+      --argjson trendId 1 \
+      --argjson lookbookId "${existing_lookbook_id}" \
+      '{
+        trendId: $trendId,
+        lookbookId: $lookbookId,
+        tags: ["미니멀", "뉴트럴", "와이드핏"],
+        reused: true,
+        relatedLookbookListed: true
+      }'
+    return
+  fi
+
+  local tags_response
+  tags_response="$(api_call GET "/api/v1/tags" "${token}")"
+  require_success "${tags_response}" "Minimal sample tag lookup"
+
+  local minimal_tag_id neutral_tag_id wide_fit_tag_id
+  minimal_tag_id="$(find_tag_id "${tags_response}" "미니멀")"
+  neutral_tag_id="$(find_tag_id "${tags_response}" "뉴트럴")"
+  wide_fit_tag_id="$(find_tag_id "${tags_response}" "와이드핏")"
+  if [[ -z "${minimal_tag_id}" || -z "${neutral_tag_id}" || -z "${wide_fit_tag_id}" ]]; then
+    echo "Minimal sample tags are missing: 미니멀, 뉴트럴, 와이드핏" >&2
+    exit 1
+  fi
+
+  local original_image_id matched_image_id
+  original_image_id="$(upload_demo_image \
+    "${token}" "${original_image_path}" "LOOKBOOK" "Minimal sample original")"
+  matched_image_id="$(upload_demo_image \
+    "${token}" "${matched_image_path}" "LOOKBOOK" "Minimal sample matched")"
+
+  local lookbook_body lookbook_response lookbook_id
+  lookbook_body="$(jq -nc \
+    --arg originalImageId "${original_image_id}" \
+    --arg matchedImageId "${matched_image_id}" \
+    --argjson minimalTagId "${minimal_tag_id}" \
+    --argjson neutralTagId "${neutral_tag_id}" \
+    --argjson wideFitTagId "${wide_fit_tag_id}" \
+    --arg comment "${comment}" \
+    '{
+      originalImageId: $originalImageId,
+      matchedImageId: $matchedImageId,
+      matchedProductId: null,
+      sourceReportId: null,
+      purchaseUrl: null,
+      tagIds: [$minimalTagId, $neutralTagId, $wideFitTagId],
+      comment: $comment
+    }')"
+  lookbook_response="$(api_call POST "/api/v1/lookbooks" "${token}" "${lookbook_body}")"
+  require_success "${lookbook_response}" "Minimal sample lookbook creation"
+  lookbook_id="$(jq -r '.data.lookbookId' <<<"${lookbook_response}")"
+
+  # 트렌드 태그 점수 조회에서 방금 만든 샘플이 첫 페이지에 노출되는지 확인한다.
+  local related_response related_listed
+  related_response="$(api_call GET "/api/v1/trends/1/lookbooks?pageSize=3" "${token}")"
+  require_success "${related_response}" "Minimal sample related lookbook lookup"
+  related_listed="$(jq --argjson lookbookId "${lookbook_id}" \
+    'any(.data.items[]; .lookbookId == $lookbookId)' <<<"${related_response}")"
+  if [[ "${related_listed}" != "true" ]]; then
+    echo "Minimal sample is missing from trend 1 related lookbooks" >&2
+    exit 1
+  fi
+
+  jq -nc \
+    --argjson trendId 1 \
+    --argjson lookbookId "${lookbook_id}" \
+    --arg originalImageId "${original_image_id}" \
+    --arg matchedImageId "${matched_image_id}" \
+    --argjson relatedLookbookListed "${related_listed}" \
+    '{
+      trendId: $trendId,
+      lookbookId: $lookbookId,
+      originalImageId: $originalImageId,
+      matchedImageId: $matchedImageId,
+      tags: ["미니멀", "뉴트럴", "와이드핏"],
+      reused: false,
+      relatedLookbookListed: $relatedLookbookListed
+    }'
+}
+
+update_minimal_trend_sample_tags() {
+  local token="$1"
+  local tags_response="$2"
+  if [[ ! -f "${OUTPUT_FILE}" ]]; then
+    echo "Minimal sample result is missing: ${OUTPUT_FILE}" >&2
+    exit 1
+  fi
+
+  local lookbook_id original_image_id matched_image_id
+  lookbook_id="$(jq -r '.trendLookbookSamples.minimal01.lookbookId // empty' \
+    "${OUTPUT_FILE}")"
+  original_image_id="$(jq -r '.trendLookbookSamples.minimal01.originalImageId // empty' \
+    "${OUTPUT_FILE}")"
+  matched_image_id="$(jq -r '.trendLookbookSamples.minimal01.matchedImageId // empty' \
+    "${OUTPUT_FILE}")"
+  if [[ -z "${lookbook_id}" || -z "${original_image_id}" || -z "${matched_image_id}" ]]; then
+    echo "Minimal sample IDs are missing from ${OUTPUT_FILE}" >&2
+    exit 1
+  fi
+
+  local minimal_tag_id neutral_tag_id
+  minimal_tag_id="$(find_tag_id "${tags_response}" "미니멀")"
+  neutral_tag_id="$(find_tag_id "${tags_response}" "뉴트럴")"
+  if [[ -z "${minimal_tag_id}" || -z "${neutral_tag_id}" ]]; then
+    echo "Minimal sample tags are missing: 미니멀, 뉴트럴" >&2
+    exit 1
+  fi
+
+  # 상의 중심 이미지에 직접 드러나지 않는 와이드핏 태그는 제거한다.
+  local update_body update_response
+  update_body="$(jq -nc \
+    --arg originalImageId "${original_image_id}" \
+    --arg matchedImageId "${matched_image_id}" \
+    --argjson minimalTagId "${minimal_tag_id}" \
+    --argjson neutralTagId "${neutral_tag_id}" \
+    '{
+      originalImageId: $originalImageId,
+      matchedImageId: $matchedImageId,
+      matchedProductId: null,
+      sourceReportId: null,
+      purchaseUrl: null,
+      tagIds: [$minimalTagId, $neutralTagId],
+      comment: "미니멀 뉴트럴 상의 매칭 룩북"
+    }')"
+  update_response="$(api_call PUT "/api/v1/lookbooks/${lookbook_id}" \
+    "${token}" "${update_body}")"
+  require_success "${update_response}" "Minimal sample tag update"
+}
+
+prepare_trend_lookbook_sample() {
+  local token="$1"
+  local tags_response="$2"
+  local trend_id="$3"
+  local comment="$4"
+  local original_image_path="$5"
+  local matched_image_path="$6"
+  shift 6
+
+  local tag_ids='[]'
+  local tag_names='[]'
+  local tag_name tag_id
+  for tag_name in "$@"; do
+    tag_id="$(find_tag_id "${tags_response}" "${tag_name}")"
+    if [[ -z "${tag_id}" ]]; then
+      echo "Trend ${trend_id} sample tag is missing: ${tag_name}" >&2
+      exit 1
+    fi
+    tag_ids="$(jq -c --argjson tagId "${tag_id}" '. + [$tagId]' <<<"${tag_ids}")"
+    tag_names="$(jq -c --arg tagName "${tag_name}" '. + [$tagName]' <<<"${tag_names}")"
+  done
+
+  # 설명을 샘플 식별자로 사용해 중단 후 다시 실행해도 룩북을 중복 생성하지 않는다.
+  local lookbook_id reused=false original_image_id='' matched_image_id=''
+  lookbook_id="$(find_owned_lookbook_id_by_comment "${token}" "${comment}")"
+  if [[ -n "${lookbook_id}" ]]; then
+    reused=true
+    if [[ -f "${OUTPUT_FILE}" ]]; then
+      original_image_id="$(jq -r --argjson lookbookId "${lookbook_id}" '
+        [.trendLookbookSamples[]
+          | select(.lookbookId == $lookbookId)
+          | .originalImageId // empty]
+        | first // empty
+      ' "${OUTPUT_FILE}")"
+      matched_image_id="$(jq -r --argjson lookbookId "${lookbook_id}" '
+        [.trendLookbookSamples[]
+          | select(.lookbookId == $lookbookId)
+          | .matchedImageId // empty]
+        | first // empty
+      ' "${OUTPUT_FILE}")"
+    fi
+  else
+    original_image_id="$(upload_demo_image \
+      "${token}" "${original_image_path}" "LOOKBOOK" "Trend ${trend_id} sample original")"
+    matched_image_id="$(upload_demo_image \
+      "${token}" "${matched_image_path}" "LOOKBOOK" "Trend ${trend_id} sample matched")"
+
+    local lookbook_body lookbook_response
+    lookbook_body="$(jq -nc \
+      --arg originalImageId "${original_image_id}" \
+      --arg matchedImageId "${matched_image_id}" \
+      --argjson tagIds "${tag_ids}" \
+      --arg comment "${comment}" \
+      '{
+        originalImageId: $originalImageId,
+        matchedImageId: $matchedImageId,
+        matchedProductId: null,
+        sourceReportId: null,
+        purchaseUrl: null,
+        tagIds: $tagIds,
+        comment: $comment
+      }')"
+    lookbook_response="$(api_call POST "/api/v1/lookbooks" "${token}" "${lookbook_body}")"
+    require_success "${lookbook_response}" "Trend ${trend_id} sample lookbook creation"
+    lookbook_id="$(jq -r '.data.lookbookId' <<<"${lookbook_response}")"
+  fi
+
+  # 같은 태그 점수를 사용하는 관련 룩북 첫 페이지에 새 샘플이 포함되는지 확인한다.
+  local related_response related_listed
+  related_response="$(api_call GET "/api/v1/trends/${trend_id}/lookbooks?pageSize=3" "${token}")"
+  require_success "${related_response}" "Trend ${trend_id} related lookbook lookup"
+  related_listed="$(jq --argjson lookbookId "${lookbook_id}" \
+    'any(.data.items[]; .lookbookId == $lookbookId)' <<<"${related_response}")"
+  if [[ "${related_listed}" != "true" ]]; then
+    echo "Trend ${trend_id} sample is missing from related lookbooks" >&2
+    exit 1
+  fi
+
+  local detail_response
+  detail_response="$(api_call GET "/api/v1/lookbooks/${lookbook_id}" "${token}")"
+  require_success "${detail_response}" "Trend ${trend_id} sample detail lookup"
+  if ! jq -e '
+      .data.originalImageUrl != null
+      and .data.matchedImageUrl != null
+    ' >/dev/null 2>&1 <<<"${detail_response}"; then
+    echo "Trend ${trend_id} sample image URL verification failed" >&2
+    exit 1
+  fi
+
+  jq -nc \
+    --argjson trendId "${trend_id}" \
+    --argjson lookbookId "${lookbook_id}" \
+    --arg originalImageId "${original_image_id}" \
+    --arg matchedImageId "${matched_image_id}" \
+    --argjson tags "${tag_names}" \
+    --argjson reused "${reused}" \
+    --argjson relatedLookbookListed "${related_listed}" \
+    '{
+      trendId: $trendId,
+      lookbookId: $lookbookId,
+      originalImageId: (if $originalImageId == "" then null else $originalImageId end),
+      matchedImageId: (if $matchedImageId == "" then null else $matchedImageId end),
+      tags: $tags,
+      reused: $reused,
+      relatedLookbookListed: $relatedLookbookListed
+    }'
+}
+
+replace_trend_lookbook_matched_image() {
+  local token="$1"
+  local tags_response="$2"
+  local sample_key="$3"
+  local comment="$4"
+  local matched_image_path="$5"
+  shift 5
+
+  local trend_id lookbook_id original_image_id
+  trend_id="$(jq -r --arg sampleKey "${sample_key}" \
+    '.trendLookbookSamples[$sampleKey].trendId // empty' "${OUTPUT_FILE}")"
+  lookbook_id="$(jq -r --arg sampleKey "${sample_key}" \
+    '.trendLookbookSamples[$sampleKey].lookbookId // empty' "${OUTPUT_FILE}")"
+  original_image_id="$(jq -r --arg sampleKey "${sample_key}" \
+    '.trendLookbookSamples[$sampleKey].originalImageId // empty' "${OUTPUT_FILE}")"
+  if [[ -z "${trend_id}" || -z "${lookbook_id}" || -z "${original_image_id}" ]]; then
+    echo "Trend sample IDs are missing: ${sample_key}" >&2
+    exit 1
+  fi
+
+  local tag_ids='[]'
+  local tag_name tag_id
+  for tag_name in "$@"; do
+    tag_id="$(find_tag_id "${tags_response}" "${tag_name}")"
+    if [[ -z "${tag_id}" ]]; then
+      echo "Trend sample tag is missing: ${tag_name}" >&2
+      exit 1
+    fi
+    tag_ids="$(jq -c --argjson tagId "${tag_id}" '. + [$tagId]' <<<"${tag_ids}")"
+  done
+
+  local matched_image_id
+  matched_image_id="$(upload_demo_image \
+    "${token}" "${matched_image_path}" "LOOKBOOK" "${sample_key} replacement matched")"
+
+  # 룩북 ID와 원본은 유지하고 별도로 촬영된 대체 착용 이미지만 교체한다.
+  local update_body update_response
+  update_body="$(jq -nc \
+    --arg originalImageId "${original_image_id}" \
+    --arg matchedImageId "${matched_image_id}" \
+    --argjson tagIds "${tag_ids}" \
+    --arg comment "${comment}" \
+    '{
+      originalImageId: $originalImageId,
+      matchedImageId: $matchedImageId,
+      matchedProductId: null,
+      sourceReportId: null,
+      purchaseUrl: null,
+      tagIds: $tagIds,
+      comment: $comment
+    }')"
+  update_response="$(api_call PUT "/api/v1/lookbooks/${lookbook_id}" \
+    "${token}" "${update_body}")"
+  require_success "${update_response}" "${sample_key} matched image update"
+
+  local detail_response
+  detail_response="$(api_call GET "/api/v1/lookbooks/${lookbook_id}" "${token}")"
+  require_success "${detail_response}" "${sample_key} detail lookup"
+  if ! jq -e '
+      .data.originalImageUrl != null
+      and .data.matchedImageUrl != null
+    ' >/dev/null 2>&1 <<<"${detail_response}"; then
+    echo "Trend sample image URL verification failed: ${sample_key}" >&2
+    exit 1
+  fi
+
+  local related_response
+  related_response="$(api_call GET "/api/v1/trends/${trend_id}/lookbooks?pageSize=3" \
+    "${token}")"
+  require_success "${related_response}" "${sample_key} related lookbook lookup"
+  if ! jq -e --argjson lookbookId "${lookbook_id}" '
+      any(.data.items[]; .lookbookId == $lookbookId)
+    ' >/dev/null 2>&1 <<<"${related_response}"; then
+    echo "Trend sample is missing from related lookbooks: ${sample_key}" >&2
+    exit 1
+  fi
+
+  jq -nc \
+    --arg sampleKey "${sample_key}" \
+    --arg matchedImageId "${matched_image_id}" \
+    '{sampleKey: $sampleKey, matchedImageId: $matchedImageId}'
+}
+
 prepare_content_account() {
   local email="$1"
   local password="$2"
@@ -789,7 +1145,7 @@ done
 
 mkdir -p "$(dirname "${OUTPUT_FILE}")"
 temporary_output="$(mktemp)"
-trap 'rm -f "${temporary_output}" "${temporary_output}.0" "${temporary_output}.1" "${temporary_output}.content" "${temporary_output}.interactions"' EXIT
+trap 'rm -f "${temporary_output}" "${temporary_output}.0" "${temporary_output}.1" "${temporary_output}.content" "${temporary_output}.interactions" "${temporary_output}.trend-sample" "${temporary_output}.trend-2" "${temporary_output}.trend-3" "${temporary_output}.trend-4" "${temporary_output}.trend-5" "${temporary_output}.trend-6" "${temporary_output}.replace-1" "${temporary_output}.replace-2" "${temporary_output}.replace-3" "${temporary_output}.replace-4" "${temporary_output}.replace-5" "${temporary_output}.replace-6"' EXIT
 
 case "${MODE}" in
   prepare)
@@ -870,8 +1226,218 @@ case "${MODE}" in
     echo "Demo interactions prepared: ${OUTPUT_FILE}"
     exit 0
     ;;
+  --prepare-trend-lookbook-sample)
+    require_env FITBACK_DEMO_CONTENT_EMAIL
+    require_env FITBACK_DEMO_CONTENT_PASSWORD
+    require_env FITBACK_DEMO_TREND_MINIMAL_ORIGINAL_IMAGE
+    require_env FITBACK_DEMO_TREND_MINIMAL_MATCHED_IMAGE
+    prepare_minimal_trend_lookbook_sample \
+      "${FITBACK_DEMO_CONTENT_EMAIL}" \
+      "${FITBACK_DEMO_CONTENT_PASSWORD}" \
+      "${FITBACK_DEMO_TREND_MINIMAL_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_MINIMAL_MATCHED_IMAGE}" \
+      >"${temporary_output}.trend-sample"
+
+    if [[ -f "${OUTPUT_FILE}" ]] && jq -e . "${OUTPUT_FILE}" >/dev/null 2>&1; then
+      jq \
+        --arg preparedAt "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+        --arg mode "${MODE}" \
+        --slurpfile sample "${temporary_output}.trend-sample" \
+        '. + {
+          preparedAt: $preparedAt,
+          mode: $mode,
+          trendLookbookSamples: ((.trendLookbookSamples // {}) + {minimal01: $sample[0]})
+        }' "${OUTPUT_FILE}" >"${temporary_output}"
+    else
+      jq -n \
+        --arg preparedAt "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+        --arg mode "${MODE}" \
+        --slurpfile sample "${temporary_output}.trend-sample" \
+        '{
+          preparedAt: $preparedAt,
+          mode: $mode,
+          accounts: [],
+          trendLookbookSamples: {minimal01: $sample[0]}
+        }' >"${temporary_output}"
+    fi
+    mv "${temporary_output}" "${OUTPUT_FILE}"
+    rm -f "${temporary_output}.trend-sample"
+    chmod 600 "${OUTPUT_FILE}"
+    trap - EXIT
+    echo "Minimal trend lookbook sample prepared: ${OUTPUT_FILE}"
+    exit 0
+    ;;
+  --prepare-remaining-trend-lookbook-samples)
+    require_env FITBACK_DEMO_CONTENT_EMAIL
+    require_env FITBACK_DEMO_CONTENT_PASSWORD
+    for name in \
+      FITBACK_DEMO_TREND_STREET_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_STREET_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_LOVELY_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_LOVELY_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_FORMAL_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_FORMAL_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_FORMAL_ORIGINAL_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_FORMAL_MATCHED_IMAGE; do
+      require_env "${name}"
+    done
+
+    content_token="$(login_or_sign_up \
+      "${FITBACK_DEMO_CONTENT_EMAIL}" "${FITBACK_DEMO_CONTENT_PASSWORD}")"
+    all_tags_response="$(api_call GET "/api/v1/tags" "${content_token}")"
+    require_success "${all_tags_response}" "Trend sample tag lookup"
+
+    update_minimal_trend_sample_tags "${content_token}" "${all_tags_response}"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 2 \
+      "스트릿 오버사이즈 아우터 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_STREET_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_STREET_MATCHED_IMAGE}" \
+      "스트릿" "오버사이즈" >"${temporary_output}.trend-2"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 3 \
+      "러블리 페미닌 상의 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_LOVELY_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_LOVELY_MATCHED_IMAGE}" \
+      "러블리" "페미닌" >"${temporary_output}.trend-3"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 4 \
+      "캐주얼 데일리룩 하의 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_CASUAL_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_CASUAL_MATCHED_IMAGE}" \
+      "캐주얼" "데일리룩" >"${temporary_output}.trend-4"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 5 \
+      "포멀 오피스룩 아우터 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_FORMAL_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_FORMAL_MATCHED_IMAGE}" \
+      "포멀" "오피스룩" >"${temporary_output}.trend-5"
+    prepare_trend_lookbook_sample \
+      "${content_token}" "${all_tags_response}" 6 \
+      "캐주얼 포멀 하의 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_CASUAL_FORMAL_ORIGINAL_IMAGE}" \
+      "${FITBACK_DEMO_TREND_CASUAL_FORMAL_MATCHED_IMAGE}" \
+      "캐주얼" "포멀" >"${temporary_output}.trend-6"
+
+    jq \
+      --arg preparedAt "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+      --arg mode "${MODE}" \
+      --slurpfile street "${temporary_output}.trend-2" \
+      --slurpfile lovely "${temporary_output}.trend-3" \
+      --slurpfile casual "${temporary_output}.trend-4" \
+      --slurpfile formal "${temporary_output}.trend-5" \
+      --slurpfile casualFormal "${temporary_output}.trend-6" \
+      '. + {
+        preparedAt: $preparedAt,
+        mode: $mode,
+        trendLookbookSamples: ((.trendLookbookSamples // {}) + {
+          minimal01: (.trendLookbookSamples.minimal01 + {
+            tags: ["미니멀", "뉴트럴"]
+          }),
+          street01: $street[0],
+          lovely01: $lovely[0],
+          casual01: $casual[0],
+          formal01: $formal[0],
+          casualFormal01: $casualFormal[0]
+        })
+      }' "${OUTPUT_FILE}" >"${temporary_output}"
+    mv "${temporary_output}" "${OUTPUT_FILE}"
+    rm -f \
+      "${temporary_output}.trend-2" "${temporary_output}.trend-3" \
+      "${temporary_output}.trend-4" "${temporary_output}.trend-5" \
+      "${temporary_output}.trend-6"
+    chmod 600 "${OUTPUT_FILE}"
+    trap - EXIT
+    echo "Remaining trend lookbook samples prepared: ${OUTPUT_FILE}"
+    exit 0
+    ;;
+  --replace-trend-lookbook-matched-images)
+    require_env FITBACK_DEMO_CONTENT_EMAIL
+    require_env FITBACK_DEMO_CONTENT_PASSWORD
+    for name in \
+      FITBACK_DEMO_TREND_MINIMAL_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_STREET_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_LOVELY_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_FORMAL_MATCHED_IMAGE \
+      FITBACK_DEMO_TREND_CASUAL_FORMAL_MATCHED_IMAGE; do
+      require_env "${name}"
+    done
+    if [[ ! -f "${OUTPUT_FILE}" ]] || ! jq -e . "${OUTPUT_FILE}" >/dev/null 2>&1; then
+      echo "Trend sample result is missing: ${OUTPUT_FILE}" >&2
+      exit 1
+    fi
+
+    content_token="$(login_or_sign_up \
+      "${FITBACK_DEMO_CONTENT_EMAIL}" "${FITBACK_DEMO_CONTENT_PASSWORD}")"
+    all_tags_response="$(api_call GET "/api/v1/tags" "${content_token}")"
+    require_success "${all_tags_response}" "Trend replacement tag lookup"
+
+    replace_trend_lookbook_matched_image \
+      "${content_token}" "${all_tags_response}" "minimal01" \
+      "미니멀 뉴트럴 상의 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_MINIMAL_MATCHED_IMAGE}" \
+      "미니멀" "뉴트럴" >"${temporary_output}.replace-1"
+    replace_trend_lookbook_matched_image \
+      "${content_token}" "${all_tags_response}" "street01" \
+      "스트릿 오버사이즈 아우터 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_STREET_MATCHED_IMAGE}" \
+      "스트릿" "오버사이즈" >"${temporary_output}.replace-2"
+    replace_trend_lookbook_matched_image \
+      "${content_token}" "${all_tags_response}" "lovely01" \
+      "러블리 페미닌 상의 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_LOVELY_MATCHED_IMAGE}" \
+      "러블리" "페미닌" >"${temporary_output}.replace-3"
+    replace_trend_lookbook_matched_image \
+      "${content_token}" "${all_tags_response}" "casual01" \
+      "캐주얼 데일리룩 하의 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_CASUAL_MATCHED_IMAGE}" \
+      "캐주얼" "데일리룩" >"${temporary_output}.replace-4"
+    replace_trend_lookbook_matched_image \
+      "${content_token}" "${all_tags_response}" "formal01" \
+      "포멀 오피스룩 아우터 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_FORMAL_MATCHED_IMAGE}" \
+      "포멀" "오피스룩" >"${temporary_output}.replace-5"
+    replace_trend_lookbook_matched_image \
+      "${content_token}" "${all_tags_response}" "casualFormal01" \
+      "캐주얼 포멀 하의 매칭 룩북" \
+      "${FITBACK_DEMO_TREND_CASUAL_FORMAL_MATCHED_IMAGE}" \
+      "캐주얼" "포멀" >"${temporary_output}.replace-6"
+
+    jq \
+      --arg preparedAt "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+      --arg mode "${MODE}" \
+      --slurpfile minimal "${temporary_output}.replace-1" \
+      --slurpfile street "${temporary_output}.replace-2" \
+      --slurpfile lovely "${temporary_output}.replace-3" \
+      --slurpfile casual "${temporary_output}.replace-4" \
+      --slurpfile formal "${temporary_output}.replace-5" \
+      --slurpfile casualFormal "${temporary_output}.replace-6" \
+      '. + {
+        preparedAt: $preparedAt,
+        mode: $mode,
+        trendLookbookSamples: (.trendLookbookSamples
+          | .minimal01.matchedImageId = $minimal[0].matchedImageId
+          | .street01.matchedImageId = $street[0].matchedImageId
+          | .lovely01.matchedImageId = $lovely[0].matchedImageId
+          | .casual01.matchedImageId = $casual[0].matchedImageId
+          | .formal01.matchedImageId = $formal[0].matchedImageId
+          | .casualFormal01.matchedImageId = $casualFormal[0].matchedImageId)
+      }' "${OUTPUT_FILE}" >"${temporary_output}"
+    mv "${temporary_output}" "${OUTPUT_FILE}"
+    rm -f \
+      "${temporary_output}.replace-1" "${temporary_output}.replace-2" \
+      "${temporary_output}.replace-3" "${temporary_output}.replace-4" \
+      "${temporary_output}.replace-5" "${temporary_output}.replace-6"
+    chmod 600 "${OUTPUT_FILE}"
+    trap - EXIT
+    echo "Trend lookbook matched images replaced: ${OUTPUT_FILE}"
+    exit 0
+    ;;
   *)
-    echo "Usage: $0 [prepare|--save-existing|--prepare-interactions]" >&2
+    echo "Usage: $0 [prepare|--save-existing|--prepare-interactions|--prepare-trend-lookbook-sample|--prepare-remaining-trend-lookbook-samples|--replace-trend-lookbook-matched-images]" >&2
     exit 1
     ;;
 esac
