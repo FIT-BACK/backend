@@ -441,7 +441,7 @@ IDLE
 | `IMAGE410_1` | Presigned POST 재발급 후 재업로드 |
 | `IMAGE422_1` | 실제 이미지 파일이 잘못됨 |
 | `ANALYSIS400_3` | multipart 대신 `imageId` JSON 흐름 사용 |
-| `ANALYSIS409_1` | 분석 완료 여부 확인 후 추천 재시도 |
+| `ANALYSIS409_1` | 추천에 필요한 분석 결과가 없음. 의류 category가 없는 기존 리포트는 동일 요청을 재시도하지 말고, 신규 분석을 생성한 뒤 새로운 `reportId`로 추천 요청 |
 | `PRODUCT503_1` | 상품 공급자 일시 장애 안내와 재시도 |
 | `PRODUCT503_2` | 요청 한도 초과 안내, 즉시 반복 호출 금지 |
 | `RECOMMENDATION409_1` | 최신 태그·매칭값으로 추천 재생성 |

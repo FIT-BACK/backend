@@ -751,7 +751,7 @@ body는 없다.
 | `ANALYSIS_SELECTION_INVALID` | `ANALYSIS400_2` | 400 | 저장 선택 상품이 현재 추천과 불일치 |
 | `ANALYSIS_IMAGE_UPLOAD_FLOW_REQUIRED` | `ANALYSIS400_3` | 400 | 운영에서 multipart 분석 요청 |
 | `ANALYSIS_REPORT_NOT_FOUND` | `ANALYSIS404_1` | 404 | 리포트가 없거나 현재 회원 소유가 아님 |
-| `ANALYSIS_NOT_READY` | `ANALYSIS409_1` | 409 | 추천 입력으로 사용할 수 없는 분석 상태 |
+| `ANALYSIS_NOT_READY` | `ANALYSIS409_1` | 409 | 분석 태그 또는 의류 category가 없어 추천 입력으로 사용할 수 없음. category가 없는 기존 리포트는 신규 분석 필요 |
 | `ANALYSIS_IMAGE_STORAGE_ERROR` | `ANALYSIS500_1` | 500 | 분석 이미지 저장 실패 |
 | `TAG_NOT_FOUND` | `TAG404_1` | 404 | 확정 요청의 기본 태그 ID가 존재하지 않음 |
 | `TREND_NOT_FOUND` | `TREND404_1` | 404 | 트렌드 없음 |
