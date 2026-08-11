@@ -6,13 +6,13 @@
 | --- | --- |
 | 기준일 | 2026-08-11 |
 | 적용 범위 | 회원·프로필 이미지, 이미지 생명주기, 분석·추천·상품·저장·룩북·트렌드, 알림 설정·이력·알림 목록 |
-| 기준 코드 | `develop` `74cf8638`, JPA Entity, Flyway V1~V27 |
+| 기준 코드 | `develop` `4e32c6f`, JPA Entity, Flyway V1~V28 |
 | 연동 참고 | Recommendation은 기존 분석 입력을 읽거나 요청의 확정 태그·매칭값을 멱등 반영 |
 | 문서 성격 | 현재 애플리케이션·migration이 보장하는 계약과 의도적인 scalar 참조 경계를 기록 |
 
 이 문서는 기존 Recommendation/Product 설계에 현재 구현된 이미지, 회원 프로필,
 알림 설정·동의 이력·알림 테이블을 포함한다. 운영 DDL의 단일 출처는
-`src/main/resources/db/migration` 아래 V1~V27이며, 이 문서는 DDL을 대체하지 않는다.
+`src/main/resources/db/migration` 아래 V1~V28이며, 이 문서는 DDL을 대체하지 않는다.
 
 ---
 
@@ -99,6 +99,7 @@ providerIdentityKey = SHA-256(
 | `ProductTagSource` | `product_tag.source VARCHAR(20)` | `PROVIDER`, `AI`, `RULE`, `MANUAL` |
 | `TagType` | `tag.tag_type VARCHAR(30)` | `STYLE`, `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` |
 | `TagTargetClothing` | `tag_target_clothing.target_clothing VARCHAR(20)` | `TOP`, `PANTS`, `SKIRT`, `DRESS`, `OUTER`, `ALL` |
+| `GarmentPiece` | `analysis_report.garment_piece VARCHAR(20)` | `TOP`, `BOTTOM`, `DRESS`, `OUTER` |
 | `ImageUploadPurpose` | API request enum | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
 | `ImagePurpose` | `image.purpose VARCHAR(30)` | `ANALYSIS`, `LOOKBOOK`, `PROFILE` |
 | `ImageStatus` | `image.status VARCHAR(20)` | `PENDING_UPLOAD`, `READY`, `ACTIVE`, `DELETING`, `DELETE_FAILED`, `DELETED`, `REJECTED` |
@@ -552,6 +553,7 @@ V17 migration은 `closet_save`와 `trend_tag`의 같은 복합 키 중 가장 �
 | --- | --- | --- | --- |
 | `image_url` | `VARCHAR(2048)` | Y | multipart 호환 이미지 URL. `original_image_id`와 상호 배타 |
 | `original_image_id` | `VARCHAR(36)` | Y | Presigned 업로드 이미지 ID |
+| `garment_piece` | `VARCHAR(20)` | Y | 실제 AI가 판별한 단일 의류 분류. 기존·Demo·Prototype 결과는 `NULL` |
 | `deleted_at` | `DATETIME(6)` | Y | soft delete 시각 |
 | `purge_after` | `DATETIME(6)` | Y | 물리 정리 가능 시각 |
 | `recommendation_input_revision` | `INT` | N | Analysis가 결과 변경 시 증가시키는 version |
@@ -581,6 +583,8 @@ Recommendation의 body 요청은 확정 입력이 실제로 달라질 때만 입
 저장 직전에 현재 revision, 태그 key, 매칭값을 요청 snapshot과 비교하며 같을 때만 현재 추천
 세트와 result metadata를 교체한다.
 항목이 0개여도 metadata를 남겨 미생성과 빈 성공 결과를 구분한다.
+`garment_piece`는 분석 생성 시점의 AI 결과를 저장하며 이후 변경하지 않는다. API 요청·응답에는
+노출하지 않고 추천 category와도 자동 매핑하지 않는다.
 
 ```text
 recommendation_generated_at IS NULL -> NOT_GENERATED
@@ -787,7 +791,7 @@ JPA에는 대규모 `CascadeType.ALL`을 기본 적용하지 않는다. 특히 P
 
 ## 7. Entity·migration 상태
 
-현재 운영 migration 계약은 V1~V27이며, 프로덕션에서 Flyway 적용 후
+현재 운영 migration 계약은 V1~V28이며, 프로덕션에서 Flyway 적용 후
 Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
 
 ### 7.1 `Product`

@@ -59,7 +59,8 @@ public class AnalysisService {
             AnalysisReport report = AnalysisReport.create(
                     member,
                     imageUrl,
-                    DEFAULT_MATCH_PERCENTAGE
+                    DEFAULT_MATCH_PERCENTAGE,
+                    analysisResult.garmentPiece().orElse(null)
             );
             analysisResult.canonicalTags().forEach(report::addAiSuggestedTag);
             AnalysisReport savedReport = analysisReportRepository.save(report);
@@ -98,7 +99,8 @@ public class AnalysisService {
         AnalysisReport report = AnalysisReport.create(
                 member,
                 image,
-                DEFAULT_MATCH_PERCENTAGE
+                DEFAULT_MATCH_PERCENTAGE,
+                analysisResult.garmentPiece().orElse(null)
         );
         analysisResult.canonicalTags().forEach(report::addAiSuggestedTag);
         AnalysisReport savedReport = analysisReportRepository.save(report);
