@@ -79,10 +79,10 @@ Content 계정으로 트렌드별 룩북 샘플을 3개씩 생성했다. 원본�
 
 ### 계정별 상호작용 결과
 
-| 구분 | lookbookId | 좋아요 | 룩북 저장 | 트렌드 저장 |
-| --- | ---: | --- | --- | --- |
-| Demo-0 | 4 | true | true | false |
-| Demo-1 | 4 | true | true | false |
+| 구분 | lookbookId | 좋아요 | 룩북 저장 | trendId | 트렌드 저장 |
+| --- | ---: | --- | --- | ---: | --- |
+| Demo-0 | 4 | true | true | 6 | true |
+| Demo-1 | 4 | true | true | 5 | true |
 
 ### 트렌드 룩북 상호작용 결과
 
@@ -96,15 +96,15 @@ Content 계정으로 트렌드별 룩북 샘플을 3개씩 생성했다. 원본�
 이 데이터는 홈이나 트렌드 상세에서 로그인 계정에 따라 `isLiked`와 저장 상태가 다르게 표시되는지
 확인하기 위해 사용한다.
 
-위 트렌드 저장 값은 V27 적용 전에 실행한 결과다. V27이 적용된 서버에서 아래 명령을 다시 실행하면
-각 데모 계정이 조회한 트렌드를 마이 클로젯에 저장하고 상세 응답의 `isSaved=true`까지 검증한다.
+Demo-0은 트렌드 `6`, Demo-1은 트렌드 `5`를 마이 클로젯에 저장했다. 아래 명령은 이미 저장된
+룩북과 트렌드를 중복 생성하지 않고 현재 상태를 다시 확인한다.
 
 ```bash
 bash .local/demo/run_seed.sh --prepare-interactions
 ```
 
-재실행 후 `.local/demo/prepared-data.json`의 `interactions.accounts[].trendId`와
-`trendSaved`를 확인하고 위 표를 실제 결과로 갱신한다.
+실제 결과는 `.local/demo/prepared-data.json`의 `interactions.accounts[].trendId`와
+`trendSaved`에서 확인한다.
 
 ## 항목 설명
 
@@ -206,19 +206,11 @@ bash .local/demo/run_seed.sh --prepare-interactions
 
 각 데모 계정으로 로그인한 뒤 아래 항목을 확인한다.
 
-1. `GET /api/v1/trends`에서 저장할 `trendId`를 확인한다.
-2. `POST /api/v1/closet-saves`를 아래 요청 본문으로 호출한다.
-
-```json
-{
-  "targetType": "TREND",
-  "targetId": 1
-}
-```
-
-3. `GET /api/v1/closet-saves?target_type=TREND`의 `items`에 저장한 `targetId`가 있는지 확인한다.
-4. `GET /api/v1/trends/{trendId}`의 `isSaved=true`인지 확인한다.
-5. 데모 스크립트를 사용한 경우 요청 예시의 `1` 대신 `.local/demo/prepared-data.json`에 기록된 계정별 `trendId`를 확인한다.
+1. `GET /api/v1/closet-saves?target_type=TREND`를 호출한다.
+2. Demo-0은 `targetId=6`, Demo-1은 `targetId=5`인 항목이 있는지 확인한다.
+3. Demo-0은 `GET /api/v1/trends/6`, Demo-1은 `GET /api/v1/trends/5`를 호출한다.
+4. 각 상세 응답의 `isSaved=true`인지 확인한다.
+5. 저장 데이터를 다시 준비해야 하면 `bash .local/demo/run_seed.sh --prepare-interactions`를 실행한다.
 
 ### 추천 상품 상세
 
@@ -248,5 +240,4 @@ bash .local/demo/run_seed.sh --prepare-interactions
 
 - 데모 계정 비밀번호, accessToken, refreshToken, Presigned POST 값은 기록하지 않는다.
 - Shopify live lookup에 의존하므로 데모 직전에 상품 상세 조회 상태를 다시 확인한다.
-- V27 적용 전 운영 서버에서는 트렌드 조회·저장 검증을 실행하지 않는다.
 - 문서의 계정별 트렌드 저장 결과는 스크립트를 실제 실행한 뒤 기록된 값만 사용한다.
