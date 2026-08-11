@@ -78,7 +78,7 @@ class AiTagResponseParserTest {
     }
 
     @Test
-    void parsesCanonicalTagsAndFreeFormSuggestionsByGarment() {
+    void parsesCanonicalTagsAndFreeFormSuggestionsForTheSingleGarment() {
         String json = """
                 {
                   "garments": [
@@ -95,13 +95,6 @@ class AiTagResponseParserTest {
                           "evidence": "상의의 밝은 크림색 표면"
                         }
                       ]
-                    },
-                    {
-                      "piece": "DRESS",
-                      "canonicalTags": [
-                        {"type": "MATERIAL", "name": "시폰"}
-                      ],
-                      "suggestedTags": []
                     }
                   ]
                 }
@@ -109,7 +102,7 @@ class AiTagResponseParserTest {
 
         AiTagModelOutput output = parser.parse(json);
 
-        assertThat(output.garments()).hasSize(2);
+        assertThat(output.garments()).hasSize(1);
         assertThat(output.garments().getFirst()).satisfies(garment -> {
             assertThat(garment.piece()).isEqualTo(GarmentPiece.TOP);
             assertThat(garment.canonicalTags()).singleElement().satisfies(tag -> {
@@ -123,7 +116,6 @@ class AiTagResponseParserTest {
                 assertThat(tag.evidence()).isEqualTo("상의의 밝은 크림색 표면");
             });
         });
-        assertThat(output.garments().get(1).piece()).isEqualTo(GarmentPiece.DRESS);
     }
 
     @Test
@@ -183,25 +175,29 @@ class AiTagResponseParserTest {
 
         assertThatThrownBy(() -> parser.parse(json))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("garments must contain between 1 and 3 items");
+                .hasMessage("garments must contain exactly 1 item");
     }
 
-    @Test
-    void rejectsMoreThanThreeGarments() {
+    @ParameterizedTest
+    @ValueSource(ints = {2, 3, 4})
+    void rejectsMultipleGarments(int garmentCount) {
+        String[] pieces = {"TOP", "BOTTOM", "DRESS", "OUTER"};
+        StringBuilder garments = new StringBuilder();
+        for (int index = 0; index < garmentCount; index++) {
+            if (index > 0) {
+                garments.append(",");
+            }
+            garments.append("""
+                    {"piece":"%s","canonicalTags":[{"type":"STYLE","name":"캐주얼"}],"suggestedTags":[]}
+                    """.formatted(pieces[index]));
+        }
         String json = """
-                {
-                  "garments": [
-                    {"piece": "TOP", "canonicalTags": [{"type": "STYLE", "name": "캐주얼"}], "suggestedTags": []},
-                    {"piece": "BOTTOM", "canonicalTags": [{"type": "MATERIAL", "name": "데님"}], "suggestedTags": []},
-                    {"piece": "DRESS", "canonicalTags": [{"type": "COLOR", "name": "베이지"}], "suggestedTags": []},
-                    {"piece": "OUTER", "canonicalTags": [{"type": "DETAIL", "name": "단추"}], "suggestedTags": []}
-                  ]
-                }
-                """;
+                {"garments":[%s]}
+                """.formatted(garments);
 
         assertThatThrownBy(() -> parser.parse(json))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("garments must contain between 1 and 3 items");
+                .hasMessage("garments must contain exactly 1 item");
     }
 
     @Test

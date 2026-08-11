@@ -28,6 +28,7 @@ import com.fitback.backend.domain.recommendation.dto.RecommendationResultRespons
 import com.fitback.backend.domain.recommendation.entity.RecommendationStatus;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
@@ -111,7 +112,10 @@ class AnalysisServiceTest {
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
         when(imageUploadService.activateAnalysisImage(1L, "image-public-id"))
                 .thenReturn(image);
-        when(aiTagAnalyzer.analyze(image)).thenReturn(List.of(minimal));
+        when(aiTagAnalyzer.analyze(image)).thenReturn(AiTagAnalysisResult.withGarmentPiece(
+                GarmentPiece.TOP,
+                List.of(minimal)
+        ));
         when(imageUploadService.createReadUrl(image))
                 .thenReturn("https://cdn.example.com/signed-image");
         when(analysisReportRepository.save(any(AnalysisReport.class))).thenAnswer(invocation -> {
@@ -144,7 +148,10 @@ class AnalysisServiceTest {
         );
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
         when(imageStorage.store(image)).thenReturn("/uploads/look.jpg");
-        when(aiTagAnalyzer.analyze(image)).thenReturn(List.of(minimal, wideFit));
+        when(aiTagAnalyzer.analyze(image)).thenReturn(AiTagAnalysisResult.withGarmentPiece(
+                GarmentPiece.OUTER,
+                List.of(minimal, wideFit)
+        ));
         when(analysisReportRepository.save(any(AnalysisReport.class))).thenAnswer(invocation -> {
             AnalysisReport report = invocation.getArgument(0);
             ReflectionTestUtils.setField(report, "id", 501L);

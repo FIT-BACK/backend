@@ -640,7 +640,7 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
         if ("canonical garment tags must be unique".equals(message)) {
             return "DUPLICATE_CANONICAL_TAGS";
         }
-        if ("garments must contain between 1 and 3 items".equals(message)) {
+        if ("garments must contain exactly 1 item".equals(message)) {
             return "GARMENT_COUNT_OUT_OF_RANGE";
         }
         if ("garment pieces must be unique".equals(message)) {

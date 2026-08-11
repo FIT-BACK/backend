@@ -22,7 +22,7 @@ class AiTagRequestFactoryTest {
                 GarmentPiece.DRESS,
                 GarmentPiece.OUTER
         );
-        assertThat(AiTagRequestFactory.MAX_GARMENTS).isEqualTo(3);
+        assertThat(AiTagRequestFactory.MAX_GARMENTS).isEqualTo(1);
     }
 
     @Test
@@ -93,10 +93,10 @@ class AiTagRequestFactoryTest {
                 map(map(alternative.get("properties")).get("suggestedTags"))
         ).containsEntry("minItems", 1));
         assertThat(normalizedPrompt).contains(
-                "product-only fashion image",
-                "normally contains one primary garment",
-                "TOP, BOTTOM, DRESS, or OUTER field",
-                "Do not classify DRESS or OUTER as TOP",
+                "The input contains exactly one cropped garment",
+                "Classify it as exactly one of TOP, BOTTOM, DRESS, or OUTER",
+                "Never return more than one garment piece",
+                "DRESS and OUTER must not be folded into TOP",
                 "SILHOUETTE, COLOR",
                 "DETAIL, STYLE, and MATERIAL",
                 "Korean",
@@ -142,7 +142,7 @@ class AiTagRequestFactoryTest {
     }
 
     @Test
-    void requiresAtLeastOneNonNullGarmentWhileRetainingNullablePieceChoices() {
+    void requiresExactlyOneNonNullGarmentWhileRetainingNullablePieceChoices() {
         AiTagModelRequest request = new AiTagRequestFactory().create(List.of(
                 Tag.create("베이지", TagType.COLOR, List.of(TagTargetClothing.ALL))
         ));
@@ -165,9 +165,7 @@ class AiTagRequestFactoryTest {
                     .anySatisfy(option -> assertThat(option).containsEntry("type", "null"))
                     .anySatisfy(option -> assertThat(option).containsEntry("type", "object"));
         }
-        assertThat(validGarmentAlternatives).hasSize(
-                GarmentPiece.values().length * (GarmentPiece.values().length - 1)
-        );
+        assertThat(validGarmentAlternatives).hasSize(GarmentPiece.values().length);
         for (GarmentPiece nonNullPiece : GarmentPiece.values()) {
             assertThat(validGarmentAlternatives).anySatisfy(alternative -> {
                 assertThat(alternative)
@@ -196,6 +194,15 @@ class AiTagRequestFactoryTest {
                 Map.of(
                         GarmentPiece.TOP, true,
                         GarmentPiece.BOTTOM, true,
+                        GarmentPiece.DRESS, false,
+                        GarmentPiece.OUTER, false
+                )
+        )).isFalse();
+        assertThat(allowsGarmentPieceCombination(
+                validGarmentAlternatives,
+                Map.of(
+                        GarmentPiece.TOP, true,
+                        GarmentPiece.BOTTOM, true,
                         GarmentPiece.DRESS, true,
                         GarmentPiece.OUTER, true
                 )
@@ -208,7 +215,7 @@ class AiTagRequestFactoryTest {
                         GarmentPiece.DRESS, true,
                         GarmentPiece.OUTER, false
                 )
-        )).isTrue();
+        )).isFalse();
     }
 
     @Test

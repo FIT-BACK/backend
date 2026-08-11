@@ -54,14 +54,14 @@ public class AnalysisService {
         String imageUrl = imageStorage.store(image);
         boolean rollbackCleanupRegistered = registerRollbackCleanup(imageUrl);
         try {
-            List<Tag> suggestedTags = aiTagAnalyzer.analyze(image);
+            AiTagAnalysisResult analysisResult = aiTagAnalyzer.analyze(image);
 
             AnalysisReport report = AnalysisReport.create(
                     member,
                     imageUrl,
                     DEFAULT_MATCH_PERCENTAGE
             );
-            suggestedTags.forEach(report::addAiSuggestedTag);
+            analysisResult.canonicalTags().forEach(report::addAiSuggestedTag);
             AnalysisReport savedReport = analysisReportRepository.save(report);
 
             List<SuggestedTagResponse> tagResponses = savedReport.getReportTags().stream()
@@ -93,14 +93,14 @@ public class AnalysisService {
                 memberId,
                 request.imageId()
         );
-        List<Tag> suggestedTags = aiTagAnalyzer.analyze(image);
+        AiTagAnalysisResult analysisResult = aiTagAnalyzer.analyze(image);
 
         AnalysisReport report = AnalysisReport.create(
                 member,
                 image,
                 DEFAULT_MATCH_PERCENTAGE
         );
-        suggestedTags.forEach(report::addAiSuggestedTag);
+        analysisResult.canonicalTags().forEach(report::addAiSuggestedTag);
         AnalysisReport savedReport = analysisReportRepository.save(report);
         return toCreateResponse(savedReport);
     }
