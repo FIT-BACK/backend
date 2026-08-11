@@ -180,6 +180,17 @@ class OpenAiTagModelClientTest {
                 "x-ratelimit-reset-tokens", List.of("provider-secret"),
                 "x-ratelimit-reset-project-tokens", List.of("25h")
         ), (name, value) -> true))).isNull();
+
+        for (String invalidRetryAfter : List.of("+56", "1e2", "1.5")) {
+            assertThat(OpenAiTagModelClient.rateLimitMetadata(HttpHeaders.of(
+                    Map.of("Retry-After", List.of(invalidRetryAfter)),
+                    (name, value) -> true
+            ))).as("Retry-After=%s", invalidRetryAfter).isNull();
+        }
+        assertThat(OpenAiTagModelClient.rateLimitMetadata(HttpHeaders.of(
+                Map.of("x-ratelimit-remaining-requests", List.of("１２")),
+                (name, value) -> true
+        ))).isNull();
     }
 
     @Test

@@ -180,6 +180,29 @@ class OpenAiTagEvaluationMainTest {
     }
 
     @Test
+    void allowsTwoRateLimitSleepsAtTheExactTotalBudgetBoundary() {
+        List<Long> delays = new ArrayList<>();
+        OpenAiTagModelClient.RateLimitMetadata metadata = rateLimitMetadata(
+                60_000L, null, null, null, null, null, null
+        );
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(429, "RATE_LIMIT", "rate_limit_exceeded", metadata),
+                        providerFailure(429, "RATE_LIMIT", "rate_limit_exceeded", metadata),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                bound -> bound - 1L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(3);
+        assertThat(delays).containsExactly(60_500L, 60_500L);
+        assertThat(delays.stream().mapToLong(Long::longValue).sum()).isEqualTo(121_000L);
+    }
+
+    @Test
     void usesExponentialBoundedFallbackForRateLimitCodeWithoutHeaders() {
         List<Long> delays = new ArrayList<>();
 

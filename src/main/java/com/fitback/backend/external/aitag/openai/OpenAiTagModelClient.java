@@ -906,19 +906,16 @@ public final class OpenAiTagModelClient implements AiTagModelClient {
     }
 
     private static Long parseRetryAfterMillis(String value) {
-        if (!isBoundedHeaderValue(value)) {
+        Long seconds = parseNonNegativeLong(value);
+        if (seconds == null || seconds > MAX_RATE_LIMIT_DURATION_MILLIS / 1_000L) {
             return null;
         }
-        try {
-            BigDecimal millis = new BigDecimal(value).multiply(BigDecimal.valueOf(1_000L));
-            return boundedDurationMillis(millis);
-        } catch (NumberFormatException | ArithmeticException exception) {
-            return null;
-        }
+        return seconds * 1_000L;
     }
 
     private static Long parseNonNegativeLong(String value) {
-        if (!isBoundedHeaderValue(value) || !value.chars().allMatch(Character::isDigit)) {
+        if (!isBoundedHeaderValue(value)
+                || !value.chars().allMatch(character -> character >= '0' && character <= '9')) {
             return null;
         }
         try {
