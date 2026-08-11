@@ -188,17 +188,19 @@ class AnalysisReportSaveControllerIntegrationTest {
     }
 
     @Test
-    void rejectsMissingCategoryAndAnotherMembersReport() throws Exception {
-        String ownerToken = signUpAndGetAccessToken("report-owner@fitback.com");
-        String otherToken = signUpAndGetAccessToken("report-other@fitback.com");
-        Member owner = memberRepository.findByEmail("report-owner@fitback.com").orElseThrow();
+    void savesPartialSelectionForTrueOwner() throws Exception {
+        // 마음에 드는 카테고리 하나만 골라도(추천에 잡힌 카테고리를 다 채우지 않아도)
+        // 저장이 성공해야 한다.
+        String ownerToken = signUpAndGetAccessToken("report-partial-owner@fitback.com");
+        Member owner = memberRepository.findByEmail("report-partial-owner@fitback.com")
+                .orElseThrow();
         AnalysisReport report = createCurrentReport(owner);
         List<RecommendedItem> recommendations = createRecommendations(report);
         RecommendedItem top = recommendations.stream()
                 .filter(item -> item.getCategory() == ProductCategory.TOP)
                 .findFirst()
                 .orElseThrow();
-        String missingCategoryBody = objectMapper.writeValueAsString(Map.of(
+        String topOnlyBody = objectMapper.writeValueAsString(Map.of(
                 "selectedItems",
                 List.of(Map.of(
                         "category",
@@ -211,18 +213,46 @@ class AnalysisReportSaveControllerIntegrationTest {
         mockMvc.perform(put("/api/v1/analyses/{reportId}/save", report.getId())
                         .header("Authorization", bearer(ownerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(missingCategoryBody))
+                        .content(topOnlyBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.saved").value(true))
+                .andExpect(jsonPath("$.data.selectedItems.length()").value(1))
+                .andExpect(jsonPath("$.data.selectedItems[0].category").value("TOP"));
+    }
+
+    @Test
+    void rejectsUnknownCategoryAndAnotherMembersReport() throws Exception {
+        String ownerToken = signUpAndGetAccessToken("report-owner@fitback.com");
+        String otherToken = signUpAndGetAccessToken("report-other@fitback.com");
+        Member owner = memberRepository.findByEmail("report-owner@fitback.com").orElseThrow();
+        AnalysisReport report = createCurrentReport(owner);
+        createRecommendations(report);
+        // SHOES는 이 리포트의 추천 결과(TOP/BOTTOM)에 없는 카테고리라 여전히 거부돼야 한다.
+        String unknownCategoryBody = objectMapper.writeValueAsString(Map.of(
+                "selectedItems",
+                List.of(Map.of(
+                        "category",
+                        "SHOES",
+                        "productId",
+                        999999L
+                ))
+        ));
+
+        mockMvc.perform(put("/api/v1/analyses/{reportId}/save", report.getId())
+                        .header("Authorization", bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(unknownCategoryBody))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("ANALYSIS400_2"));
         mockMvc.perform(put("/api/v1/analyses/{reportId}/save", report.getId())
                         .header("Authorization", bearer(otherToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(missingCategoryBody))
+                        .content(unknownCategoryBody))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ANALYSIS404_1"));
         mockMvc.perform(put("/api/v1/analyses/{reportId}/save", report.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(missingCategoryBody))
+                        .content(unknownCategoryBody))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("COMMON401_1"));
     }

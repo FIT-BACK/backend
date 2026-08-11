@@ -153,7 +153,9 @@ class AnalysisReportSaveServiceTest {
     }
 
     @Test
-    void rejectsSelectionWhenAnAvailableCategoryIsMissing() {
+    void savesPartialSelectionWhenNotEveryAvailableCategoryIsChosen() {
+        // 마음에 드는 상품 1개만 골라도 저장할 수 있어야 한다 — 추천에 잡힌 카테고리를
+        // 전부 채우도록 강제하지 않는다.
         Member member = member(1L);
         AnalysisReport report = currentReport(501L, member);
         Product top = product(101L, ProductCategory.TOP, "셔츠", new BigDecimal("28900"));
@@ -175,16 +177,114 @@ class AnalysisReportSaveServiceTest {
                         recommendation(report, top, ProductCategory.TOP, 1),
                         recommendation(report, bottom, ProductCategory.BOTTOM, 1)
                 ));
+        when(closetSaveRepository.saveAndFlush(any(ClosetSave.class)))
+                .thenAnswer(invocation -> {
+                    ClosetSave save = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(save, "id", 901L);
+                    ReflectionTestUtils.setField(
+                            save,
+                            "createdAt",
+                            LocalDateTime.parse("2026-07-26T09:00:00")
+                    );
+                    return save;
+                });
+        when(savedAnalysisItemRepository.saveAll(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AnalysisReportSaveService.SaveOutcome outcome = service.save(
+                1L,
+                501L,
+                request(selected(ProductCategory.TOP, 101L))
+        );
+
+        assertThat(outcome.created()).isTrue();
+        assertThat(outcome.response().selectedItems())
+                .extracting("category", "productId")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(ProductCategory.TOP, 101L));
+    }
+
+    @Test
+    void rejectsSelectionForCategoryNotInRecommendationResults() {
+        // 추천 결과에 아예 없는 카테고리(SHOES)를 골랐다고 우기면 여전히 거부해야 한다.
+        Member member = member(1L);
+        AnalysisReport report = currentReport(501L, member);
+        Product top = product(101L, ProductCategory.TOP, "셔츠", new BigDecimal("28900"));
+        when(analysisReportRepository.findOwnedReportForSave(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
+                1L,
+                ClosetTargetType.ANALYSIS_REPORT,
+                501L
+        )).thenReturn(Optional.empty());
+        when(recommendedItemRepository.findByReportIdOrderByCategoryAscRankNoAsc(501L))
+                .thenReturn(List.of(recommendation(report, top, ProductCategory.TOP, 1)));
 
         assertThatThrownBy(() -> service.save(
                 1L,
                 501L,
-                request(selected(ProductCategory.TOP, 101L))
+                request(selected(ProductCategory.SHOES, 999L))
         ))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.ANALYSIS_SELECTION_INVALID);
         verify(closetSaveRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void preservesRequestOrderRegardlessOfCategoryEnumDeclarationOrder() {
+        // ProductCategory enum 선언 순서는 TOP이 BOTTOM보다 앞이지만, 요청은 BOTTOM을
+        // 먼저 보낸다 — 응답 순서가 enum 순서(TOP, BOTTOM)가 아니라 요청 순서(BOTTOM, TOP)를
+        // 따라야 한다(EnumMap 순회에 의존하면 이 순서가 깨진다).
+        Member member = member(1L);
+        AnalysisReport report = currentReport(501L, member);
+        Product top = product(101L, ProductCategory.TOP, "셔츠", new BigDecimal("28900"));
+        Product bottom = product(
+                202L,
+                ProductCategory.BOTTOM,
+                "슬랙스",
+                new BigDecimal("34900")
+        );
+        when(analysisReportRepository.findOwnedReportForSave(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
+                1L,
+                ClosetTargetType.ANALYSIS_REPORT,
+                501L
+        )).thenReturn(Optional.empty());
+        when(recommendedItemRepository.findByReportIdOrderByCategoryAscRankNoAsc(501L))
+                .thenReturn(List.of(
+                        recommendation(report, top, ProductCategory.TOP, 1),
+                        recommendation(report, bottom, ProductCategory.BOTTOM, 1)
+                ));
+        when(closetSaveRepository.saveAndFlush(any(ClosetSave.class)))
+                .thenAnswer(invocation -> {
+                    ClosetSave save = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(save, "id", 902L);
+                    ReflectionTestUtils.setField(
+                            save,
+                            "createdAt",
+                            LocalDateTime.parse("2026-07-26T09:00:00")
+                    );
+                    return save;
+                });
+        when(savedAnalysisItemRepository.saveAll(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AnalysisReportSaveService.SaveOutcome outcome = service.save(
+                1L,
+                501L,
+                request(
+                        selected(ProductCategory.BOTTOM, 202L),
+                        selected(ProductCategory.TOP, 101L)
+                )
+        );
+
+        assertThat(outcome.response().selectedItems())
+                .extracting("category", "productId")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(ProductCategory.BOTTOM, 202L),
+                        org.assertj.core.groups.Tuple.tuple(ProductCategory.TOP, 101L)
+                );
     }
 
     @Test
@@ -209,7 +309,7 @@ class AnalysisReportSaveServiceTest {
                 ClosetTargetType.ANALYSIS_REPORT,
                 501L
         )).thenReturn(Optional.of(save));
-        when(savedAnalysisItemRepository.findByClosetSaveIdOrderByCategoryAsc(900L))
+        when(savedAnalysisItemRepository.findByClosetSaveIdOrderByIdAsc(900L))
                 .thenReturn(List.of());
 
         AnalysisReportSaveService.SaveOutcome outcome = service.save(
@@ -224,6 +324,53 @@ class AnalysisReportSaveServiceTest {
         verify(recommendedItemRepository, never())
                 .findByReportIdOrderByCategoryAscRankNoAsc(any());
         verify(closetSaveRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void reReadingAnExistingSavePreservesOriginalInsertionOrderNotCategoryOrder() {
+        // 이미 저장된 걸 재조회할 때도(재저장 시도 시 기존 저장 그대로 반환하는 경로),
+        // 최초 저장 당시 순서(BOTTOM 먼저, TOP 나중)를 그대로 유지해야 한다 — enum 선언
+        // 순서(TOP이 BOTTOM보다 앞)로 재조합되면 안 된다.
+        Member member = member(1L);
+        AnalysisReport report = currentReport(501L, member);
+        ClosetSave save = ClosetSave.create(member, ClosetTargetType.ANALYSIS_REPORT, 501L);
+        ReflectionTestUtils.setField(save, "id", 900L);
+        ReflectionTestUtils.setField(
+                save,
+                "createdAt",
+                LocalDateTime.parse("2026-07-26T09:00:00")
+        );
+        Product bottom = product(202L, ProductCategory.BOTTOM, "슬랙스", new BigDecimal("34900"));
+        Product top = product(101L, ProductCategory.TOP, "셔츠", new BigDecimal("28900"));
+        SavedAnalysisItem bottomItem = SavedAnalysisItem.from(
+                save,
+                recommendation(report, bottom, ProductCategory.BOTTOM, 1)
+        );
+        SavedAnalysisItem topItem = SavedAnalysisItem.from(
+                save,
+                recommendation(report, top, ProductCategory.TOP, 1)
+        );
+
+        when(analysisReportRepository.findOwnedReportForSave(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
+                1L,
+                ClosetTargetType.ANALYSIS_REPORT,
+                501L
+        )).thenReturn(Optional.of(save));
+        // BOTTOM이 먼저 저장됐던 순서 그대로 반환(=ID/삽입 순서 기준) — 카테고리 오름차순이면 TOP이 먼저 와야 함
+        when(savedAnalysisItemRepository.findByClosetSaveIdOrderByIdAsc(900L))
+                .thenReturn(List.of(bottomItem, topItem));
+
+        AnalysisReportSaveService.SaveOutcome outcome = service.save(
+                1L,
+                501L,
+                request(selected(ProductCategory.TOP, 101L))
+        );
+
+        assertThat(outcome.response().selectedItems())
+                .extracting("category")
+                .containsExactly(ProductCategory.BOTTOM, ProductCategory.TOP);
     }
 
     private AnalysisReportSaveRequest request(
