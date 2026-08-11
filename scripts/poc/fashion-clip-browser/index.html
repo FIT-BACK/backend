@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' blob: data:; connect-src 'self' https://huggingface.co https://*.hf.co https://cdn.jsdelivr.net https:; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'"
+      content="default-src 'self'; img-src 'self' blob: data:; connect-src 'self' http://127.0.0.1:* http://localhost:* https://huggingface.co https://*.hf.co https://cdn.jsdelivr.net https:; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'"
     />
     <title>Fashion-CLIP Browser PoC</title>
     <style>
@@ -30,7 +30,7 @@
       <p class="notice">
         Local files are decoded and embedded in this browser tab. No image bytes,
         model output, or embeddings are sent to FIT-BACK backend or Modal.
-        The model binary is fetched directly by the browser from Hugging Face.
+        The model binary is fetched directly by the browser from the configured model URL (pinned Hugging Face by default).
       </p>
 
       <section class="inputs" aria-label="Local image inputs">
@@ -59,6 +59,7 @@
       <dl>
         <dt>Runtime</dt><dd id="runtime">-</dd>
         <dt>Model</dt><dd><code id="model">-</code></dd>
+        <dt>Model source</dt><dd id="model-source">-</dd>
         <dt>Model load</dt><dd id="model-load">-</dd>
         <dt>Inference (last run)</dt><dd id="inference">-</dd>
       </dl>

@@ -3,7 +3,26 @@ import { cosineSimilarity, l2Norm, normalizeL2 } from './math.js';
 
 const MODEL_ID = 'Frapic/fashion-clip-onnx';
 const MODEL_REVISION = '12eb79267363fd03b8983a25903cd9097b1ec76c';
-const MODEL_URL = `https://huggingface.co/${MODEL_ID}/resolve/${MODEL_REVISION}/vision_model.onnx`;
+const DEFAULT_MODEL_URL = `https://huggingface.co/${MODEL_ID}/resolve/${MODEL_REVISION}/vision_model.onnx`;
+
+function resolveModelConfig() {
+  const override = new URLSearchParams(window.location.search).get('modelUrl');
+  if (!override) {
+    return { url: DEFAULT_MODEL_URL, source: 'pinned remote default' };
+  }
+  try {
+    const url = new URL(override, window.location.origin);
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      throw new Error('modelUrl must use http or https');
+    }
+    return { url: url.href, source: `query override (${url.origin})` };
+  } catch {
+    return { url: DEFAULT_MODEL_URL, source: 'pinned remote default (invalid override ignored)' };
+  }
+}
+
+const MODEL_CONFIG = resolveModelConfig();
+const MODEL_URL = MODEL_CONFIG.url;
 const WASM_PATH = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/';
 const IMAGE_SIZE = 224;
 const BENCHMARK_SIZES = [1, 3, 5, 10];
@@ -24,6 +43,7 @@ const elements = {
   status: document.querySelector('#status'),
   runtime: document.querySelector('#runtime'),
   model: document.querySelector('#model'),
+  modelSource: document.querySelector('#model-source'),
   modelLoad: document.querySelector('#model-load'),
   modelSecondLoad: document.querySelector('#model-second-load'),
   modelArtifactSummary: document.querySelector('#model-artifact-summary'),
@@ -48,6 +68,8 @@ const elements = {
     normalizedNorm: document.querySelector('#candidate-normalized-norm'),
   },
 };
+
+elements.modelSource.textContent = MODEL_CONFIG.source;
 
 let sessionPromise;
 let runtimeState = 'unknown';
@@ -113,7 +135,7 @@ async function createSession() {
   const modelBytes = await response.arrayBuffer();
   run.downloadMs = performance.now() - bodyStarted;
   run.bytes = modelBytes.byteLength;
-  elements.modelArtifactSummary.textContent = `${MODEL_ID} revision ${MODEL_REVISION}; received ${formatBytes(run.bytes)}; Content-Length ${run.contentLength ? formatBytes(Number(run.contentLength)) : 'unavailable'}; final URL redirected ${run.redirected ? 'yes' : 'no'}`;
+  elements.modelArtifactSummary.textContent = `${MODEL_ID} revision ${MODEL_REVISION}; source ${MODEL_CONFIG.source}; received ${formatBytes(run.bytes)}; Content-Length ${run.contentLength ? formatBytes(Number(run.contentLength)) : 'unavailable'}; final URL redirected ${run.redirected ? 'yes' : 'no'}`;
   try {
     const sessionStarted = performance.now();
     const session = await ort.InferenceSession.create(modelBytes, {
