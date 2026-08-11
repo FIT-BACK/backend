@@ -3,6 +3,7 @@ package com.fitback.backend.domain.analysis.service;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.repository.TagRepository;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.util.List;
@@ -27,19 +28,22 @@ public class PrototypeAiTagAnalyzer implements AiTagAnalyzer {
     private final TagRepository tagRepository;
 
     @Override
-    public List<Tag> analyze(MultipartFile image) {
+    public AiTagAnalysisResult analyze(MultipartFile image) {
         throw new BusinessException(ErrorCode.ANALYSIS_IMAGE_UPLOAD_FLOW_REQUIRED);
     }
 
     @Override
-    public List<Tag> analyze(Image image) {
+    public AiTagAnalysisResult analyze(Image image) {
         Map<String, Tag> tagsByName = tagRepository.findAllByTagNameIn(PROTOTYPE_TAG_NAMES).stream()
                 .collect(Collectors.toMap(Tag::getTagName, Function.identity()));
         if (tagsByName.size() != PROTOTYPE_TAG_NAMES.size()) {
             throw new BusinessException(ErrorCode.ANALYSIS_NOT_READY);
         }
-        return PROTOTYPE_TAG_NAMES.stream()
-                .map(tagsByName::get)
-                .toList();
+        return AiTagAnalysisResult.withGarmentPiece(
+                GarmentPiece.TOP,
+                PROTOTYPE_TAG_NAMES.stream()
+                        .map(tagsByName::get)
+                        .toList()
+        );
     }
 }

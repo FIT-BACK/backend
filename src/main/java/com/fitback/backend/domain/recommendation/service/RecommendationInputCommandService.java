@@ -30,6 +30,9 @@ public class RecommendationInputCommandService {
         AnalysisReport report = analysisReportRepository
                 .findOwnedReportForRecommendationUpdate(reportId, memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_REPORT_NOT_FOUND));
+        if (report.getGarmentPiece() == null) {
+            throw new BusinessException(ErrorCode.ANALYSIS_NOT_READY);
+        }
         List<Tag> tags = tagRepository.findAllById(request.confirmedTagIds());
         if (tags.size() != request.confirmedTagIds().size()) {
             throw new BusinessException(ErrorCode.TAG_NOT_FOUND);

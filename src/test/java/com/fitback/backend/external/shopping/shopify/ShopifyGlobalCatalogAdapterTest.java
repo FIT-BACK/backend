@@ -2,6 +2,7 @@ package com.fitback.backend.external.shopping.shopify;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fitback.backend.domain.product.service.ProductCandidateMapper;
 import com.fitback.backend.domain.product.service.model.ProductAvailability;
 import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.product.service.model.ProductSearchQuery;
@@ -15,6 +16,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class ShopifyGlobalCatalogAdapterTest {
 
@@ -66,6 +69,50 @@ class ShopifyGlobalCatalogAdapterTest {
         });
     }
 
+    @ParameterizedTest
+    @CsvSource(
+            value = {
+                "TOP, Shirt, TOP, true",
+                "OUTER, Jacket, OUTER, false",
+                "NULL, Wool Coat, OUTER, false",
+                "NULL, Oversized Shirt, TOP, true"
+            },
+            nullValues = "NULL"
+    )
+    void filtersByProviderCategoryOrProductNameWithoutCopyingRequestedCategory(
+            String categoryPath,
+            String title,
+            ProductCategory expectedCategory,
+            boolean includedForTop
+    ) {
+        ShopifyCatalogItem item = item(title, categoryPath);
+        ShopifyGlobalCatalogAdapter adapter = adapter(new StubClient() {
+            @Override
+            public ShopifyCatalogPage search(String query, String cursor, int limit) {
+                return new ShopifyCatalogPage(List.of(item), null);
+            }
+        });
+        ProductCandidateMapper candidateMapper = new ProductCandidateMapper(
+                new ShopifyProductCategoryMapper()
+        );
+
+        var candidates = adapter.search(new ProductSearchQuery(
+                "shirt",
+                ProductCategory.TOP,
+                null,
+                10
+        )).items();
+        var candidate = candidates.getFirst();
+        ProductCategory actualCategory = candidateMapper.category(candidate);
+        var includedCandidates = candidates.stream()
+                .filter(current -> candidateMapper.category(current) == ProductCategory.TOP)
+                .toList();
+
+        assertThat(candidate.categoryPath()).isEqualTo(categoryPath);
+        assertThat(actualCategory).isEqualTo(expectedCategory);
+        assertThat(includedCandidates).hasSize(includedForTop ? 1 : 0);
+    }
+
     @Test
     void lookupPreservesTheCandidateProviderIdentity() {
         ShopifyGlobalCatalogAdapter adapter = adapter(new StubClient());
@@ -104,6 +151,22 @@ class ShopifyGlobalCatalogAdapterTest {
                 ITEM.productId(),
                 ITEM.variantId(),
                 ITEM.merchantId()
+        );
+    }
+
+    private static ShopifyCatalogItem item(String title, String categoryPath) {
+        return new ShopifyCatalogItem(
+                ITEM.productId(),
+                ITEM.variantId(),
+                title,
+                categoryPath,
+                ITEM.imageUrl(),
+                ITEM.price(),
+                ITEM.currency(),
+                ITEM.available(),
+                ITEM.merchantId(),
+                ITEM.sellerName(),
+                ITEM.productUrl()
         );
     }
 

@@ -18,6 +18,7 @@ import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepos
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -285,7 +286,8 @@ class RecommendationApiFlowIntegrationTest {
         AnalysisReport report = AnalysisReport.create(
                 member,
                 "https://example.com/recommendation-flow-analysis.jpg",
-                70
+                70,
+                GarmentPiece.TOP
         );
         for (String tagName : tagNames) {
             Tag tag = tagRepository.save(Tag.create(tagName, TagType.DETAIL));

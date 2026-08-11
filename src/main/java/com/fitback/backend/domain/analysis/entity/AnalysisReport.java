@@ -3,10 +3,13 @@ package com.fitback.backend.domain.analysis.entity;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.tag.entity.Tag;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import com.fitback.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -37,7 +40,7 @@ import org.hibernate.annotations.OnDeleteAction;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AnalysisReport extends BaseTimeEntity {
 
-    private static final int DEFAULT_MATCH_PERCENTAGE = 70;
+    private static final int DEFAULT_MATCH_PERCENTAGE = 50;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -58,6 +61,10 @@ public class AnalysisReport extends BaseTimeEntity {
 
     @Column(name = "match_percentage", nullable = false)
     private Integer matchPercentage;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "garment_piece", length = 20)
+    private GarmentPiece garmentPiece;
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
@@ -89,19 +96,39 @@ public class AnalysisReport extends BaseTimeEntity {
     private final List<ReportCustomTag> customTags = new ArrayList<>();
 
     private AnalysisReport(Member member, String imageUrl, Integer matchPercentage) {
+        this(member, imageUrl, matchPercentage, null);
+    }
+
+    private AnalysisReport(
+            Member member,
+            String imageUrl,
+            Integer matchPercentage,
+            GarmentPiece garmentPiece
+    ) {
         this.member = Objects.requireNonNull(member, "member must not be null");
         this.imageUrl = Objects.requireNonNull(imageUrl, "imageUrl must not be null");
         this.matchPercentage = matchPercentage == null ? DEFAULT_MATCH_PERCENTAGE : matchPercentage;
+        this.garmentPiece = garmentPiece;
         validateMatchPercentage(this.matchPercentage);
     }
 
     private AnalysisReport(Member member, Image originalImage, Integer matchPercentage) {
+        this(member, originalImage, matchPercentage, null);
+    }
+
+    private AnalysisReport(
+            Member member,
+            Image originalImage,
+            Integer matchPercentage,
+            GarmentPiece garmentPiece
+    ) {
         this.member = Objects.requireNonNull(member, "member must not be null");
         this.originalImage = Objects.requireNonNull(
                 originalImage,
                 "originalImage must not be null"
         );
         this.matchPercentage = matchPercentage == null ? DEFAULT_MATCH_PERCENTAGE : matchPercentage;
+        this.garmentPiece = garmentPiece;
         validateMatchPercentage(this.matchPercentage);
     }
 
@@ -111,10 +138,28 @@ public class AnalysisReport extends BaseTimeEntity {
 
     public static AnalysisReport create(
             Member member,
+            String imageUrl,
+            Integer matchPercentage,
+            GarmentPiece garmentPiece
+    ) {
+        return new AnalysisReport(member, imageUrl, matchPercentage, garmentPiece);
+    }
+
+    public static AnalysisReport create(
+            Member member,
             Image originalImage,
             Integer matchPercentage
     ) {
         return new AnalysisReport(member, originalImage, matchPercentage);
+    }
+
+    public static AnalysisReport create(
+            Member member,
+            Image originalImage,
+            Integer matchPercentage,
+            GarmentPiece garmentPiece
+    ) {
+        return new AnalysisReport(member, originalImage, matchPercentage, garmentPiece);
     }
 
     public void softDelete(Instant deletedAt) {

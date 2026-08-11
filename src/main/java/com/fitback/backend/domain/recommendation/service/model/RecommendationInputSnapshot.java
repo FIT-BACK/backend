@@ -1,5 +1,6 @@
 package com.fitback.backend.domain.recommendation.service.model;
 
+import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.tag.entity.TagType;
 import java.util.List;
 import java.util.Locale;
@@ -10,6 +11,7 @@ public record RecommendationInputSnapshot(
         Long memberId,
         Integer inputRevision,
         Integer matchPercentage,
+        ProductCategory category,
         List<TagInput> tags,
         List<String> customTagNames
 ) {
@@ -24,18 +26,20 @@ public record RecommendationInputSnapshot(
             Long memberId,
             Integer inputRevision,
             Integer matchPercentage,
+            ProductCategory category,
             List<TagInput> tags
     ) {
-        this(reportId, memberId, inputRevision, matchPercentage, tags, List.of());
+        this(reportId, memberId, inputRevision, matchPercentage, category, tags, List.of());
     }
 
     public RecommendationInputSnapshot(
             Long reportId,
             Long memberId,
             Integer inputRevision,
+            ProductCategory category,
             List<TagInput> tags
     ) {
-        this(reportId, memberId, inputRevision, 70, tags, List.of());
+        this(reportId, memberId, inputRevision, 70, category, tags, List.of());
     }
 
     public List<Long> tagIds() {

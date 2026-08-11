@@ -3,9 +3,10 @@ package com.fitback.backend.external.aitag;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fitback.backend.domain.tag.entity.TagType;
-import java.util.ArrayList;
+import com.fitback.backend.external.aitag.openai.OpenAiTagModelClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -155,6 +156,125 @@ class OpenAiTagEvaluationMainTest {
     }
 
     @Test
+    void honorsBoundedRetryAfterForEvaluator429ThenReturnsSuccess() {
+        List<Long> delays = new ArrayList<>();
+        OpenAiTagModelClient.RateLimitMetadata metadata = rateLimitMetadata(
+                56_000L, 0L, 149_984L, 1_000L, 360_000L, 0L, 3_000L
+        );
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(429, "RATE_LIMIT", "rate_limit_exceeded", metadata),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(2);
+        assertThat(delays).containsExactly(56_250L);
+        assertThat(retryResult.attempts().getFirst().providerErrorCode())
+                .isEqualTo("rate_limit_exceeded");
+        assertThat(retryResult.attempts().getFirst().rateLimitMetadata()).isEqualTo(metadata);
+    }
+
+    @Test
+    void allowsTwoRateLimitSleepsAtTheExactTotalBudgetBoundary() {
+        List<Long> delays = new ArrayList<>();
+        OpenAiTagModelClient.RateLimitMetadata metadata = rateLimitMetadata(
+                60_000L, null, null, null, null, null, null
+        );
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(429, "RATE_LIMIT", "rate_limit_exceeded", metadata),
+                        providerFailure(429, "RATE_LIMIT", "rate_limit_exceeded", metadata),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                bound -> bound - 1L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(3);
+        assertThat(delays).containsExactly(60_500L, 60_500L);
+        assertThat(delays.stream().mapToLong(Long::longValue).sum()).isEqualTo(121_000L);
+    }
+
+    @Test
+    void usesExponentialBoundedFallbackForRateLimitCodeWithoutHeaders() {
+        List<Long> delays = new ArrayList<>();
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(429, "RATE_LIMIT", "rate_limit_exceeded", null),
+                        providerFailure(429, "RATE_LIMIT", "rate_limit_exceeded", null),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(3);
+        assertThat(delays).containsExactly(5_000L, 10_000L);
+    }
+
+    @Test
+    void usesResetOnlyForAnExhaustedRateLimitDimension() {
+        List<Long> delays = new ArrayList<>();
+        OpenAiTagModelClient.RateLimitMetadata metadata = rateLimitMetadata(
+                null, 12L, 99L, 1_000L, 2_000L, 0L, 3_000L
+        );
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(429, "RATE_LIMIT", "UNKNOWN", metadata),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(delays).containsExactly(3_250L);
+    }
+
+    @Test
+    void doesNotRetryQuotaLimitsOrRateLimitWaitsBeyondTheEvaluatorBound() {
+        List<OpenAiTagEvaluationMain.EvaluationFailure> failures = List.of(
+                providerFailureValue(429, "RATE_LIMIT", "credit_balance_exhausted", null),
+                providerFailureValue(429, "RATE_LIMIT", "organization_spend_limit_exceeded", null),
+                providerFailureValue(429, "RATE_LIMIT", "project_spend_limit_exceeded", null),
+                providerFailureValue(429, "RATE_LIMIT", "organization_usage_limit_exceeded", null),
+                providerFailureValue(429, "RATE_LIMIT", "insufficient_quota", null),
+                providerFailureValue(
+                        429, "RATE_LIMIT", "rate_limit_exceeded",
+                        rateLimitMetadata(60_001L, 0L, 0L, null, null, null, null)
+                )
+        );
+
+        for (OpenAiTagEvaluationMain.EvaluationFailure failure : failures) {
+            AtomicInteger calls = new AtomicInteger();
+            OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                    () -> {
+                        calls.incrementAndGet();
+                        return OpenAiTagEvaluationMain.EvaluationAttempt.failure(failure);
+                    },
+                    ignoredDelay -> {
+                        throw new AssertionError("non-retryable 429 must not sleep");
+                    },
+                    ignoredBound -> 0L
+            );
+
+            assertThat(calls).hasValue(1);
+            assertThat(retryResult.attemptCount()).isEqualTo(1);
+            assertThat(retryResult.failure()).isEqualTo(failure);
+        }
+    }
+
+    @Test
     void stopsAfterThree504FailuresAndKeepsFinalProviderMetadata() {
         List<Long> delays = new ArrayList<>();
 
@@ -282,6 +402,33 @@ class OpenAiTagEvaluationMainTest {
                 .contains("\"attempt\":1", "\"httpStatus\":500", "\"xRequestId\":\"req-1\"")
                 .contains("\"attempt\":2", "\"xRequestId\":\"req-2\"")
                 .doesNotContain("provider-response", "test-key", "data:image", "imageBytes");
+    }
+
+    @Test
+    void serializesOnlyAllowlistedNumericRateLimitEvidence() throws Exception {
+        OpenAiTagModelClient.RateLimitMetadata metadata = rateLimitMetadata(
+                56_000L, 0L, 149_984L, 1_000L, 360_000L, 0L, 3_000L
+        );
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(429, "RATE_LIMIT", "rate_limit_exceeded", metadata),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                ignoredDelay -> { },
+                ignoredBound -> 0L
+        );
+
+        String serialized = new ObjectMapper().writeValueAsString(retryResult.attempts());
+
+        assertThat(serialized)
+                .contains(
+                        "\"providerErrorCode\":\"rate_limit_exceeded\"",
+                        "\"retryAfterMillis\":56000",
+                        "\"remainingProjectTokens\":0"
+                )
+                .doesNotContain(
+                        "provider-secret", "error.message", "authorization", "apiKey", "rawHeaders"
+                );
     }
 
     @Test
@@ -433,6 +580,44 @@ class OpenAiTagEvaluationMainTest {
         return OpenAiTagEvaluationMain.EvaluationAttempt.failure(
                 new OpenAiTagEvaluationMain.EvaluationFailure(
                         "ANALYSIS409_1", 1L, status, category, null, xRequestId));
+    }
+
+    private static OpenAiTagEvaluationMain.EvaluationAttempt providerFailure(
+            int status,
+            String category,
+            String providerErrorCode,
+            OpenAiTagModelClient.RateLimitMetadata rateLimitMetadata
+    ) {
+        return OpenAiTagEvaluationMain.EvaluationAttempt.failure(providerFailureValue(
+                status, category, providerErrorCode, rateLimitMetadata
+        ));
+    }
+
+    private static OpenAiTagEvaluationMain.EvaluationFailure providerFailureValue(
+            int status,
+            String category,
+            String providerErrorCode,
+            OpenAiTagModelClient.RateLimitMetadata rateLimitMetadata
+    ) {
+        return new OpenAiTagEvaluationMain.EvaluationFailure(
+                "ANALYSIS409_1", 1L, status, category, null, "UNAVAILABLE",
+                providerErrorCode, rateLimitMetadata
+        );
+    }
+
+    private static OpenAiTagModelClient.RateLimitMetadata rateLimitMetadata(
+            Long retryAfterMillis,
+            Long remainingRequests,
+            Long remainingTokens,
+            Long resetRequestsMillis,
+            Long resetTokensMillis,
+            Long remainingProjectTokens,
+            Long resetProjectTokensMillis
+    ) {
+        return new OpenAiTagModelClient.RateLimitMetadata(
+                retryAfterMillis, remainingRequests, remainingTokens, resetRequestsMillis,
+                resetTokensMillis, remainingProjectTokens, resetProjectTokensMillis
+        );
     }
 
     private static AiTagModelResult modelResult() {

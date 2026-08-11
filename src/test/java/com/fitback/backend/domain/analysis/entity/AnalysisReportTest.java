@@ -14,6 +14,17 @@ import org.springframework.test.util.ReflectionTestUtils;
 class AnalysisReportTest {
 
     @Test
+    void usesDefaultMatchPercentageWhenCreatedWithNull() {
+        AnalysisReport report = AnalysisReport.create(
+                member(),
+                "/uploads/look.jpg",
+                null
+        );
+
+        assertThat(report.getMatchPercentage()).isEqualTo(50);
+    }
+
+    @Test
     void storesAiSuggestedTagsAsUnconfirmed() {
         AnalysisReport report = AnalysisReport.create(member(), "/uploads/look.jpg", 70);
         Tag minimal = tag(10L, "미니멀");

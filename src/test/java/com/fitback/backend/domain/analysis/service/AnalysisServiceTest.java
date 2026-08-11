@@ -28,6 +28,7 @@ import com.fitback.backend.domain.recommendation.dto.RecommendationResultRespons
 import com.fitback.backend.domain.recommendation.entity.RecommendationStatus;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.time.Clock;
@@ -39,6 +40,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -111,7 +113,10 @@ class AnalysisServiceTest {
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
         when(imageUploadService.activateAnalysisImage(1L, "image-public-id"))
                 .thenReturn(image);
-        when(aiTagAnalyzer.analyze(image)).thenReturn(List.of(minimal));
+        when(aiTagAnalyzer.analyze(image)).thenReturn(AiTagAnalysisResult.withGarmentPiece(
+                GarmentPiece.TOP,
+                List.of(minimal)
+        ));
         when(imageUploadService.createReadUrl(image))
                 .thenReturn("https://cdn.example.com/signed-image");
         when(analysisReportRepository.save(any(AnalysisReport.class))).thenAnswer(invocation -> {
@@ -127,7 +132,12 @@ class AnalysisServiceTest {
 
         assertThat(response.reportId()).isEqualTo(502L);
         assertThat(response.imageUrl()).isEqualTo("https://cdn.example.com/signed-image");
+        assertThat(response.matchPercentage()).isEqualTo(50);
         assertThat(response.suggestedTags()).extracting("tagName").containsExactly("미니멀");
+        ArgumentCaptor<AnalysisReport> reportCaptor =
+                ArgumentCaptor.forClass(AnalysisReport.class);
+        verify(analysisReportRepository).save(reportCaptor.capture());
+        assertThat(reportCaptor.getValue().getGarmentPiece()).isEqualTo(GarmentPiece.TOP);
     }
 
     @Test
@@ -143,7 +153,10 @@ class AnalysisServiceTest {
         );
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
         when(imageStorage.store(image)).thenReturn("/uploads/look.jpg");
-        when(aiTagAnalyzer.analyze(image)).thenReturn(List.of(minimal, wideFit));
+        when(aiTagAnalyzer.analyze(image)).thenReturn(AiTagAnalysisResult.withGarmentPiece(
+                GarmentPiece.OUTER,
+                List.of(minimal, wideFit)
+        ));
         when(analysisReportRepository.save(any(AnalysisReport.class))).thenAnswer(invocation -> {
             AnalysisReport report = invocation.getArgument(0);
             ReflectionTestUtils.setField(report, "id", 501L);
@@ -154,13 +167,45 @@ class AnalysisServiceTest {
 
         assertThat(response.reportId()).isEqualTo(501L);
         assertThat(response.imageUrl()).isEqualTo("/uploads/look.jpg");
-        assertThat(response.matchPercentage()).isEqualTo(70);
+        assertThat(response.matchPercentage()).isEqualTo(50);
         assertThat(response.suggestedTags())
                 .extracting("tagId", "tagName")
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple(10L, "미니멀"),
                         org.assertj.core.groups.Tuple.tuple(20L, "와이드핏")
                 );
+        ArgumentCaptor<AnalysisReport> reportCaptor =
+                ArgumentCaptor.forClass(AnalysisReport.class);
+        verify(analysisReportRepository).save(reportCaptor.capture());
+        assertThat(reportCaptor.getValue().getGarmentPiece()).isEqualTo(GarmentPiece.OUTER);
+    }
+
+    @Test
+    void createsReportWithoutGarmentPieceWhenAnalyzerDoesNotProvideOne() {
+        Member member = member(1L);
+        MockMultipartFile image = new MockMultipartFile(
+                "image",
+                "look.jpg",
+                "image/jpeg",
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF}
+        );
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(imageStorage.store(image)).thenReturn("/uploads/look.jpg");
+        when(aiTagAnalyzer.analyze(image)).thenReturn(
+                AiTagAnalysisResult.withoutGarmentPiece(List.of())
+        );
+        when(analysisReportRepository.save(any(AnalysisReport.class))).thenAnswer(invocation -> {
+            AnalysisReport report = invocation.getArgument(0);
+            ReflectionTestUtils.setField(report, "id", 503L);
+            return report;
+        });
+
+        analysisService.create(1L, image);
+
+        ArgumentCaptor<AnalysisReport> reportCaptor =
+                ArgumentCaptor.forClass(AnalysisReport.class);
+        verify(analysisReportRepository).save(reportCaptor.capture());
+        assertThat(reportCaptor.getValue().getGarmentPiece()).isNull();
     }
 
     @Test

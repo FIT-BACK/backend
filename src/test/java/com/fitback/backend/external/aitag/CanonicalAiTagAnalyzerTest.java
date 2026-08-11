@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.fitback.backend.domain.analysis.service.AiTagAnalysisResult;
 import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagTargetClothing;
@@ -19,6 +20,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.slf4j.LoggerFactory;
 
 class CanonicalAiTagAnalyzerTest {
@@ -37,13 +40,14 @@ class CanonicalAiTagAnalyzerTest {
         when(tagRepository.findAllByOrderByIdAsc()).thenReturn(catalog);
     }
 
-    @Test
-    void mapsProviderPredictionsToCanonicalTagsThroughOneAnalyzerContract() {
+    @ParameterizedTest
+    @EnumSource(GarmentPiece.class)
+    void returnsEveryGarmentPieceWithResolvedCanonicalTags(GarmentPiece garmentPiece) {
         AiTagModelClient client = (ignoredImage, request) -> new AiTagModelResult(
                 "test",
                 "test-model",
                 List.of(new AiTagGarment(
-                        GarmentPiece.BOTTOM,
+                        garmentPiece,
                         List.of(
                                 new AiTagPrediction(TagType.STYLE, "캐주얼"),
                                 new AiTagPrediction(TagType.MATERIAL, "데님")
@@ -61,7 +65,10 @@ class CanonicalAiTagAnalyzerTest {
         );
         CanonicalAiTagAnalyzer analyzer = analyzer(client);
 
-        assertThat(analyzer.analyze(image))
+        AiTagAnalysisResult result = analyzer.analyze(image);
+
+        assertThat(result.garmentPiece()).contains(garmentPiece);
+        assertThat(result.canonicalTags())
                 .extracting(Tag::getTagName)
                 .containsExactly("캐주얼", "데님");
     }
@@ -118,8 +125,8 @@ class CanonicalAiTagAnalyzerTest {
     }
 
     @Test
-    void deduplicatesTheSameCanonicalTagAcrossGarmentsAtPersistenceBoundary() {
-        AiTagModelClient client = (ignoredImage, request) -> new AiTagModelResult(
+    void rejectsMultipleGarmentsBeforeCanonicalResolutionCanFlattenOwnership() {
+        assertThatThrownBy(() -> new AiTagModelResult(
                 "test",
                 "test-model",
                 List.of(
@@ -130,18 +137,16 @@ class CanonicalAiTagAnalyzerTest {
                         ),
                         new AiTagGarment(
                                 GarmentPiece.BOTTOM,
-                                List.of(new AiTagPrediction(TagType.STYLE, "캐주얼")),
+                                List.of(new AiTagPrediction(TagType.MATERIAL, "데님")),
                                 List.of()
                         )
                 ),
                 null,
                 null,
                 1
-        );
-
-        assertThat(analyzer(client).analyze(image))
-                .extracting(Tag::getTagName)
-                .containsExactly("캐주얼");
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("garments must contain exactly 1 item");
     }
 
     private CanonicalAiTagAnalyzer analyzer(AiTagModelClient client) {

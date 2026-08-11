@@ -5,9 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import java.util.List;
 import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
@@ -47,7 +49,20 @@ class RecommendationInputSnapshotFactoryTest {
                 );
         assertThat(snapshot.customTagNames()).containsExactly("출근룩");
         assertThat(snapshot.matchPercentage()).isEqualTo(85);
+        assertThat(snapshot.category()).isEqualTo(ProductCategory.TOP);
         assertThat(factory.matches(report, snapshot)).isTrue();
+    }
+
+    @Test
+    void mapsEveryGarmentPieceToProductCategory() {
+        assertThat(RecommendationInputSnapshotFactory.toProductCategory(GarmentPiece.TOP))
+                .isEqualTo(ProductCategory.TOP);
+        assertThat(RecommendationInputSnapshotFactory.toProductCategory(GarmentPiece.BOTTOM))
+                .isEqualTo(ProductCategory.BOTTOM);
+        assertThat(RecommendationInputSnapshotFactory.toProductCategory(GarmentPiece.DRESS))
+                .isEqualTo(ProductCategory.DRESS);
+        assertThat(RecommendationInputSnapshotFactory.toProductCategory(GarmentPiece.OUTER))
+                .isEqualTo(ProductCategory.OUTER);
     }
 
     @Test
@@ -74,6 +89,16 @@ class RecommendationInputSnapshotFactoryTest {
         assertThat(factory.matches(report, snapshot)).isFalse();
     }
 
+    @Test
+    void detectsGarmentCategoryChange() {
+        AnalysisReport report = report();
+        RecommendationInputSnapshot snapshot = factory.from(report, 1L);
+
+        ReflectionTestUtils.setField(report, "garmentPiece", GarmentPiece.BOTTOM);
+
+        assertThat(factory.matches(report, snapshot)).isFalse();
+    }
+
     private AnalysisReport report() {
         Member member = Member.create(
                 "member@example.com",
@@ -81,7 +106,12 @@ class RecommendationInputSnapshotFactoryTest {
                 "password",
                 LoginProvider.EMAIL
         );
-        AnalysisReport report = AnalysisReport.create(member, "/uploads/look.jpg", 70);
+        AnalysisReport report = AnalysisReport.create(
+                member,
+                "/uploads/look.jpg",
+                70,
+                GarmentPiece.TOP
+        );
         ReflectionTestUtils.setField(report, "id", 501L);
         return report;
     }

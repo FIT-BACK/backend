@@ -8,6 +8,7 @@ import com.fitback.backend.domain.image.entity.Image;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.util.List;
@@ -35,7 +36,10 @@ class PrototypeAiTagAnalyzerTest {
 
         PrototypeAiTagAnalyzer analyzer = new PrototypeAiTagAnalyzer(tagRepository);
 
-        assertThat(analyzer.analyze(image))
+        AiTagAnalysisResult result = analyzer.analyze(image);
+
+        assertThat(result.garmentPiece()).contains(GarmentPiece.TOP);
+        assertThat(result.canonicalTags())
                 .extracting(Tag::getTagName)
                 .containsExactly("미니멀", "와이드핏", "베이지");
     }

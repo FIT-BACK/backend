@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
 import com.fitback.backend.domain.notification.event.AnalysisCompletedEvent;
+import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.product.repository.ProductRepository;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
@@ -57,6 +58,7 @@ class RecommendationSetWriterTest {
                 REPORT_ID,
                 MEMBER_ID,
                 1,
+                ProductCategory.TOP,
                 List.of(new TagInput(10L, "Fixture", TagType.DETAIL))
         );
     }

@@ -101,6 +101,31 @@ for database in fitback fitback_existing_refresh_token; do
 done
 
 for database in fitback fitback_existing_refresh_token; do
+  garment_piece_contract="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(COLUMN_TYPE, ':', IS_NULLABLE)
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'analysis_report'
+          AND COLUMN_NAME = 'garment_piece';")"
+
+  if [ "$garment_piece_contract" != "varchar(20):YES" ]; then
+    echo "Unexpected analysis_report.garment_piece contract in $database: $garment_piece_contract" >&2
+    exit 1
+  fi
+
+  legacy_null_count="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*)
+        FROM $database.analysis_report
+        WHERE report_id = 7001
+          AND garment_piece IS NULL;")"
+
+  if [ "$legacy_null_count" != "1" ]; then
+    echo "Legacy analysis report garment_piece was not preserved as NULL in $database." >&2
+    exit 1
+  fi
+
   tag_type_contract="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
     -e "SELECT COLUMN_TYPE

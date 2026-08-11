@@ -8,11 +8,13 @@ import static org.mockito.Mockito.when;
 
 import com.fitback.backend.domain.analysis.entity.AnalysisReport;
 import com.fitback.backend.domain.analysis.repository.AnalysisReportRepository;
+import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.recommendation.dto.RecommendationGenerateRequest;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
+import com.fitback.backend.external.aitag.GarmentPiece;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import java.util.List;
@@ -46,6 +48,7 @@ class RecommendationInputCommandServiceTest {
                 1L,
                 2,
                 70,
+                ProductCategory.TOP,
                 List.of(new RecommendationInputSnapshot.TagInput(
                         10L,
                         "미니멀",
@@ -55,6 +58,7 @@ class RecommendationInputCommandServiceTest {
         );
         when(analysisReportRepository.findOwnedReportForRecommendationUpdate(501L, 1L))
                 .thenReturn(Optional.of(report));
+        when(report.getGarmentPiece()).thenReturn(GarmentPiece.TOP);
         when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(tag));
         when(snapshotFactory.from(report, 1L)).thenReturn(expected);
 
@@ -69,6 +73,7 @@ class RecommendationInputCommandServiceTest {
         RecommendationGenerateRequest request = request(10L);
         when(analysisReportRepository.findOwnedReportForRecommendationUpdate(501L, 1L))
                 .thenReturn(Optional.of(report));
+        when(report.getGarmentPiece()).thenReturn(GarmentPiece.TOP);
         when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of());
 
         assertThatThrownBy(() -> service().confirmAndRead(1L, 501L, request))
@@ -80,6 +85,25 @@ class RecommendationInputCommandServiceTest {
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyInt()
         );
+    }
+
+    @Test
+    void rejectsLegacyReportWithoutGarmentCategory() {
+        RecommendationGenerateRequest request = request(10L);
+        when(analysisReportRepository.findOwnedReportForRecommendationUpdate(501L, 1L))
+                .thenReturn(Optional.of(report));
+
+        assertThatThrownBy(() -> service().confirmAndRead(1L, 501L, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.ANALYSIS_NOT_READY);
+        verify(report, never()).confirmRecommendationInput(
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyInt()
+        );
+        verify(tagRepository, never()).findAllById(org.mockito.ArgumentMatchers.anyList());
+        verify(snapshotFactory, never()).from(report, 1L);
     }
 
     private RecommendationInputCommandService service() {

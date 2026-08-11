@@ -35,7 +35,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class AnalysisService {
 
     private static final Logger log = LoggerFactory.getLogger(AnalysisService.class);
-    private static final int DEFAULT_MATCH_PERCENTAGE = 70;
+    private static final int DEFAULT_MATCH_PERCENTAGE = 50;
 
     private final AnalysisReportRepository analysisReportRepository;
     private final MemberRepository memberRepository;
@@ -54,14 +54,15 @@ public class AnalysisService {
         String imageUrl = imageStorage.store(image);
         boolean rollbackCleanupRegistered = registerRollbackCleanup(imageUrl);
         try {
-            List<Tag> suggestedTags = aiTagAnalyzer.analyze(image);
+            AiTagAnalysisResult analysisResult = aiTagAnalyzer.analyze(image);
 
             AnalysisReport report = AnalysisReport.create(
                     member,
                     imageUrl,
-                    DEFAULT_MATCH_PERCENTAGE
+                    DEFAULT_MATCH_PERCENTAGE,
+                    analysisResult.garmentPiece().orElse(null)
             );
-            suggestedTags.forEach(report::addAiSuggestedTag);
+            analysisResult.canonicalTags().forEach(report::addAiSuggestedTag);
             AnalysisReport savedReport = analysisReportRepository.save(report);
 
             List<SuggestedTagResponse> tagResponses = savedReport.getReportTags().stream()
@@ -93,14 +94,15 @@ public class AnalysisService {
                 memberId,
                 request.imageId()
         );
-        List<Tag> suggestedTags = aiTagAnalyzer.analyze(image);
+        AiTagAnalysisResult analysisResult = aiTagAnalyzer.analyze(image);
 
         AnalysisReport report = AnalysisReport.create(
                 member,
                 image,
-                DEFAULT_MATCH_PERCENTAGE
+                DEFAULT_MATCH_PERCENTAGE,
+                analysisResult.garmentPiece().orElse(null)
         );
-        suggestedTags.forEach(report::addAiSuggestedTag);
+        analysisResult.canonicalTags().forEach(report::addAiSuggestedTag);
         AnalysisReport savedReport = analysisReportRepository.save(report);
         return toCreateResponse(savedReport);
     }

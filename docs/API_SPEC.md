@@ -141,6 +141,8 @@ OTHER
 ### 2.2 추천 입력
 
 - Request body를 생략하면 기존 `AnalysisReport`의 표시 가능한 분석 태그와 현재 매칭값을 사용한다.
+- 신규 `AnalysisReport`의 현재 매칭값은 50으로 시작한다. 사용자가 이후 명시적으로 변경한 값은
+  해당 리포트의 현재 값으로 유지한다.
 - Request body를 보내면 `confirmedTagIds`, `customTagNames`, `matchPercentage`를 하나의 추천 입력으로
   확정한다. `memberId`는 받지 않는다.
 - 기본 태그와 직접 입력 태그는 중복 제거 후 합계 1~8개이며, 직접 입력 태그는 각 1~50자다.
@@ -488,7 +490,28 @@ Issue #119에서 인증 회원의 기존 분석 결과를 사용하거나 요청
 ```
 
 body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입력 태그 합계는 중복 제거 후 1~8개다.
-기존 body 없는 호출도 하위 호환으로 유지한다.
+예시의 `70`은 사용자가 명시적으로 선택한 값이며 신규 분석의 서버 기본값이 아니다. 기존 body 없는
+호출도 하위 호환으로 유지하며, 이 경우 리포트에 현재 저장된 `matchPercentage`를 응답하지만
+임계값 필터는 적용하지 않는다. body에 기본값과 같은 `50`을 명시한 경우에는 50점 미만 후보를
+제외하고 `IMAGE_TAG_WEIGHTED_THR_V1`로 저장한다.
+
+상품 category는 클라이언트가 입력하지 않는다. 서버가 분석 리포트의 `garmentPiece`를 다음과
+같이 내부 검색 category로 변환한다.
+
+```text
+TOP -> TOP
+BOTTOM -> BOTTOM
+DRESS -> DRESS
+OUTER -> OUTER
+```
+
+변환된 category는 모든 상품 검색 요청에 전달되며, 공급자가 다른 category 후보를 반환해도
+추천 후보와 저장 결과에서 제외한다. `garmentPiece`가 `NULL`인 기존 리포트는 body 유무와
+관계없이 `ANALYSIS409_1`로 추천 생성을 거부한다.
+
+Demo와 Prototype 분석기는 실제 AI 의류 분류 결과가 없는 흐름 검증용 구현이므로 신규 분석에
+`GarmentPiece.TOP`을 고정 저장한다. Shopify 검색 요청의 category는 검색어 보강에만 사용하며,
+상품 category 판정에는 공급자 categoryPath를 우선 사용하고 값이 없으면 상품명을 사용한다.
 
 ### Response `200 OK`
 
@@ -548,8 +571,8 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
 
 ```text
 1. 리포트 소유권을 검증하고, body가 있으면 확정 태그와 매칭값을 write lock에서 멱등 반영한다.
-2. 현재 입력 revision, 매칭값, 정렬된 기본·직접 입력 태그 key를 snapshot으로 캡처한다.
-3. DB transaction 밖에서 쇼핑 API 후보 조회, 정규화, category mapping, 중복 제거,
+2. 현재 입력 revision, 매칭값, 의류 category, 정렬된 기본·직접 입력 태그 key를 snapshot으로 캡처한다.
+3. DB transaction 밖에서 의류 category를 포함한 쇼핑 API 후보 조회, category 재검증, 정규화, 중복 제거,
    similarity score 계산을 수행한다.
 4. 짧은 write transaction에서 입력 version을 다시 비교한다.
 5. 입력이 같을 때만 기존 현재 세트를 새 세트로 원자적으로 교체하고 결과 metadata를 갱신한다.
@@ -557,7 +580,8 @@ body를 보낼 때 세 필드는 모두 필수다. 기본 태그와 직접 입�
 
 - 외부 호출을 DB transaction 안에서 수행하지 않는다.
 - 새 세트 저장에 성공하기 전 기존 세트를 삭제하지 않는다.
-- 입력 revision, 태그 key 또는 매칭값이 달라지면 `RECOMMENDATION409_1`을 반환하고 기존 세트를 유지한다.
+- 입력 revision, 태그 key, 매칭값 또는 의류 category가 달라지면 `RECOMMENDATION409_1`을 반환하고
+  기존 세트를 유지한다.
 - body 요청은 `matchPercentage` 미만 후보를 materialization 전에 제외하고
   `IMAGE_TAG_WEIGHTED_THR_V1`로 저장한다. 필터 결과가 비어 있어도 정상적인 빈 `CURRENT` 결과다.
 - body 없는 하위 호환 요청은 임계값 필터 없이 `IMAGE_TAG_WEIGHTED_V1`로 저장한다.
@@ -727,7 +751,7 @@ body는 없다.
 | `ANALYSIS_SELECTION_INVALID` | `ANALYSIS400_2` | 400 | 저장 선택 상품이 현재 추천과 불일치 |
 | `ANALYSIS_IMAGE_UPLOAD_FLOW_REQUIRED` | `ANALYSIS400_3` | 400 | 운영에서 multipart 분석 요청 |
 | `ANALYSIS_REPORT_NOT_FOUND` | `ANALYSIS404_1` | 404 | 리포트가 없거나 현재 회원 소유가 아님 |
-| `ANALYSIS_NOT_READY` | `ANALYSIS409_1` | 409 | 추천 입력으로 사용할 수 없는 분석 상태 |
+| `ANALYSIS_NOT_READY` | `ANALYSIS409_1` | 409 | 분석 태그 또는 의류 category가 없어 추천 입력으로 사용할 수 없음. category가 없는 기존 리포트는 신규 분석 필요 |
 | `ANALYSIS_IMAGE_STORAGE_ERROR` | `ANALYSIS500_1` | 500 | 분석 이미지 저장 실패 |
 | `TAG_NOT_FOUND` | `TAG404_1` | 404 | 확정 요청의 기본 태그 ID가 존재하지 않음 |
 | `TREND_NOT_FOUND` | `TREND404_1` | 404 | 트렌드 없음 |
@@ -1027,6 +1051,27 @@ S3 객체가 없으면 `404 IMAGE404_2`, S3 timeout·연결 실패·429·5xx 및
 
 성공 시 `201 Created`로 `reportId`, signed `imageUrl`, `matchPercentage`, `suggestedTags`를
 반환한다. 기존 `multipart/form-data`의 `image` part 계약은 로컬 개발 프로필에서만 유지한다.
+신규 분석 리포트의 기본 `matchPercentage`는 50이며, 응답에도 같은 값이 포함된다.
+
+```json
+{
+  "success": true,
+  "code": "COMMON201_1",
+  "message": "리소스가 생성되었습니다.",
+  "data": {
+    "reportId": 501,
+    "imageUrl": "https://signed-cdn.example/image",
+    "matchPercentage": 50,
+    "suggestedTags": [
+      {
+        "tagId": 10,
+        "tagName": "미니멀"
+      }
+    ]
+  }
+}
+```
+
 운영 프로필에서 multipart 분석을 요청하면 로컬 파일을 생성하지 않고 `ANALYSIS400_3`으로
 거절하므로, 클라이언트는 Presigned POST 완료 후 `imageId` JSON 계약을 사용해야 한다.
 

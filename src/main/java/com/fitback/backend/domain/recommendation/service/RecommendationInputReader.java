@@ -22,7 +22,8 @@ public class RecommendationInputReader {
                 .findByIdAndMemberIdAndDeletedAtIsNull(reportId, memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_REPORT_NOT_FOUND));
         RecommendationInputSnapshot snapshot = snapshotFactory.from(report, memberId);
-        if (snapshot.tags().isEmpty() && snapshot.customTagNames().isEmpty()) {
+        if (snapshot.category() == null
+                || (snapshot.tags().isEmpty() && snapshot.customTagNames().isEmpty())) {
             throw new BusinessException(ErrorCode.ANALYSIS_NOT_READY);
         }
         return snapshot;

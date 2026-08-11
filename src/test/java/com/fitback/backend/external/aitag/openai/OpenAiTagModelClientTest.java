@@ -157,6 +157,89 @@ class OpenAiTagModelClientTest {
     }
 
     @Test
+    void extractsOnlyBoundedNumericRateLimitMetadataFromHttpHeaders() {
+        OpenAiTagModelClient.RateLimitMetadata metadata = OpenAiTagModelClient.rateLimitMetadata(
+                HttpHeaders.of(Map.of(
+                        "Retry-After", List.of("56"),
+                        "x-ratelimit-remaining-requests", List.of("0"),
+                        "x-ratelimit-remaining-tokens", List.of("149984"),
+                        "x-ratelimit-reset-requests", List.of("1s"),
+                        "x-ratelimit-reset-tokens", List.of("6m0s"),
+                        "x-ratelimit-remaining-project-tokens", List.of("0"),
+                        "x-ratelimit-reset-project-tokens", List.of("3s"),
+                        "x-provider-secret", List.of("must-not-be-retained")
+                ), (name, value) -> true));
+
+        assertThat(metadata).isEqualTo(new OpenAiTagModelClient.RateLimitMetadata(
+                56_000L, 0L, 149_984L, 1_000L, 360_000L, 0L, 3_000L
+        ));
+
+        assertThat(OpenAiTagModelClient.rateLimitMetadata(HttpHeaders.of(Map.of(
+                "Retry-After", List.of("-1"),
+                "x-ratelimit-remaining-requests", List.of("1\n2"),
+                "x-ratelimit-reset-tokens", List.of("provider-secret"),
+                "x-ratelimit-reset-project-tokens", List.of("25h")
+        ), (name, value) -> true))).isNull();
+
+        for (String invalidRetryAfter : List.of("+56", "1e2", "1.5")) {
+            assertThat(OpenAiTagModelClient.rateLimitMetadata(HttpHeaders.of(
+                    Map.of("Retry-After", List.of(invalidRetryAfter)),
+                    (name, value) -> true
+            ))).as("Retry-After=%s", invalidRetryAfter).isNull();
+        }
+        assertThat(OpenAiTagModelClient.rateLimitMetadata(HttpHeaders.of(
+                Map.of("x-ratelimit-remaining-requests", List.of("１２")),
+                (name, value) -> true
+        ))).isNull();
+    }
+
+    @Test
+    void exposesAllowlistedRateLimitEvidenceWithoutRawProviderValues() {
+        OpenAiTagModelClient.RateLimitMetadata metadata =
+                new OpenAiTagModelClient.RateLimitMetadata(
+                        56_000L, 0L, 0L, 1_000L, 2_000L, 0L, 3_000L
+                );
+        String rawBody = "{\"error\":{\"code\":\"rate_limit_exceeded\","
+                + "\"message\":\"provider-secret-message\"}}";
+        OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) ->
+                new OpenAiTagModelClient.TransportResponse(429, rawBody, "req-429", metadata);
+        OpenAiTagModelClient client = new OpenAiTagModelClient(
+                new AiTagProperties.OpenAi("test-key", "test-model"),
+                Duration.ofSeconds(1),
+                new ObjectMapper(),
+                transport
+        );
+
+        assertThatThrownBy(() -> analyze(client))
+                .isInstanceOfSatisfying(OpenAiTagModelClient.ProviderFailure.class, failure -> {
+                    assertThat(failure.providerErrorCode()).isEqualTo("rate_limit_exceeded");
+                    assertThat(failure.rateLimitMetadata()).isEqualTo(metadata);
+                    assertThat(failure.getMessage()).doesNotContain(
+                            "provider-secret-message", "test-key", rawBody
+                    );
+                });
+    }
+
+    @Test
+    void redactsUnknownProviderErrorCodes() {
+        String rawBody = "{\"error\":{\"code\":\"provider-secret-code\"}}";
+        OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) ->
+                new OpenAiTagModelClient.TransportResponse(429, rawBody, "req-429");
+        OpenAiTagModelClient client = new OpenAiTagModelClient(
+                new AiTagProperties.OpenAi("test-key", "test-model"),
+                Duration.ofSeconds(1),
+                new ObjectMapper(),
+                transport
+        );
+
+        assertThatThrownBy(() -> analyze(client))
+                .isInstanceOfSatisfying(OpenAiTagModelClient.ProviderFailure.class, failure -> {
+                    assertThat(failure.providerErrorCode()).isEqualTo("UNKNOWN");
+                    assertThat(failure.getMessage()).doesNotContain("provider-secret-code", rawBody);
+                });
+    }
+
+    @Test
     void exposesExistingSafeParsingCategoryWithoutResponseText() {
         OpenAiTagModelClient client = clientReturning(200, "provider-secret-response");
 
@@ -348,6 +431,59 @@ class OpenAiTagModelClientTest {
                                     "responseParsingCategory=INVALID_MODEL_OUTPUT_SCHEMA:EMPTY_GARMENT_TAGS"
                             )
                     .doesNotContain(outputText, "test-key", "data:image"));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void retainsGarmentCountErrorCategoryForMultipleModelGarments() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String outputText = objectMapper.writeValueAsString(Map.of(
+                "garments", List.of(
+                        Map.of(
+                                "piece", "TOP",
+                                "canonicalTags", List.of(Map.of(
+                                        "type", "STYLE",
+                                        "name", "캐주얼"
+                                )),
+                                "suggestedTags", List.of()
+                        ),
+                        Map.of(
+                                "piece", "BOTTOM",
+                                "canonicalTags", List.of(Map.of(
+                                        "type", "MATERIAL",
+                                        "name", "데님"
+                                )),
+                                "suggestedTags", List.of()
+                        )
+                )
+        ));
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of(
+                                "type", "output_text",
+                                "text", outputText
+                        ))
+                ))
+        ));
+        Logger logger = (Logger) LoggerFactory.getLogger(OpenAiTagModelClient.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            assertAnalysisNotReady(clientReturning(200, responseBody));
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains(
+                                    "responseParsingCategory=INVALID_MODEL_OUTPUT_SCHEMA:"
+                                            + "GARMENT_COUNT_OUT_OF_RANGE"
+                            )
+                            .doesNotContain(outputText, "test-key", "data:image"));
         } finally {
             logger.detachAppender(appender);
             appender.stop();
@@ -585,7 +721,19 @@ class OpenAiTagModelClientTest {
             AtomicInteger attempts = new AtomicInteger();
             OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) -> {
                 attempts.incrementAndGet();
-                return new OpenAiTagModelClient.TransportResponse(status, "body", "req-" + status);
+                OpenAiTagModelClient.RateLimitMetadata rateLimitMetadata = status == 429
+                        ? new OpenAiTagModelClient.RateLimitMetadata(
+                                1_000L, 0L, 0L, 1_000L, 1_000L, 0L, 1_000L
+                        )
+                        : null;
+                return new OpenAiTagModelClient.TransportResponse(
+                        status,
+                        status == 429
+                                ? "{\"error\":{\"code\":\"rate_limit_exceeded\"}}"
+                                : "body",
+                        "req-" + status,
+                        rateLimitMetadata
+                );
             };
             OpenAiTagModelClient client = productionRetryClient(
                     Duration.ofSeconds(30), transport, clock,
