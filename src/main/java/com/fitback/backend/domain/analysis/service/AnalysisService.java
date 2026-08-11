@@ -35,7 +35,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class AnalysisService {
 
     private static final Logger log = LoggerFactory.getLogger(AnalysisService.class);
-    private static final int DEFAULT_MATCH_PERCENTAGE = 70;
+    private static final int DEFAULT_MATCH_PERCENTAGE = 50;
 
     private final AnalysisReportRepository analysisReportRepository;
     private final MemberRepository memberRepository;

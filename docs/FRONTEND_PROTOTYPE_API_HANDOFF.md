@@ -248,13 +248,27 @@ Content-Type: application/json
 
 프론트가 유지할 응답:
 
-```text
-data.reportId
-data.imageUrl
-data.matchPercentage
-data.suggestedTags[].tagId
-data.suggestedTags[].tagName
+```json
+{
+  "success": true,
+  "code": "COMMON201_1",
+  "message": "리소스가 생성되었습니다.",
+  "data": {
+    "reportId": 501,
+    "imageUrl": "https://signed-cdn.example/image",
+    "matchPercentage": 50,
+    "suggestedTags": [
+      {
+        "tagId": 10,
+        "tagName": "미니멀"
+      }
+    ]
+  }
+}
 ```
+
+신규 분석 생성 응답의 기본 `data.matchPercentage`는 `50`이다. 프론트는 이 응답값을 매칭 강도
+조절 UI의 초기값으로 사용하고, 상수 `70`을 별도로 적용하지 않는다.
 
 `data.imageUrl`은 비공개 CloudFront 서명 URL이며 10분 동안 유효하다. 영구 저장하지 말고 화면을
 다시 열거나 이미지 로딩이 만료되면 `GET /api/v1/analyses/{reportId}`로 새 URL을 받는다.
@@ -280,6 +294,10 @@ Content-Type: application/json
 
 - 기본 태그와 직접 입력 태그 합계는 1~8개다.
 - `matchPercentage`는 0~100이다.
+- 예시의 `70`은 사용자가 기본값 `50`에서 조정한 뒤 명시적으로 전송한 값이다.
+- body를 생략하면 현재 리포트 값을 응답에 유지하되 임계값 필터는 적용하지 않는다.
+- body에 분석 생성 응답값 `50`을 명시하면 50점 미만 후보를 제외하는 임계값 필터가 적용된다.
+  태그나 매칭값을 확정하지 않고 분석 결과를 그대로 추천하려면 body를 생략한다.
 - 응답은 8개 고정 카테고리 그룹을 반환하며 결과가 없는 그룹의 `items`는 빈 배열이다.
 - `partial=true`이면 `warnings`를 사용자에게 비차단 안내로 표시한다.
 

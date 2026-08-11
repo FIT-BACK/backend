@@ -159,12 +159,12 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "code": "COMMON200_1",
-  "message": "성공적으로 요청을 처리했습니다.",
+  "code": "COMMON201_1",
+  "message": "리소스가 생성되었습니다.",
   "data": {
     "reportId": 501,
     "imageUrl": "https://signed-cdn.example/image",
-    "matchPercentage": 70,
+    "matchPercentage": 50,
     "suggestedTags": [
       {
         "tagId": 10,
@@ -177,6 +177,7 @@ Content-Type: application/json
 
 `imageUrl`은 조회 시점의 서명 URL이므로 만료 후에는
 `GET /api/v1/analyses/{reportId}`를 다시 조회한다.
+프론트는 응답의 `matchPercentage: 50`을 매칭 강도 조절 UI의 초기값으로 사용한다.
 
 ### 3.6 추천 생성
 
@@ -187,7 +188,12 @@ POST /api/v1/analyses/{reportId}/recommendations
 Authorization: Bearer {accessToken}
 ```
 
+body를 생략하면 리포트의 현재 `matchPercentage`가 응답에 포함되지만 추천 후보 임계값 필터는
+적용하지 않는다. 신규 리포트라면 응답의 값은 `50`이고 `scoreVersion`은
+`IMAGE_TAG_WEIGHTED_V1`이다.
+
 사용자가 태그나 매칭값을 확정·수정한 경우에만 다음 body를 보낸다.
+아래 `75`는 사용자가 초기값 `50`에서 직접 조정한 예시다.
 
 ```json
 {
@@ -196,6 +202,10 @@ Authorization: Bearer {accessToken}
   "matchPercentage": 75
 }
 ```
+
+body를 보내면 전달한 `matchPercentage`를 임계값으로 적용하고, 해당 값 미만의 후보를 제외한다.
+따라서 body에 기본값과 같은 `50`을 명시해도 임계값 필터가 적용되며 `scoreVersion`은
+`IMAGE_TAG_WEIGHTED_THR_V1`이다.
 
 응답의 핵심 필드는 다음과 같다.
 
