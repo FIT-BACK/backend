@@ -35,6 +35,26 @@ public final class OpenAiTagEvaluationMain {
     );
     private static final Set<String> TAG_FIELDS = Set.of("type", "name");
     private static final int MAX_ATTEMPTS = 3;
+    private static final long MAX_RATE_LIMIT_HINT_MILLIS = 60_000L;
+    private static final long MAX_TOTAL_RETRY_SLEEP_MILLIS = 121_000L;
+    private static final long RATE_LIMIT_HEADER_JITTER_MIN_MILLIS = 250L;
+    private static final long RATE_LIMIT_HEADER_JITTER_RANGE_MILLIS = 251L;
+    private static final Set<String> NON_RETRYABLE_RATE_LIMIT_CODES = Set.of(
+            "credit_balance_exhausted",
+            "organization_spend_limit_exceeded",
+            "project_spend_limit_exceeded",
+            "organization_usage_limit_exceeded",
+            "insufficient_quota"
+    );
+    private static final Set<String> SAFE_PROVIDER_ERROR_CODES = Set.of(
+            "rate_limit_exceeded",
+            "credit_balance_exhausted",
+            "organization_spend_limit_exceeded",
+            "project_spend_limit_exceeded",
+            "organization_usage_limit_exceeded",
+            "insufficient_quota",
+            "UNKNOWN"
+    );
     private static final Set<Integer> RETRYABLE_PROVIDER_STATUSES = Set.of(500, 502, 503, 504);
     private static final String UNAVAILABLE_X_REQUEST_ID = "UNAVAILABLE";
     private static final Sleeper SYSTEM_SLEEPER = Thread::sleep;
@@ -176,7 +196,8 @@ public final class OpenAiTagEvaluationMain {
             return EvaluationAttempt.failure(new EvaluationFailure(
                     exception.getErrorCode().getCode(), exception.elapsedMillis(),
                     exception.providerHttpStatus(), exception.providerErrorCategory(),
-                    exception.responseParsingCategory(), exception.xRequestId()
+                    exception.responseParsingCategory(), exception.xRequestId(),
+                    exception.providerErrorCode(), exception.rateLimitMetadata()
             ));
         } catch (BusinessException exception) {
             return EvaluationAttempt.failure(new EvaluationFailure(
@@ -195,6 +216,7 @@ public final class OpenAiTagEvaluationMain {
 
     static RetryResult analyzeWithRetry(EvaluationCall call, Sleeper sleeper, Jitter jitter) {
         List<AttemptMetadata> attempts = new ArrayList<>();
+        long totalRetrySleepMillis = 0L;
         for (int attemptCount = 1; attemptCount <= MAX_ATTEMPTS; attemptCount++) {
             EvaluationAttempt attempt = call.invoke();
             attempts.add(AttemptMetadata.from(attemptCount, attempt));
@@ -205,9 +227,13 @@ public final class OpenAiTagEvaluationMain {
             if (attemptCount == MAX_ATTEMPTS || !isRetryable(failure)) {
                 return RetryResult.failure(failure, attemptCount, attempts);
             }
-            long delayMillis = retryDelayMillis(attemptCount, jitter);
+            long delayMillis = retryDelayMillis(attemptCount, failure, jitter);
+            if (delayMillis > MAX_TOTAL_RETRY_SLEEP_MILLIS - totalRetrySleepMillis) {
+                return RetryResult.failure(failure, attemptCount, attempts);
+            }
             try {
                 sleeper.sleep(delayMillis);
+                totalRetrySleepMillis += delayMillis;
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 return RetryResult.failure(
@@ -220,16 +246,78 @@ public final class OpenAiTagEvaluationMain {
     }
 
     private static boolean isRetryable(EvaluationFailure failure) {
-        return failure.providerHttpStatus() != null
+        if (failure.providerHttpStatus() != null
                 && RETRYABLE_PROVIDER_STATUSES.contains(failure.providerHttpStatus())
                 && "SERVER_ERROR".equals(failure.providerErrorCategory())
-                && failure.responseParsingCategory() == null;
+                && failure.responseParsingCategory() == null) {
+            return true;
+        }
+        if (!Integer.valueOf(429).equals(failure.providerHttpStatus())
+                || !"RATE_LIMIT".equals(failure.providerErrorCategory())
+                || failure.responseParsingCategory() != null
+                || (failure.providerErrorCode() != null
+                        && NON_RETRYABLE_RATE_LIMIT_CODES.contains(failure.providerErrorCode()))) {
+            return false;
+        }
+        Long waitHintMillis = rateLimitWaitHintMillis(failure.rateLimitMetadata());
+        if (waitHintMillis != null) {
+            return waitHintMillis <= MAX_RATE_LIMIT_HINT_MILLIS;
+        }
+        return "rate_limit_exceeded".equals(failure.providerErrorCode());
     }
 
     static long retryDelayMillis(int failedAttemptCount, Jitter jitter) {
         long lowerBound = failedAttemptCount == 1 ? 250L : 500L;
         long upperBound = failedAttemptCount == 1 ? 500L : 1_000L;
         return lowerBound + jitter.nextLong(upperBound - lowerBound + 1L);
+    }
+
+    private static long retryDelayMillis(
+            int failedAttemptCount,
+            EvaluationFailure failure,
+            Jitter jitter
+    ) {
+        if (!Integer.valueOf(429).equals(failure.providerHttpStatus())) {
+            return retryDelayMillis(failedAttemptCount, jitter);
+        }
+        Long waitHintMillis = rateLimitWaitHintMillis(failure.rateLimitMetadata());
+        if (waitHintMillis != null) {
+            return waitHintMillis
+                    + RATE_LIMIT_HEADER_JITTER_MIN_MILLIS
+                    + jitter.nextLong(RATE_LIMIT_HEADER_JITTER_RANGE_MILLIS);
+        }
+        long lowerBound = failedAttemptCount == 1 ? 5_000L : 10_000L;
+        long upperBound = failedAttemptCount == 1 ? 10_000L : 20_000L;
+        return lowerBound + jitter.nextLong(upperBound - lowerBound + 1L);
+    }
+
+    private static Long rateLimitWaitHintMillis(
+            OpenAiTagModelClient.RateLimitMetadata metadata
+    ) {
+        if (metadata == null) {
+            return null;
+        }
+        Long waitMillis = metadata.retryAfterMillis();
+        if (Long.valueOf(0L).equals(metadata.remainingRequests())) {
+            waitMillis = maximum(waitMillis, metadata.resetRequestsMillis());
+        }
+        if (Long.valueOf(0L).equals(metadata.remainingTokens())) {
+            waitMillis = maximum(waitMillis, metadata.resetTokensMillis());
+        }
+        if (Long.valueOf(0L).equals(metadata.remainingProjectTokens())) {
+            waitMillis = maximum(waitMillis, metadata.resetProjectTokensMillis());
+        }
+        return waitMillis;
+    }
+
+    private static Long maximum(Long first, Long second) {
+        if (first == null) {
+            return second;
+        }
+        if (second == null) {
+            return first;
+        }
+        return Math.max(first, second);
     }
 
     static long base64ImageLength(long imageByteLength) {
@@ -577,8 +665,20 @@ public final class OpenAiTagEvaluationMain {
             Integer httpStatus,
             String providerErrorCategory,
             Long elapsedMillis,
-            String xRequestId
+            String xRequestId,
+            String providerErrorCode,
+            OpenAiTagModelClient.RateLimitMetadata rateLimitMetadata
     ) {
+        AttemptMetadata(
+                int attempt,
+                Integer httpStatus,
+                String providerErrorCategory,
+                Long elapsedMillis,
+                String xRequestId
+        ) {
+            this(attempt, httpStatus, providerErrorCategory, elapsedMillis, xRequestId, null, null);
+        }
+
         static AttemptMetadata from(int attempt, EvaluationAttempt evaluationAttempt) {
             if (evaluationAttempt.successful()) {
                 return success(attempt, evaluationAttempt.result());
@@ -587,13 +687,16 @@ public final class OpenAiTagEvaluationMain {
         }
 
         static AttemptMetadata success(int attempt, AiTagModelResult result) {
-            return new AttemptMetadata(attempt, null, null, result.elapsedMillis(), result.xRequestId());
+            return new AttemptMetadata(
+                    attempt, null, null, result.elapsedMillis(), result.xRequestId(), null, null
+            );
         }
 
         static AttemptMetadata failure(int attempt, EvaluationFailure failure) {
             return new AttemptMetadata(
                     attempt, failure.providerHttpStatus(), failure.providerErrorCategory(),
-                    failure.elapsedMillis(), failure.xRequestId()
+                    failure.elapsedMillis(), failure.xRequestId(), failure.providerErrorCode(),
+                    failure.rateLimitMetadata()
             );
         }
 
@@ -621,7 +724,9 @@ public final class OpenAiTagEvaluationMain {
             Integer providerHttpStatus,
             String providerErrorCategory,
             String responseParsingCategory,
-            String xRequestId
+            String xRequestId,
+            String providerErrorCode,
+            OpenAiTagModelClient.RateLimitMetadata rateLimitMetadata
     ) {
         EvaluationFailure(
                 String error,
@@ -631,11 +736,26 @@ public final class OpenAiTagEvaluationMain {
                 String responseParsingCategory
         ) {
             this(error, elapsedMillis, providerHttpStatus, providerErrorCategory,
-                    responseParsingCategory, UNAVAILABLE_X_REQUEST_ID);
+                    responseParsingCategory, UNAVAILABLE_X_REQUEST_ID, null, null);
+        }
+
+        EvaluationFailure(
+                String error,
+                Long elapsedMillis,
+                Integer providerHttpStatus,
+                String providerErrorCategory,
+                String responseParsingCategory,
+                String xRequestId
+        ) {
+            this(error, elapsedMillis, providerHttpStatus, providerErrorCategory,
+                    responseParsingCategory, xRequestId, null, null);
         }
 
         EvaluationFailure {
             xRequestId = xRequestId == null ? UNAVAILABLE_X_REQUEST_ID : xRequestId;
+            if (providerErrorCode != null && !SAFE_PROVIDER_ERROR_CODES.contains(providerErrorCode)) {
+                providerErrorCode = "UNKNOWN";
+            }
         }
     }
 
