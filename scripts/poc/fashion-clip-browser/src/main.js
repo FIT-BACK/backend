@@ -63,16 +63,25 @@ async function createSession() {
     if (!canTryWebGpu) {
       throw error;
     }
-    setStatus('WebGPU session failed; retrying with WASM.');
-    const session = await ort.InferenceSession.create(MODEL_URL, {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all',
-    });
+    setStatus(`WebGPU failed (${errorMessage(error)}); retrying with WASM.`);
+    let session;
+    try {
+      session = await ort.InferenceSession.create(MODEL_URL, {
+        executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all',
+      });
+    } catch (fallbackError) {
+      throw new Error(`WebGPU: ${errorMessage(error)}; WASM: ${errorMessage(fallbackError)}`);
+    }
     elements.runtime.textContent = 'wasm (WebGPU unavailable)';
     elements.model.textContent = MODEL_ID;
     elements.modelLoad.textContent = `${formatMilliseconds(performance.now() - started)} ms`;
     return session;
   }
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function imageToTensorData(file) {
