@@ -17,8 +17,10 @@ ort.env.wasm.wasmPaths = WASM_PATH;
 const elements = {
   queryFile: document.querySelector('#query-file'),
   candidateFile: document.querySelector('#candidate-file'),
+  candidateUrls: document.querySelector('#candidate-urls'),
   run: document.querySelector('#run'),
   benchmarkRun: document.querySelector('#benchmark-run'),
+  urlRun: document.querySelector('#url-run'),
   status: document.querySelector('#status'),
   runtime: document.querySelector('#runtime'),
   model: document.querySelector('#model'),
@@ -27,6 +29,8 @@ const elements = {
   rawCosine: document.querySelector('#raw-cosine'),
   normalizedCosine: document.querySelector('#normalized-cosine'),
   cosineDifference: document.querySelector('#cosine-difference'),
+  urlSummary: document.querySelector('#url-summary'),
+  urlResults: document.querySelector('#url-results tbody'),
   benchmarkResults: document.querySelector('#benchmark-results tbody'),
   query: {
     dimension: document.querySelector('#query-dimension'),
@@ -100,8 +104,12 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function imageToTensorData(file) {
-  const image = await createImage(file);
+async function imageToTensorData(source, label = 'image') {
+  const image = await createImage(source, label);
+  return imageToTensorDataFromImage(image);
+}
+
+function imageToTensorDataFromImage(image) {
   const canvas = document.createElement('canvas');
   canvas.width = IMAGE_SIZE;
   canvas.height = IMAGE_SIZE;
@@ -130,23 +138,99 @@ async function imageToTensorData(file) {
   return tensorData;
 }
 
-function createImage(file) {
+function createImage(source, label = 'image') {
   if ('createImageBitmap' in window) {
-    return createImageBitmap(file);
+    return createImageBitmap(source);
   }
   return new Promise((resolve, reject) => {
     const image = new Image();
-    const objectUrl = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(source);
     image.onload = () => {
       URL.revokeObjectURL(objectUrl);
       resolve(image);
     };
     image.onerror = () => {
       URL.revokeObjectURL(objectUrl);
-      reject(new Error(`could not decode ${file.name}`));
+      reject(new Error(`could not decode ${label}`));
     };
     image.src = objectUrl;
   });
+}
+
+function parseCandidateUrls() {
+  return elements.candidateUrls.value
+    .split(/\r?\n/)
+    .map((url) => url.trim())
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function urlHost(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return 'invalid-url';
+  }
+}
+
+async function fetchUrlTensorData(url, index) {
+  const result = {
+    index: index + 1,
+    host: urlHost(url),
+    contentType: '-',
+    fetchLatencyMs: 0,
+    decodeLatencyMs: 0,
+    preprocessLatencyMs: 0,
+    status: 'blocked',
+  };
+  const fetchStarted = performance.now();
+  let response;
+  try {
+    response = await fetch(url, { mode: 'cors', credentials: 'omit' });
+  } catch (error) {
+    result.fetchLatencyMs = performance.now() - fetchStarted;
+    result.status = `CORS/network failure: ${errorMessage(error)}`;
+    return result;
+  }
+  result.fetchLatencyMs = performance.now() - fetchStarted;
+  result.contentType = response.headers.get('content-type')?.split(';', 1)[0] ?? '-';
+  if (!response.ok) {
+    result.status = `HTTP ${response.status}`;
+    return result;
+  }
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(result.contentType)) {
+    result.status = `unsupported content type: ${result.contentType}`;
+    return result;
+  }
+
+  let blob;
+  try {
+    blob = await response.blob();
+  } catch (error) {
+    result.status = `body read failure: ${errorMessage(error)}`;
+    return result;
+  }
+  const decodeStarted = performance.now();
+  let image;
+  try {
+    image = await createImage(blob, `candidate ${index + 1}`);
+  } catch (error) {
+    result.decodeLatencyMs = performance.now() - decodeStarted;
+    result.status = `decode failure: ${errorMessage(error)}`;
+    return result;
+  }
+  result.decodeLatencyMs = performance.now() - decodeStarted;
+  const preprocessStarted = performance.now();
+  try {
+    result.tensorData = imageToTensorDataFromImage(image);
+  } catch (error) {
+    result.preprocessLatencyMs = performance.now() - preprocessStarted;
+    result.status = `preprocess failure: ${errorMessage(error)}`;
+    return result;
+  }
+  result.preprocessLatencyMs = performance.now() - preprocessStarted;
+  result.status = 'ready';
+  return result;
 }
 
 function readEmbedding(output, index, batchSize) {
@@ -314,6 +398,75 @@ async function runBenchmark(queryFile, candidateFiles) {
   return rows;
 }
 
+async function runUrlIntegration(queryFile, urls) {
+  const session = await loadSession();
+  const started = performance.now();
+  const queryData = await imageToTensorData(queryFile, queryFile.name);
+  setStatus(`Fetching and decoding ${urls.length} candidate image URL(s)…`);
+  const results = [];
+  for (const [index, url] of urls.entries()) {
+    results.push(await fetchUrlTensorData(url, index));
+  }
+  const ready = results.filter((result) => result.status === 'ready');
+  if (ready.length === 0) {
+    renderUrlResults(results);
+    throw new Error('no candidate URL passed direct browser fetch/decode/preprocess');
+  }
+
+  setStatus(`Running Fashion-CLIP candidate batch [${ready.length},3,224,224]…`);
+  const queryRun = await runEmbeddingBatch(session, [queryData]);
+  const candidateRun = await runEmbeddingBatch(session, ready.map((result) => result.tensorData));
+  const queryDiagnostic = diagnoseEmbedding(queryRun.rawEmbeddings[0]);
+  const candidateDiagnostics = candidateRun.rawEmbeddings.map(diagnoseEmbedding);
+  const cosines = calculateCosines(queryDiagnostic, candidateDiagnostics);
+  ready.forEach((result, index) => {
+    result.cosine = cosines.normalized[index];
+  });
+  const fetchTotalMs = results.reduce((sum, result) => sum + result.fetchLatencyMs, 0);
+  const decodeTotalMs = results.reduce((sum, result) => sum + result.decodeLatencyMs, 0);
+  const preprocessTotalMs = results.reduce((sum, result) => sum + result.preprocessLatencyMs, 0);
+  const totalRerankingMs = performance.now() - started;
+  elements.urlSummary.textContent = [
+    `success ${ready.length}/${results.length}`,
+    `CORS/network failures ${results.filter((result) => result.status.startsWith('CORS/network')).length}`,
+    `fetch ${formatMilliseconds(fetchTotalMs)} ms`,
+    `decode ${formatMilliseconds(decodeTotalMs)} ms`,
+    `preprocess ${formatMilliseconds(preprocessTotalMs)} ms`,
+    `query batch ${formatMilliseconds(queryRun.latencyMs)} ms`,
+    `candidate batch [${ready.length},3,224,224] ${formatMilliseconds(candidateRun.latencyMs)} ms`,
+    `cosine ${formatMilliseconds(cosines.latencyMs)} ms`,
+    `total reranking ${formatMilliseconds(totalRerankingMs)} ms`,
+  ].join(' · ');
+  renderUrlResults(results);
+  showDiagnostics(elements.query, queryDiagnostic);
+  showDiagnostics(elements.candidate, candidateDiagnostics[0]);
+  showCosines(cosines, 0);
+  elements.inference.textContent = `${formatMilliseconds(queryRun.latencyMs + candidateRun.latencyMs)} ms`;
+}
+
+function renderUrlResults(results) {
+  elements.urlResults.replaceChildren();
+  for (const result of results) {
+    const cells = [
+      result.index,
+      result.host,
+      result.contentType,
+      formatMilliseconds(result.fetchLatencyMs),
+      formatMilliseconds(result.decodeLatencyMs),
+      formatMilliseconds(result.preprocessLatencyMs),
+      result.cosine === undefined ? '-' : result.cosine.toFixed(8),
+      result.status,
+    ];
+    const row = document.createElement('tr');
+    for (const cell of cells) {
+      const cellElement = document.createElement('td');
+      cellElement.textContent = String(cell);
+      row.append(cellElement);
+    }
+    elements.urlResults.append(row);
+  }
+}
+
 function summarizeBenchmarkRuns(candidateCount, runs) {
   return {
     candidateCount,
@@ -415,5 +568,29 @@ elements.benchmarkRun.addEventListener('click', async () => {
   } finally {
     elements.run.disabled = false;
     elements.benchmarkRun.disabled = false;
+  }
+});
+
+elements.urlRun.addEventListener('click', async () => {
+  const queryFile = elements.queryFile.files[0];
+  const urls = parseCandidateUrls();
+  if (!queryFile || urls.length === 0) {
+    setStatus('Select one query image and at least one candidate URL first.');
+    return;
+  }
+
+  elements.run.disabled = true;
+  elements.benchmarkRun.disabled = true;
+  elements.urlRun.disabled = true;
+  setStatus('Loading the browser model and testing direct candidate image URLs…');
+  try {
+    await runUrlIntegration(queryFile, urls);
+    setStatus('Done. Candidate URLs were fetched directly by this browser tab.');
+  } catch (error) {
+    setStatus(`Blocked: ${errorMessage(error)}`);
+  } finally {
+    elements.run.disabled = false;
+    elements.benchmarkRun.disabled = false;
+    elements.urlRun.disabled = false;
   }
 });

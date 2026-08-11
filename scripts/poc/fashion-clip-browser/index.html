@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' blob: data:; connect-src 'self' https://huggingface.co https://*.hf.co https://cdn.jsdelivr.net; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'"
+      content="default-src 'self'; img-src 'self' blob: data:; connect-src 'self' https://huggingface.co https://*.hf.co https://cdn.jsdelivr.net https:; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'"
     />
     <title>Fashion-CLIP Browser PoC</title>
     <style>
@@ -44,6 +44,14 @@
         </label>
       </section>
 
+      <section aria-label="Direct candidate URL input">
+        <label>
+          Shopify candidate image URLs (one HTTPS URL per line, maximum 10)
+          <textarea id="candidate-urls" rows="6" placeholder="https://merchant.example/image.jpg"></textarea>
+        </label>
+        <button id="url-run" type="button">Run direct URL fetch and Fashion-CLIP batch</button>
+      </section>
+
       <button id="run" type="button">Load model and compare first candidate</button>
       <button id="benchmark-run" type="button">Run warm 1/3/5/10 benchmark</button>
       <p id="status" role="status" aria-live="polite">Select one query image and one or more candidate images.</p>
@@ -67,6 +75,17 @@
       <p><strong>Raw cosine:</strong> <span id="raw-cosine">-</span></p>
       <p><strong>Normalized cosine:</strong> <span id="normalized-cosine">-</span></p>
       <p><strong>Absolute cosine difference:</strong> <span id="cosine-difference">-</span></p>
+
+      <section aria-label="Direct candidate URL results">
+        <h2>Direct URL integration</h2>
+        <p id="url-summary">No URL integration run.</p>
+        <table id="url-results">
+          <thead>
+            <tr><th>Candidate</th><th>Host</th><th>Content type</th><th>Fetch (ms)</th><th>Decode (ms)</th><th>Preprocess (ms)</th><th>Normalized cosine</th><th>Status</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
 
       <section aria-label="Candidate benchmark">
         <h2>Warm candidate benchmark</h2>
