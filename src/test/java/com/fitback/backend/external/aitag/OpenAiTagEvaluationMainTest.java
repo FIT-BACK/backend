@@ -314,22 +314,27 @@ class OpenAiTagEvaluationMainTest {
     }
 
     @Test
-    void rejectsWhitespaceMutatedGoldTagInsteadOfNormalizing(@TempDir Path directory) throws Exception {
+    void rejectsAsciiAndUnicodeBoundaryWhitespaceInsteadOfNormalizing(@TempDir Path directory) throws Exception {
         Path dataset = directory.resolve("gold-labels.json");
-        Files.writeString(dataset, """
-                {
-                  "cases": [{
-                    "imageId": "top-01",
-                    "imagePath": "images/top-01.jpg",
-                    "expectedCanonicalTags": [{"type": "STYLE", "name": "캐주얼 "}]
-                  }]
-                }
-                """);
+        for (String name : List.of(
+                " 캐주얼", "캐주얼 ",
+                "\u2003캐주얼", "캐주얼\u2003",
+                "\u00A0캐주얼", "캐주얼\u00A0")) {
+            Files.writeString(dataset, """
+                    {
+                      "cases": [{
+                        "imageId": "top-01",
+                        "imagePath": "images/top-01.jpg",
+                        "expectedCanonicalTags": [{"type": "STYLE", "name": "%s"}]
+                      }]
+                    }
+                    """.formatted(name));
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(
-                () -> OpenAiTagEvaluationMain.readDataset(dataset)
-        ).isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("name must not have leading or trailing whitespace");
+            org.assertj.core.api.Assertions.assertThatThrownBy(
+                    () -> OpenAiTagEvaluationMain.readDataset(dataset)
+            ).isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("name must not have leading or trailing whitespace");
+        }
     }
 
     @Test
@@ -362,12 +367,11 @@ class OpenAiTagEvaluationMainTest {
                   {"type": "DETAIL", "name": "포켓"}
                 ]
                 """);
-        List<com.fitback.backend.domain.tag.entity.Tag> catalog = List.of(
-                com.fitback.backend.domain.tag.entity.Tag.create("캐주얼", TagType.STYLE),
-                com.fitback.backend.domain.tag.entity.Tag.create("포켓", TagType.DETAIL));
+        OpenAiTagEvaluationMain.CatalogSnapshot catalog =
+                OpenAiTagEvaluationMain.readCatalogSnapshot(catalogPath);
         OpenAiTagEvaluationMain.EvaluationReport report = new OpenAiTagEvaluationMain.EvaluationReport(
                 OpenAiTagEvaluationMain.REPORT_SCHEMA_VERSION,
-                OpenAiTagEvaluationMain.catalogIdentity(catalogPath, catalog),
+                catalog.identity(),
                 "2026-08-11T00:00:00Z",
                 "gpt-5.6-luna",
                 OpenAiTagEvaluationMain.summarize(List.of()),
@@ -398,16 +402,12 @@ class OpenAiTagEvaluationMainTest {
         Files.writeString(firstPath, catalogJson);
         Files.writeString(identicalPath, catalogJson);
         Files.writeString(changedPath, catalogJson.stripTrailing());
-        List<com.fitback.backend.domain.tag.entity.Tag> catalog = List.of(
-                com.fitback.backend.domain.tag.entity.Tag.create("캐주얼", TagType.STYLE),
-                com.fitback.backend.domain.tag.entity.Tag.create("포켓", TagType.DETAIL));
-
         OpenAiTagEvaluationMain.CatalogIdentity first =
-                OpenAiTagEvaluationMain.catalogIdentity(firstPath, catalog);
+                OpenAiTagEvaluationMain.readCatalogSnapshot(firstPath).identity();
         OpenAiTagEvaluationMain.CatalogIdentity identical =
-                OpenAiTagEvaluationMain.catalogIdentity(identicalPath, catalog);
+                OpenAiTagEvaluationMain.readCatalogSnapshot(identicalPath).identity();
         OpenAiTagEvaluationMain.CatalogIdentity changed =
-                OpenAiTagEvaluationMain.catalogIdentity(changedPath, catalog);
+                OpenAiTagEvaluationMain.readCatalogSnapshot(changedPath).identity();
 
         assertThat(identical).isEqualTo(first);
         assertThat(changed.tagCount()).isEqualTo(first.tagCount());

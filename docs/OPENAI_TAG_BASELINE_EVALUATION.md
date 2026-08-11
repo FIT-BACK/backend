@@ -106,6 +106,8 @@ FN과 micro metrics를 다시 계산한다. 다음 조건을 모두 만족해야
 - `public-bottom-01`의 `DETAIL/포켓`과 `ai-bottom-02`의 `DETAIL/턱`이 각각 true positive
 - `outer-01`의 true positive가 1개 이상
 - report schema와 catalog SHA-256/tag count가 현재 production snapshot과 일치
+- catalog가 47개이며 타입별 개수가 STYLE 9, SILHOUETTE 12, MATERIAL 8, DETAIL 10,
+  COLOR 8과 일치. 불일치하면 `CATALOG_IDENTITY_MISMATCH`
 
 실패 시 gate는 고정 rule ID와 제한된 aggregate 값만 출력하며 report 원문, image path,
 request ID, raw provider body, API key 또는 model output을 출력하지 않는다. evaluator retry로

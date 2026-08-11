@@ -271,10 +271,16 @@ public final class OpenAiTagEvaluationGateMain {
         if (value.isBlank()) {
             throw new IllegalArgumentException(field + " must not be blank");
         }
-        if (!value.equals(value.trim())) {
+        int first = value.codePointAt(0);
+        int last = value.codePointBefore(value.length());
+        if (isWhitespace(first) || isWhitespace(last)) {
             throw new IllegalArgumentException(field + " must not have leading or trailing whitespace");
         }
         return value;
+    }
+
+    private static boolean isWhitespace(int codePoint) {
+        return Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint);
     }
 
     private static String nullableText(JsonNode node) {

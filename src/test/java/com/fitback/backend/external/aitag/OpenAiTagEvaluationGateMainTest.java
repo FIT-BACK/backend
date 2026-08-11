@@ -150,10 +150,15 @@ class OpenAiTagEvaluationGateMainTest {
     }
 
     @Test
-    void rejectsWhitespaceMutatedExpectedTagInsteadOfNormalizing(@TempDir Path directory) throws Exception {
-        assertFailure(writeFixture(directory, report ->
-                report.cases.getFirst().expectedCanonicalTags.getFirst().put("name", "포켓 ")),
-                "REPORT_FORMAT_INVALID");
+    void rejectsAsciiAndUnicodeBoundaryWhitespaceInsteadOfNormalizing(@TempDir Path directory) throws Exception {
+        for (String name : List.of(
+                " 포켓", "포켓 ",
+                "\u2003포켓", "포켓\u2003",
+                "\u00A0포켓", "포켓\u00A0")) {
+            assertFailure(writeFixture(directory, report ->
+                    report.cases.getFirst().expectedCanonicalTags.getFirst().put("name", name)),
+                    "REPORT_FORMAT_INVALID");
+        }
     }
 
     @Test

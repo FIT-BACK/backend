@@ -6,6 +6,7 @@ import com.fitback.backend.external.aitag.config.AiTagProperties;
 import com.fitback.backend.external.aitag.openai.OpenAiTagModelClient;
 import com.fitback.backend.global.exception.BusinessException;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -48,7 +49,8 @@ public final class OpenAiTagEvaluationMain {
         Path datasetPath = requiredPath("AI_TAG_EVALUATION_DATASET").toAbsolutePath();
         Path catalogPath = requiredPath("AI_TAG_EVALUATION_CATALOG").toAbsolutePath();
         Path outputDirectory = Path.of(env("AI_TAG_EVALUATION_OUTPUT_DIR", "build/openai-tag-evaluation"));
-        List<Tag> catalog = readCatalog(catalogPath);
+        CatalogSnapshot catalogSnapshot = readCatalogSnapshot(catalogPath);
+        List<Tag> catalog = catalogSnapshot.catalog();
         Set<TagKey> catalogKeys = catalogKeys(catalog);
         List<EvaluationCase> cases = readDataset(datasetPath);
         validateExpectedTags(cases, catalogKeys);
@@ -68,7 +70,7 @@ public final class OpenAiTagEvaluationMain {
         OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValue(
                 outputDirectory.resolve("openai-tag-evaluation.json").toFile(),
                 new EvaluationReport(
-                        REPORT_SCHEMA_VERSION, catalogIdentity(catalogPath, catalog),
+                        REPORT_SCHEMA_VERSION, catalogSnapshot.identity(),
                         Instant.now().toString(), openAi.model(), summarize(results), results));
     }
 
@@ -299,8 +301,9 @@ public final class OpenAiTagEvaluationMain {
         }
     }
 
-    private static List<Tag> readCatalog(Path path) throws Exception {
-        JsonNode root = OBJECT_MAPPER.readTree(Files.readString(path));
+    static CatalogSnapshot readCatalogSnapshot(Path path) throws Exception {
+        byte[] catalogBytes = Files.readAllBytes(path);
+        JsonNode root = OBJECT_MAPPER.readTree(new String(catalogBytes, StandardCharsets.UTF_8));
         if (!root.isArray() || root.isEmpty()) {
             throw new IllegalArgumentException("catalog must not be empty");
         }
@@ -308,11 +311,10 @@ public final class OpenAiTagEvaluationMain {
         for (JsonNode item : root) {
             tags.add(Tag.create(requiredText(item, "name"), TagType.valueOf(requiredText(item, "type"))));
         }
-        return List.copyOf(tags);
-    }
-
-    static CatalogIdentity catalogIdentity(Path path, List<Tag> catalog) throws IOException {
-        return new CatalogIdentity(CATALOG_IDENTITY_VERSION, catalog.size(), sha256(Files.readAllBytes(path)));
+        List<Tag> catalog = List.copyOf(tags);
+        return new CatalogSnapshot(
+                catalog,
+                new CatalogIdentity(CATALOG_IDENTITY_VERSION, catalog.size(), sha256(catalogBytes)));
     }
 
     private static String sha256(byte[] bytes) {
@@ -450,10 +452,16 @@ public final class OpenAiTagEvaluationMain {
         if (value.isBlank()) {
             throw new IllegalArgumentException(field + " must not be blank");
         }
-        if (!value.equals(value.trim())) {
+        int first = value.codePointAt(0);
+        int last = value.codePointBefore(value.length());
+        if (isWhitespace(first) || isWhitespace(last)) {
             throw new IllegalArgumentException(field + " must not have leading or trailing whitespace");
         }
         return value;
+    }
+
+    private static boolean isWhitespace(int codePoint) {
+        return Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint);
     }
 
     private static Path requiredPath(String name) {
@@ -692,6 +700,9 @@ public final class OpenAiTagEvaluationMain {
     }
 
     record CatalogIdentity(int identityVersion, int tagCount, String sha256) {
+    }
+
+    record CatalogSnapshot(List<Tag> catalog, CatalogIdentity identity) {
     }
 
     record EvaluationSummary(
