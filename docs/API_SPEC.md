@@ -561,11 +561,48 @@ Demo와 Prototype 분석기는 실제 AI 의류 분류 결과가 없는 흐름 �
       {"category": "ACCESSORY", "items": []},
       {"category": "OTHER", "items": []}
     ],
+    "browserReranking": {
+      "category": "TOP",
+      "candidates": [
+        {
+          "candidateId": "v1.opaque-member-bound-token",
+          "imageUrl": "https://provider.example/items/100.jpg",
+          "tagSimilarity": 0.50,
+          "name": "오버핏 셔츠",
+          "sellerName": "에이블리",
+          "price": {
+            "amount": 28900.00,
+            "currency": "KRW",
+            "type": "CURRENT",
+            "observedAt": "2026-07-18T03:00:00Z"
+          },
+          "purchaseUrl": "https://mall.example/products/100"
+        }
+      ]
+    },
     "partial": false,
     "warnings": []
   }
 }
 ```
+
+`browserReranking`은 추천 생성 POST 1회 응답에만 포함되는 browser handoff namespace다.
+`candidates`는 `ImageComparisonCandidateSelector`가 선택한 기존
+`ExternalProductCandidate`의 response-time snapshot이며 최대 30개다. `candidateId`는
+기존 member-bound opaque candidate token이고, `imageUrl`, `tagSimilarity`, `name`,
+`sellerName`, `price`(`ProductPriceResponse` 재사용), `purchaseUrl`만 표시용으로 전달한다.
+판매자·가격·구매 URL이 없으면 해당 값은 `null`이며 임의의 기본값이나 URL을 만들지 않는다.
+이 snapshot은 live Shopify 가격 보장이 아니며, browser는 candidate token resolve API나
+추가 Shopify metadata lookup을 호출하지 않는다. Shopify GID, merchant identity, provider
+internal ID, persisted productId는 이 contract에 노출하지 않는다.
+
+Browser는 이 응답의 후보 전체에 대해 현재 normalized Fashion-CLIP cosine과
+`finalScore = imageSimilarity * 0.70 + tagSimilarity * 0.30`을 계산하고, threshold 없이
+`finalScore DESC`로 `min(10, candidateCount)` relevance shortlist를 선택한다. 선택된
+shortlist의 모든 후보가 유한하고 비교 가능한 `price.amount`를 가지며 동일 currency일 때만
+`price.amount ASC`로 표시한다. 그 외에는 shortlist 전체의 기존 relevance 순서를 유지한다.
+동일 가격은 `finalScore DESC`, 그 다음 original handoff index ASC다. Browser score는 backend에
+저장하거나 submit하지 않는다.
 
 ### 생성·교체 규칙
 

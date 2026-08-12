@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.onnx
+*.ort
+*.bin
+images/
+*.jpg
+*.jpeg
+*.png
+*.webp
