@@ -85,6 +85,11 @@ class RecommendationControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.analysisTags[0]").value("Fixture"))
                 .andExpect(jsonPath("$.data.scoreVersion").value("IMAGE_TAG_WEIGHTED_V1"))
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"))
+                .andExpect(jsonPath("$.data.browserReranking.category").value("TOP"))
+                .andExpect(jsonPath("$.data.browserReranking.candidates.length()").value(1))
+                .andExpect(jsonPath("$.data.browserReranking.candidates[0].candidateId").isString())
+                .andExpect(jsonPath("$.data.browserReranking.candidates[0].imageUrl").isString())
+                .andExpect(jsonPath("$.data.browserReranking.candidates[0].tagSimilarity").value(1.0))
                 .andExpect(jsonPath("$.data.recommendationGroups.length()").value(8))
                 .andExpect(jsonPath(
                         "$.data.recommendationGroups[*].items.length()",

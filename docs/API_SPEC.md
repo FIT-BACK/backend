@@ -561,11 +561,28 @@ Demo와 Prototype 분석기는 실제 AI 의류 분류 결과가 없는 흐름 �
       {"category": "ACCESSORY", "items": []},
       {"category": "OTHER", "items": []}
     ],
+    "browserReranking": {
+      "category": "TOP",
+      "candidates": [
+        {
+          "candidateId": "v1.opaque-member-bound-token",
+          "imageUrl": "https://provider.example/items/100.jpg",
+          "tagSimilarity": 0.50
+        }
+      ]
+    },
     "partial": false,
     "warnings": []
   }
 }
 ```
+
+`browserReranking`은 현재 추천 생성 응답에만 포함되는 별도 handoff namespace다. `candidates`는
+이미지 비교 선별 결과에서 최대 30개이며, 각 항목은 기존 member-bound opaque candidate token,
+검색 결과의 `imageUrl`, 그리고 `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 확정 canonical tag만
+사용한 `[0,1]` `tagSimilarity`를 전달한다. Shopify GID·merchant identity, 가격, 판매자, 상품 URL,
+candidate canonical tag는 전달하지 않는다. 이 단계에서는 기존 `similarityScore`와 `finalScore`를
+변경하지 않으며, browser `imageSimilarity` 또는 70/30 최종 점수도 계산하지 않는다.
 
 ### 생성·교체 규칙
 

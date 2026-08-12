@@ -10,6 +10,7 @@ public record RecommendationCreateResponse(
         String scoreVersion,
         RecommendationStatus recommendationStatus,
         List<RecommendationGroupResponse> recommendationGroups,
+        BrowserRerankingHandoff browserReranking,
         boolean partial,
         List<String> warnings
 ) {

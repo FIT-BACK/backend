@@ -3,12 +3,9 @@ package com.fitback.backend.domain.recommendation.service;
 import com.fitback.backend.domain.product.service.model.ExternalProductCandidate;
 import com.fitback.backend.domain.recommendation.entity.RecommendationReasonCode;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot.TagInput;
-import com.fitback.backend.domain.tag.entity.TagType;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 import org.springframework.stereotype.Component;
@@ -20,38 +17,24 @@ public class RecommendationScorer {
     private static final BigDecimal IMAGE_SIMILARITY_WEIGHT = new BigDecimal("0.7");
     private static final BigDecimal TAG_MATCH_WEIGHT = new BigDecimal("0.3");
     private static final BigDecimal HIGH_SIMILARITY_THRESHOLD = new BigDecimal("80");
-    private static final Set<TagType> ATTRIBUTE_TAG_TYPES = EnumSet.of(
-            TagType.SILHOUETTE,
-            TagType.MATERIAL,
-            TagType.DETAIL,
-            TagType.COLOR
-    );
-
     public Score score(
             List<TagInput> tags,
             BigDecimal temporaryImageSimilarityScore,
             ExternalProductCandidate candidate
     ) {
         validateTemporaryImageSimilarityScore(temporaryImageSimilarityScore);
-        String searchableText = searchableText(candidate);
-        List<TagInput> attributeTags = tags.stream()
-                .filter(tag -> ATTRIBUTE_TAG_TYPES.contains(tag.tagType()))
-                .toList();
-        long matchedTagCount = attributeTags.stream()
-                .map(TagInput::name)
-                .map(name -> name.toLowerCase(Locale.ROOT))
-                .filter(searchableText::contains)
-                .count();
+        RecommendationTagMatcher.Match match = RecommendationTagMatcher.match(tags, candidate);
         BigDecimal tagMatchScore = calculateTagMatchScore(
-                matchedTagCount,
-                attributeTags.size()
+                match.matchedTagCount(),
+                match.eligibleTagCount()
         );
         BigDecimal similarityScore = calculateWeightedSimilarityScore(
                 temporaryImageSimilarityScore,
                 tagMatchScore
         );
         Set<String> reasonCodes = new TreeSet<>();
-        int totalTagCount = attributeTags.size();
+        int totalTagCount = match.eligibleTagCount();
+        long matchedTagCount = match.matchedTagCount();
         if (totalTagCount == 0) {
             reasonCodes.add(RecommendationReasonCode.NO_SCORABLE_TAGS.name());
         } else if (matchedTagCount == 0) {
@@ -99,19 +82,6 @@ public class RecommendationScorer {
                     "temporaryImageSimilarityScore must be between 0 and 100"
             );
         }
-    }
-
-    private static String searchableText(ExternalProductCandidate candidate) {
-        return String.join(
-                " ",
-                candidate.name(),
-                nullable(candidate.brand()),
-                nullable(candidate.categoryPath())
-        ).toLowerCase(Locale.ROOT);
-    }
-
-    private static String nullable(String value) {
-        return value == null ? "" : value;
     }
 
     public record Score(BigDecimal similarityScore, List<String> reasonCodes) {
