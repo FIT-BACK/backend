@@ -6,12 +6,18 @@ import com.fitback.backend.domain.image.entity.ImagePurpose;
 import com.fitback.backend.domain.image.entity.ImageVisibility;
 import com.fitback.backend.domain.image.repository.ImageRepository;
 import com.fitback.backend.domain.image.service.ImageAccessUrlProvider;
+import com.fitback.backend.domain.lookbook.entity.Lookbook;
+import com.fitback.backend.domain.lookbook.entity.LookbookReport;
+import com.fitback.backend.domain.lookbook.entity.LookbookReportReason;
+import com.fitback.backend.domain.lookbook.repository.LookbookReportRepository;
+import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.service.LoginAttemptService;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -50,6 +56,15 @@ class MemberControllerIntegrationTest {
 
     @Autowired
     private MemberRepository memberRepository;
+
+    @Autowired
+    private EntityManager entityManager;
+
+    @Autowired
+    private LookbookRepository lookbookRepository;
+
+    @Autowired
+    private LookbookReportRepository lookbookReportRepository;
 
     @Autowired
     private LoginAttemptService loginAttemptService;
@@ -643,5 +658,63 @@ class MemberControllerIntegrationTest {
                         .content(json(Map.of("email", "delete@fitback.com", "password", "password123"))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("MEMBER403_1"));
+    }
+
+    //회원 탈퇴 - 신고 내역 유지 및 신고자 정보 익명 처리
+    @Test
+    void deleteAccountAnonymizesLookbookReporterTest() throws Exception {
+        String ownerEmail = "report-owner@fitback.com";
+        String reporterEmail = "reporter-delete@fitback.com";
+
+        signUpAndGetAccessToken(ownerEmail, "password123");
+        String reporterToken = signUpAndGetAccessToken(reporterEmail, "password123");
+
+        Member owner = memberRepository.findByEmail(ownerEmail).orElseThrow();
+        Member reporter = memberRepository.findByEmail(reporterEmail).orElseThrow();
+
+        //신고 대상 룩북과 신고 이력 생성
+        String originalImageId = saveReadyImage(
+                ownerEmail,
+                "delete-report-original",
+                ImagePurpose.LOOKBOOK
+        );
+        String matchedImageId = saveReadyImage(
+                ownerEmail,
+                "delete-report-matched",
+                ImagePurpose.LOOKBOOK
+        );
+        Lookbook lookbook = lookbookRepository.saveAndFlush(Lookbook.create(
+                owner,
+                imageRepository.findById(originalImageId).orElseThrow(),
+                imageRepository.findById(matchedImageId).orElseThrow(),
+                null,
+                null
+        ));
+        LookbookReport report = lookbookReportRepository.saveAndFlush(LookbookReport.create(
+                lookbook,
+                reporter,
+                LookbookReportReason.INAPPROPRIATE_IMAGE
+        ));
+        Long lookbookId = lookbook.getId();
+        Long reportId = report.getId();
+
+        mockMvc.perform(delete("/api/v1/members/me")
+                        .header("Authorization", bearer(reporterToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("COMMON200_1"));
+
+        //회원 삭제와 DB의 신고자 참조 익명화 반영
+        memberRepository.flush();
+        entityManager.clear();
+
+        assertThat(memberRepository.existsByEmail(reporterEmail)).isFalse();
+
+        //신고 사유와 대상 룩북 유지 및 신고자 참조 제거 확인
+        LookbookReport anonymizedReport = lookbookReportRepository.findById(reportId)
+                .orElseThrow();
+        assertThat(anonymizedReport.getMember()).isNull();
+        assertThat(anonymizedReport.getLookbook().getId()).isEqualTo(lookbookId);
+        assertThat(anonymizedReport.getReason())
+                .isEqualTo(LookbookReportReason.INAPPROPRIATE_IMAGE);
     }
 }

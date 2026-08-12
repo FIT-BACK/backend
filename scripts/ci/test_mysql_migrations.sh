@@ -704,6 +704,8 @@ validate_lookbook_product_link_contract() {
   local legacy_row
   local like_id
   local report_columns
+  local report_member_foreign_key
+  local report_delete_lifecycle
   local image_reference_collations
 
   columns="$(docker exec "$container_name" mysql -uroot \
@@ -872,11 +874,84 @@ validate_lookbook_product_link_contract() {
   if [ "$report_columns" != "$(printf '%s\n' \
     'created_at:NO:datetime' \
     'lookbook_id:NO:bigint' \
-    'member_id:NO:bigint' \
+    'member_id:YES:bigint' \
     'reason:NO:varchar' \
     'report_id:NO:bigint')" ]; then
     echo "Unexpected lookbook report contract in $database:" >&2
     printf '%s\n' "$report_columns" >&2
+    exit 1
+  fi
+
+  report_member_foreign_key="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+            k.COLUMN_NAME,
+            '->',
+            k.REFERENCED_TABLE_NAME,
+            '=',
+            rc.DELETE_RULE,
+            ':',
+            rc.UPDATE_RULE
+        )
+        FROM information_schema.KEY_COLUMN_USAGE k
+        JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+          ON rc.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA
+         AND rc.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+        WHERE k.TABLE_SCHEMA = '$database'
+          AND k.TABLE_NAME = 'lookbook_report'
+          AND k.COLUMN_NAME = 'member_id';")"
+
+  if [ "$report_member_foreign_key" != 'member_id->member=SET NULL:RESTRICT' ]; then
+    echo "Unexpected lookbook report member foreign key in $database:" >&2
+    printf '%s\n' "$report_member_foreign_key" >&2
+    exit 1
+  fi
+
+  docker exec "$container_name" mysql -uroot "$database" -e \
+    "INSERT INTO member (member_id, email) VALUES (9202, 'reporter-delete@fitback.test');
+     INSERT INTO lookbook (
+       lookbook_id,
+       member_id,
+       original_image_id,
+       matched_image_id,
+       like_count,
+       report_count,
+       moderation_status,
+       created_at
+     ) VALUES (
+       9201,
+       9001,
+       'legacy-lookbook-original',
+       'legacy-lookbook-matched',
+       0,
+       1,
+       'VISIBLE',
+       NOW()
+     );
+     INSERT INTO lookbook_report (
+       report_id,
+       lookbook_id,
+       member_id,
+       reason,
+       created_at
+     ) VALUES (9201, 9201, 9202, 'OTHER', NOW());
+     DELETE FROM member WHERE member_id = 9202;"
+
+  report_delete_lifecycle="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT CONCAT(
+            IF(member_id IS NULL, 'NULL', member_id),
+            ':',
+            reason,
+            ':',
+            lookbook_id
+        )
+        FROM $database.lookbook_report
+        WHERE report_id = 9201;")"
+
+  if [ "$report_delete_lifecycle" != 'NULL:OTHER:9201' ]; then
+    echo "Unexpected lookbook report delete lifecycle in $database:" >&2
+    printf '%s\n' "$report_delete_lifecycle" >&2
     exit 1
   fi
 }
