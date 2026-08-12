@@ -135,6 +135,8 @@ erDiagram
     PRODUCT ||--o{ SAVED_PRODUCT : saved_as
     PRODUCT ||--o{ SAVED_ANALYSIS_ITEM : snapshotted_as
     PRODUCT o|--o{ LOOKBOOK : used_as_matched
+    LOOKBOOK ||--o{ LOOKBOOK_REPORT : reported_by
+    MEMBER o|--o{ LOOKBOOK_REPORT : reports
     CLOSET_SAVE ||--o{ SAVED_ANALYSIS_ITEM : contains_selection
     IMAGE ||--o{ LOOKBOOK : used_as_original_or_matched
     PRODUCT ||--o{ PRODUCT_TAG : tagged_with
@@ -303,6 +305,14 @@ erDiagram
         VARCHAR matched_product_image_url
         VARCHAR purchase_url
         VARCHAR comment
+        DATETIME created_at
+    }
+
+    LOOKBOOK_REPORT {
+        BIGINT report_id PK
+        BIGINT lookbook_id FK
+        BIGINT member_id FK "nullable, ON DELETE SET NULL — 회원 탈퇴 후에도 신고 이력은 유지하고 신고자만 익명 처리"
+        VARCHAR reason
         DATETIME created_at
     }
 
@@ -748,6 +758,28 @@ CK_TREND_TAG_RELEVANCE_WEIGHT(relevance_weight > 0)
 V27은 프론트의 `targetId` 계약에 맞춰 `trend_content.trend_id` 1~6과 연결 태그를 등록한다.
 `created_by`는 사전에 생성된 콘텐츠 계정 `fitback.demo+content@gmail.com`의 회원 ID를 사용하며,
 계정이 없으면 필수 FK 값을 채울 수 없어 마이그레이션이 실패한다.
+
+### 4.14 `lookbook_report`
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `report_id` | `BIGINT` | N | PK, auto increment |
+| `lookbook_id` | `BIGINT` | N | FK, 신고 대상 룩북 |
+| `member_id` | `BIGINT` | Y | FK, 신고한 회원. V29부터 nullable — 회원 탈퇴 시 신고 이력은 유지하고 신고자만 익명 처리 |
+| `reason` | `VARCHAR(50)` | N | 신고 사유 |
+| `created_at` | `DATETIME(6)` | N | 생성 시각 |
+
+```text
+UK_LOOKBOOK_REPORT_LOOKBOOK_ID_MEMBER_ID(lookbook_id, member_id)
+FK_LOOKBOOK_REPORT_LOOKBOOK(lookbook_id)
+  -> lookbook(lookbook_id) ON DELETE RESTRICT ON UPDATE RESTRICT
+FK_LOOKBOOK_REPORT_MEMBER_SET_NULL(member_id)
+  -> member(member_id) ON DELETE SET NULL ON UPDATE RESTRICT   -- V29에서 RESTRICT였던 원래 FK를 교체
+```
+
+`UK_LOOKBOOK_REPORT_LOOKBOOK_ID_MEMBER_ID`가 동일 회원의 동일 룩북 중복 신고를 막는다.
+V14에서 테이블을 생성할 때는 `member_id`가 `NOT NULL` + `FK ... ON DELETE RESTRICT`였고,
+V29가 회원 탈퇴를 지원하기 위해 이를 `NULL` 허용 + `ON DELETE SET NULL`로 교체했다.
 
 ---
 
