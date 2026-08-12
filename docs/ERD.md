@@ -135,6 +135,8 @@ erDiagram
     PRODUCT ||--o{ SAVED_PRODUCT : saved_as
     PRODUCT ||--o{ SAVED_ANALYSIS_ITEM : snapshotted_as
     PRODUCT o|--o{ LOOKBOOK : used_as_matched
+    LOOKBOOK ||--o{ LOOKBOOK_REPORT : reported_by
+    MEMBER o|--o{ LOOKBOOK_REPORT : reports
     CLOSET_SAVE ||--o{ SAVED_ANALYSIS_ITEM : contains_selection
     IMAGE ||--o{ LOOKBOOK : used_as_original_or_matched
     PRODUCT ||--o{ PRODUCT_TAG : tagged_with
@@ -303,6 +305,14 @@ erDiagram
         VARCHAR matched_product_image_url
         VARCHAR purchase_url
         VARCHAR comment
+        DATETIME created_at
+    }
+
+    LOOKBOOK_REPORT {
+        BIGINT report_id PK
+        BIGINT lookbook_id FK
+        BIGINT member_id FK "nullable, ON DELETE SET NULL — 회원 탈퇴 후에도 신고 이력은 유지하고 신고자만 익명 처리"
+        VARCHAR reason
         DATETIME created_at
     }
 
