@@ -38,7 +38,12 @@ mkdir -p "$MODEL_DIR"
 curl -L --fail --retry 2 \
   --output "$MODEL_DIR/vision_model.onnx" \
   "https://huggingface.co/Frapic/fashion-clip-onnx/resolve/12eb79267363fd03b8983a25903cd9097b1ec76c/vision_model.onnx"
-stat -f '%z %N' "$MODEL_DIR/vision_model.onnx"
+EXPECTED_BYTES=352575989
+ACTUAL_BYTES="$(wc -c < "$MODEL_DIR/vision_model.onnx" | tr -d '[:space:]')"
+if [ "$ACTUAL_BYTES" -ne "$EXPECTED_BYTES" ]; then
+  echo "Unexpected model size: $ACTUAL_BYTES (expected $EXPECTED_BYTES)" >&2
+  exit 1
+fi
 ```
 
 From the artifact directory, run the smallest CORS-enabled static server needed by the browser:

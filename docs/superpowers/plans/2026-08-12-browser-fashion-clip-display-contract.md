@@ -61,7 +61,7 @@
 **Interfaces:**
 - `validateBrowserRerankingHandoff` returns validated snapshot metadata without interpreting `candidateId`.
 - `sortRerankingResults(results)` remains finalScore DESC then original handoff index ASC.
-- Add `sortDisplayResults(results)` that compares prices only when both amounts are finite and currencies match; incomparable pairs return the stable relevance order, and equal comparable prices use finalScore DESC then original index ASC.
+- Add `sortDisplayResults(results)` that orders the shortlist by price ASC only when every candidate has a finite comparable amount and the same currency; otherwise preserve the entire shortlist's stable relevance order. Equal comparable prices use finalScore DESC then original index ASC.
 
 - [ ] Validate nullable seller, price, and purchase URL; reject malformed non-null display values without constructing defaults or URLs.
 - [ ] Run image acquisition/inference for the full validated handoff pool, compute normalized cosine and the unchanged positive 70/30 final score, rank by relevance, select the first `min(10, count)`, and display-sort only that shortlist.

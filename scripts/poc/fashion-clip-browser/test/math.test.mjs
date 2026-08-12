@@ -248,6 +248,24 @@ test('fetches the recommendation POST with an optional bearer token and preserve
   assert.equal(result.ok, true);
 });
 
+test('normalizes integer-like report IDs before building the recommendation URL', async () => {
+  const calls = [];
+  await fetchRecommendation({
+    baseUrl: 'http://localhost:8080',
+    reportId: '4.0',
+    fetchImpl: async (url) => {
+      calls.push(url);
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({ data: {} }),
+      };
+    },
+  });
+
+  assert.equal(calls[0].href, 'http://localhost:8080/api/v1/analyses/4/recommendations');
+});
+
 test('classifies missing handoff and non-success recommendation responses as fallback', async () => {
   const missing = extractBrowserReranking({
     data: { recommendationStatus: 'CURRENT', recommendationGroups: [] },

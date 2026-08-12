@@ -14,6 +14,7 @@ import {
 const MODEL_ID = 'Frapic/fashion-clip-onnx';
 const MODEL_REVISION = '12eb79267363fd03b8983a25903cd9097b1ec76c';
 const DEFAULT_MODEL_URL = `https://huggingface.co/${MODEL_ID}/resolve/${MODEL_REVISION}/vision_model.onnx`;
+const ALLOWED_MODEL_ORIGINS = new Set([window.location.origin, 'https://huggingface.co']);
 
 function resolveModelConfig() {
   const override = new URLSearchParams(window.location.search).get('modelUrl');
@@ -24,6 +25,9 @@ function resolveModelConfig() {
     const url = new URL(override, window.location.origin);
     if (!['http:', 'https:'].includes(url.protocol)) {
       throw new Error('modelUrl must use http or https');
+    }
+    if (!ALLOWED_MODEL_ORIGINS.has(url.origin)) {
+      throw new Error('modelUrl origin is not allowed');
     }
     return { url: url.href, source: `query override (${url.origin})` };
   } catch {
@@ -238,32 +242,35 @@ async function imageToTensorData(source, label = 'image') {
 }
 
 function imageToTensorDataFromImage(image) {
-  const canvas = document.createElement('canvas');
-  canvas.width = IMAGE_SIZE;
-  canvas.height = IMAGE_SIZE;
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) {
-    throw new Error('2D canvas is unavailable');
-  }
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = IMAGE_SIZE;
+    canvas.height = IMAGE_SIZE;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+      throw new Error('2D canvas is unavailable');
+    }
 
-  const scale = IMAGE_SIZE / Math.min(image.width, image.height);
-  const width = image.width * scale;
-  const height = image.height * scale;
-  context.drawImage(image, (IMAGE_SIZE - width) / 2, (IMAGE_SIZE - height) / 2, width, height);
-  if (typeof image.close === 'function') {
-    image.close();
-  }
+    const scale = IMAGE_SIZE / Math.min(image.width, image.height);
+    const width = image.width * scale;
+    const height = image.height * scale;
+    context.drawImage(image, (IMAGE_SIZE - width) / 2, (IMAGE_SIZE - height) / 2, width, height);
 
-  const pixels = context.getImageData(0, 0, IMAGE_SIZE, IMAGE_SIZE).data;
-  const channelLength = IMAGE_SIZE * IMAGE_SIZE;
-  const tensorData = new Float32Array(channelLength * 3);
-  for (let pixel = 0; pixel < channelLength; pixel += 1) {
-    for (let channel = 0; channel < 3; channel += 1) {
-      const value = pixels[pixel * 4 + channel] / 255;
-      tensorData[channel * channelLength + pixel] = (value - CHANNEL_MEAN[channel]) / CHANNEL_STD[channel];
+    const pixels = context.getImageData(0, 0, IMAGE_SIZE, IMAGE_SIZE).data;
+    const channelLength = IMAGE_SIZE * IMAGE_SIZE;
+    const tensorData = new Float32Array(channelLength * 3);
+    for (let pixel = 0; pixel < channelLength; pixel += 1) {
+      for (let channel = 0; channel < 3; channel += 1) {
+        const value = pixels[pixel * 4 + channel] / 255;
+        tensorData[channel * channelLength + pixel] = (value - CHANNEL_MEAN[channel]) / CHANNEL_STD[channel];
+      }
+    }
+    return tensorData;
+  } finally {
+    if (typeof image.close === 'function') {
+      image.close();
     }
   }
-  return tensorData;
 }
 
 function createImage(source, label = 'image') {
@@ -1001,6 +1008,7 @@ function summarizeBackendResult(backendData) {
 function showBrowserUnavailable(reason, backendData = null, preserveMetrics = false) {
   elements.backendSummary.textContent = summarizeBackendResult(backendData);
   if (!preserveMetrics) {
+    elements.handoffResults.replaceChildren();
     elements.handoffSummary.textContent = [
       `browser-reranking unavailable: ${reason}`,
       'backend recommendation result kept',
@@ -1290,9 +1298,7 @@ function formatMilliseconds(milliseconds) {
 
 elements.modelSecondLoad.addEventListener('click', async () => {
   elements.modelSecondLoad.disabled = true;
-  elements.run.disabled = true;
-  elements.benchmarkRun.disabled = true;
-  elements.urlRun.disabled = true;
+  setIntegrationButtonsDisabled(true);
   setStatus('Measuring second model load with the browser HTTP cache available…');
   sessionPromise = null;
   try {
@@ -1302,9 +1308,7 @@ elements.modelSecondLoad.addEventListener('click', async () => {
     setStatus(`Blocked: ${errorMessage(error)}`);
     elements.modelSecondLoad.disabled = false;
   } finally {
-    elements.run.disabled = false;
-    elements.benchmarkRun.disabled = false;
-    elements.urlRun.disabled = false;
+    setIntegrationButtonsDisabled(false);
   }
 });
 
@@ -1404,12 +1408,12 @@ elements.backendBenchmarkRun.addEventListener('click', async () => {
   }
 
   setIntegrationButtonsDisabled(true);
-  elements.backendSummary.textContent = 'Requesting one recommendation handoff for the 30-vs-10 benchmark…';
+  elements.backendSummary.textContent = 'Requesting one recommendation handoff for the full relevance vs price-ordered top-10 benchmark…';
   elements.handoffSummary.textContent = 'Waiting for browser benchmark handoff.';
-  elements.handoffBenchmarkSummary.textContent = 'No 30-vs-10 benchmark measured.';
+  elements.handoffBenchmarkSummary.textContent = 'No full relevance vs price-ordered top-10 benchmark measured.';
   elements.handoffQualitySummary.textContent = 'No final-ranking comparison measured.';
   elements.handoffComparisonOrdering.textContent = 'No final ordering measured.';
-  setStatus('Posting one recommendation request and preparing warm 30-vs-10 browser benchmark…');
+  setStatus('Posting one recommendation request and preparing warm full relevance vs price-ordered top-10 browser benchmark…');
   try {
     await runBackendBenchmarkIntegration(queryFile);
   } catch (error) {

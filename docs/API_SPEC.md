@@ -599,9 +599,10 @@ internal ID, persisted productId는 이 contract에 노출하지 않는다.
 Browser는 이 응답의 후보 전체에 대해 현재 normalized Fashion-CLIP cosine과
 `finalScore = imageSimilarity * 0.70 + tagSimilarity * 0.30`을 계산하고, threshold 없이
 `finalScore DESC`로 `min(10, candidateCount)` relevance shortlist를 선택한다. 선택된
-shortlist 안에서만 동일 currency의 존재하는 `price.amount`를 ASC로 표시하며, 가격 비교가
-불가능하면 기존 relevance 순서를 유지한다. 동일 가격은 `finalScore DESC`, 그 다음 original
-handoff index ASC다. Browser score는 backend에 저장하거나 submit하지 않는다.
+shortlist의 모든 후보가 유한하고 비교 가능한 `price.amount`를 가지며 동일 currency일 때만
+`price.amount ASC`로 표시한다. 그 외에는 shortlist 전체의 기존 relevance 순서를 유지한다.
+동일 가격은 `finalScore DESC`, 그 다음 original handoff index ASC다. Browser score는 backend에
+저장하거나 submit하지 않는다.
 
 ### 생성·교체 규칙
 

@@ -57,11 +57,12 @@ function recommendationUrl(baseUrl, reportId) {
   if (!['http:', 'https:'].includes(parsedBaseUrl.protocol)) {
     throw new Error('backend URL must use http or https');
   }
-  if (!Number.isInteger(Number(reportId)) || Number(reportId) <= 0) {
+  const normalizedReportId = Number(reportId);
+  if (!Number.isInteger(normalizedReportId) || normalizedReportId <= 0) {
     throw new Error('report ID must be a positive integer');
   }
   return new URL(
-    `/api/v1/analyses/${encodeURIComponent(reportId)}/recommendations`,
+    `/api/v1/analyses/${encodeURIComponent(normalizedReportId)}/recommendations`,
     `${parsedBaseUrl.origin}/`
   );
 }
