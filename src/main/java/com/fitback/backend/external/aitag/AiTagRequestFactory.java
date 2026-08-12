@@ -59,10 +59,16 @@ public final class AiTagRequestFactory {
                   illuminated fabric midtones and highlights, not the background or deepest shadow.
                   Do not turn shadow into 블랙 or warm illumination into 브라운.
                 - MATERIAL: Return a tag only when positive surface evidence distinguishes it from
-                  other canonical materials. Do not infer composition from color, drape, opacity,
-                  garment category, or generic fabric appearance. 우븐/시어 is not a fallback for
-                  non-knit fabric; regular knit loops or ribs indicate 니트. 트위드 requires a
-                  visibly woven multicolor or nubby yarn structure, not generic coarse texture. If
+                  other canonical materials. Before selecting a tag, compare the construction-specific
+                  surface evidence for every plausible canonical material and require the winning
+                  evidence to repeat across a broad garment region. Do not infer composition from
+                  color, drape, opacity, garment category, or generic fabric appearance. Distressing,
+                  seams, hardware, or a generic smooth, matte, or coarse surface are not material
+                  construction evidence. 데님 requires a visible diagonal twill weave, not
+                  distressing or color alone. 우븐/시어 is not a fallback for non-knit fabric;
+                  regular knit loops or ribs indicate 니트 even when the image is rotated, and do
+                  not reinterpret repeated knit stitches as 트위드. 트위드 requires a visibly woven
+                  multicolor or nubby yarn structure rather than uniform repeated knit ribs. If
                   multiple materials remain plausible, omit MATERIAL.
                 - SILHOUETTE: Judge garment geometry separately from body fit. A flat or hanging
                   product image can support visible width, taper, expansion, and length when the
