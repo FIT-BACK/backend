@@ -1,5 +1,12 @@
 import * as ort from 'onnxruntime-web/webgpu';
-import { cosineSimilarity, l2Norm, normalizeL2 } from './math.js';
+import {
+  calculateFinalScore,
+  cosineSimilarity,
+  l2Norm,
+  normalizeL2,
+  sortRerankingResults,
+  validateBrowserRerankingHandoff,
+} from './math.js';
 
 const MODEL_ID = 'Frapic/fashion-clip-onnx';
 const MODEL_REVISION = '12eb79267363fd03b8983a25903cd9097b1ec76c';
@@ -37,9 +44,11 @@ const elements = {
   queryFile: document.querySelector('#query-file'),
   candidateFile: document.querySelector('#candidate-file'),
   candidateUrls: document.querySelector('#candidate-urls'),
+  handoffJson: document.querySelector('#handoff-json'),
   run: document.querySelector('#run'),
   benchmarkRun: document.querySelector('#benchmark-run'),
   urlRun: document.querySelector('#url-run'),
+  handoffRun: document.querySelector('#handoff-run'),
   status: document.querySelector('#status'),
   runtime: document.querySelector('#runtime'),
   model: document.querySelector('#model'),
@@ -54,6 +63,8 @@ const elements = {
   cosineDifference: document.querySelector('#cosine-difference'),
   urlSummary: document.querySelector('#url-summary'),
   urlResults: document.querySelector('#url-results tbody'),
+  handoffSummary: document.querySelector('#handoff-summary'),
+  handoffResults: document.querySelector('#handoff-results tbody'),
   benchmarkResults: document.querySelector('#benchmark-results tbody'),
   query: {
     dimension: document.querySelector('#query-dimension'),
@@ -549,6 +560,119 @@ async function runUrlIntegration(queryFile, urls) {
   elements.inference.textContent = `${formatMilliseconds(queryRun.latencyMs + candidateRun.latencyMs)} ms`;
 }
 
+function parseHandoffJson() {
+  let parsed;
+  try {
+    parsed = JSON.parse(elements.handoffJson.value);
+  } catch {
+    throw new Error('handoff JSON is invalid');
+  }
+  return validateBrowserRerankingHandoff(parsed);
+}
+
+async function runHandoffIntegration(queryFile, handoff) {
+  const session = await loadSession();
+  const started = performance.now();
+  const queryData = await imageToTensorData(queryFile, queryFile.name);
+  setStatus(`Fetching and decoding ${handoff.candidates.length} handoff candidate image URL(s)…`);
+  const results = await Promise.all(handoff.candidates.map(async (candidate) => {
+    const result = await fetchUrlTensorData(candidate.imageUrl, candidate.originalIndex - 1);
+    return {
+      ...result,
+      candidateId: candidate.candidateId,
+      tagSimilarity: candidate.tagSimilarity,
+      originalIndex: candidate.originalIndex,
+    };
+  }));
+  renderHandoffResults(results);
+  const failed = results.filter((result) => result.status !== 'ready');
+  if (failed.length > 0) {
+    elements.handoffSummary.textContent = `blocked: ${failed.length}/${results.length} candidate image(s) failed; no partial reranking was calculated`;
+    throw new Error(`candidate image fetch/decode failed at input index ${failed.map((result) => result.originalIndex).join(', ')}`);
+  }
+
+  setStatus(`Running Fashion-CLIP candidate batch [${results.length},3,224,224]…`);
+  const queryRun = await runEmbeddingBatch(session, [queryData]);
+  const candidateRun = await runEmbeddingBatch(session, results.map((result) => result.tensorData));
+  const queryDiagnostic = diagnoseEmbedding(queryRun.rawEmbeddings[0]);
+  const candidateDiagnostics = candidateRun.rawEmbeddings.map(diagnoseEmbedding);
+  const cosines = calculateCosines(queryDiagnostic, candidateDiagnostics);
+  const ranked = sortRerankingResults(results.map((result, index) => ({
+    candidateId: result.candidateId,
+    originalIndex: result.originalIndex,
+    imageSimilarity: cosines.normalized[index],
+    tagSimilarity: result.tagSimilarity,
+    finalScore: calculateFinalScore(cosines.normalized[index], result.tagSimilarity),
+  })));
+  const totalRerankingMs = performance.now() - started;
+  const imageSimilarities = ranked.map((result) => result.imageSimilarity);
+  const tagSimilarities = ranked.map((result) => result.tagSimilarity);
+  const finalScores = ranked.map((result) => result.finalScore);
+  elements.handoffSummary.textContent = [
+    `category ${handoff.category ?? '-'}`,
+    `candidates ${ranked.length}`,
+    `imageSimilarity ${range(imageSimilarities)}`,
+    `tagSimilarity ${range(tagSimilarities)}`,
+    `finalScore ${range(finalScores)}`,
+    `query batch ${formatMilliseconds(queryRun.latencyMs)} ms`,
+    `candidate batch ${formatMilliseconds(candidateRun.latencyMs)} ms`,
+    `total reranking ${formatMilliseconds(totalRerankingMs)} ms`,
+    `runtime ${runtimeState}`,
+  ].join(' · ');
+  renderHandoffResults(results, ranked);
+  showDiagnostics(elements.query, queryDiagnostic);
+  showDiagnostics(elements.candidate, candidateDiagnostics[0]);
+  showCosines(cosines, 0);
+  elements.inference.textContent = `${formatMilliseconds(queryRun.latencyMs + candidateRun.latencyMs)} ms`;
+  return { ranked, totalRerankingMs, runtime: runtimeState };
+}
+
+function renderHandoffResults(results, ranked = []) {
+  const rankedByIndex = new Map(ranked.map((result) => [result.originalIndex, result]));
+  elements.handoffResults.replaceChildren();
+  for (const result of results) {
+    const rankedResult = rankedByIndex.get(result.originalIndex);
+    const cells = [
+      result.candidateId ?? '-',
+      result.originalIndex,
+      rankedResult?.imageSimilarity === undefined ? '-' : rankedResult.imageSimilarity.toFixed(8),
+      result.tagSimilarity === undefined ? '-' : result.tagSimilarity.toFixed(8),
+      rankedResult?.finalScore === undefined ? '-' : rankedResult.finalScore.toFixed(8),
+      result.status === 'ready' ? 'ready' : safeHandoffFailure(result.status),
+    ];
+    const row = document.createElement('tr');
+    for (const cell of cells) {
+      const cellElement = document.createElement('td');
+      cellElement.textContent = String(cell);
+      row.append(cellElement);
+    }
+    elements.handoffResults.append(row);
+  }
+  if (ranked.length > 0) {
+    for (const result of ranked) {
+      const row = Array.from(elements.handoffResults.children)
+        .find((candidateRow) => candidateRow.children[1].textContent === String(result.originalIndex));
+      if (row) {
+        elements.handoffResults.append(row);
+      }
+    }
+  }
+}
+
+function safeHandoffFailure(status) {
+  if (status.startsWith('CORS/network')) return 'CORS/network failure';
+  if (status.startsWith('HTTP ')) return status.split(':', 1)[0];
+  if (status.startsWith('unsupported content type')) return 'unsupported content type';
+  if (status.startsWith('body read failure')) return 'body read failure';
+  if (status.startsWith('decode failure')) return 'decode failure';
+  if (status.startsWith('preprocess failure')) return 'preprocess failure';
+  return 'candidate image failure';
+}
+
+function range(values) {
+  return `${Math.min(...values).toFixed(8)}..${Math.max(...values).toFixed(8)}`;
+}
+
 function renderUrlResults(results) {
   elements.urlResults.replaceChildren();
   for (const result of results) {
@@ -717,5 +841,38 @@ elements.urlRun.addEventListener('click', async () => {
     elements.run.disabled = false;
     elements.benchmarkRun.disabled = false;
     elements.urlRun.disabled = false;
+  }
+});
+
+elements.handoffRun.addEventListener('click', async () => {
+  const queryFile = elements.queryFile.files[0];
+  if (!queryFile) {
+    setStatus('Select one local query crop image first.');
+    return;
+  }
+
+  let handoff;
+  try {
+    handoff = parseHandoffJson();
+  } catch (error) {
+    setStatus(`Blocked: ${errorMessage(error)}`);
+    return;
+  }
+
+  elements.run.disabled = true;
+  elements.benchmarkRun.disabled = true;
+  elements.urlRun.disabled = true;
+  elements.handoffRun.disabled = true;
+  setStatus('Loading the browser model and preparing handoff reranking…');
+  try {
+    await runHandoffIntegration(queryFile, handoff);
+    setStatus('Done. Handoff candidates were reranked in this browser tab.');
+  } catch (error) {
+    setStatus(`Blocked: ${errorMessage(error)}`);
+  } finally {
+    elements.run.disabled = false;
+    elements.benchmarkRun.disabled = false;
+    elements.urlRun.disabled = false;
+    elements.handoffRun.disabled = false;
   }
 });

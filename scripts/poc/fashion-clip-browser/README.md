@@ -70,6 +70,21 @@ To check real Shopify retrieval image URLs, paste at most ten HTTPS image URLs i
 
 For the browser benchmark, select at least ten approved local candidate images and click **Run warm 1/3/5/10 benchmark**. Candidate sizes `1`, `3`, `5`, and `10` are warmed once and then measured three times; the table reports medians for total embedding inference, per-image average, query batch, candidate batch, and cosine calculation. The query is run as a batch of one and each candidate set is run as one `[candidateCount, 3, 224, 224]` tensor batch. Query and candidate batch runs are sequential so their latency can be reported separately. Reused or heterogeneous local images are performance inputs only and are not an accuracy evaluation.
 
+### Backend browser-reranking handoff
+
+The **Browser reranking handoff** section accepts pasted JSON without calling the backend. Paste the `browserReranking` object from the #330-compatible response, then select the existing local query/crop image and click **Run browser handoff reranking**. The browser validates 1–30 candidates, nonblank unique `candidateId` values, HTTP(S) `imageUrl` values, and finite `[0,1]` `tagSimilarity` values.
+
+Each candidate image URL is fetched, decoded, and preprocessed directly in this browser tab. A fetch, decode, or preprocess failure blocks the whole handoff run and displays only the failed input index/candidate identifier and safe failure class; no partial ranking is emitted. Successful candidates are sent through one Fashion-CLIP candidate tensor batch. The local query remains the existing query file input and is embedded separately.
+
+The displayed score is the demo-only hypothesis:
+
+```text
+imageSimilarity = cosine(normalizedQueryEmbedding, normalizedCandidateEmbedding)
+finalScore = imageSimilarity * 0.70 + tagSimilarity * 0.30
+```
+
+The cosine is not remapped to `[0,1]`; it remains the model cosine scale. Results are sorted by descending `finalScore`, with original handoff input index as the deterministic tie-breaker. No threshold, score submission, persistence, price sort, candidate tag enrichment, backend call, server-side image fetch, or Modal call is performed.
+
 `npm run build` creates only the static app bundle. It does not download the model or any image.
 
 ## Model-load diagnostics
