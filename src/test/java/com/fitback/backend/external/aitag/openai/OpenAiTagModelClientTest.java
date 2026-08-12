@@ -942,6 +942,35 @@ class OpenAiTagModelClientTest {
     }
 
     @Test
+    void doesNotRetryInvalidModelOutputJsonInProduction() throws Exception {
+        FakeNanoClock clock = new FakeNanoClock();
+        AtomicInteger attempts = new AtomicInteger();
+        String responseBody = responseBodyWithOutputText("not-json");
+        OpenAiTagModelClient.Transport transport = (endpoint, apiKey, timeout, body) -> {
+            attempts.incrementAndGet();
+            return new OpenAiTagModelClient.TransportResponse(200, responseBody, "req-model-json");
+        };
+        OpenAiTagModelClient client = productionRetryClient(
+                Duration.ofSeconds(30),
+                transport,
+                clock,
+                millis -> {
+                    throw new AssertionError("model JSON parsing failures must not sleep");
+                },
+                bound -> 0L
+        );
+
+        assertThatThrownBy(() -> analyze(client))
+                .isInstanceOfSatisfying(OpenAiTagModelClient.ProviderFailure.class, failure -> {
+                    assertThat(failure.providerHttpStatus()).isEqualTo(200);
+                    assertThat(failure.providerErrorCategory()).isNull();
+                    assertThat(failure.responseParsingCategory())
+                            .isEqualTo("INVALID_MODEL_OUTPUT_JSON");
+                });
+        assertThat(attempts).hasValue(1);
+    }
+
+    @Test
     void doesNotRetryParserOrSchemaFailures() throws Exception {
         for (String responseBody : List.of("not-json", invalidSchemaResponseBody())) {
             FakeNanoClock clock = new FakeNanoClock();
