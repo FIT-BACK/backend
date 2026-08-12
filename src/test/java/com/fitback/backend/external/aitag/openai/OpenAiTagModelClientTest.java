@@ -107,6 +107,134 @@ class OpenAiTagModelClientTest {
     }
 
     @Test
+    void acceptsStructuredOutputAfterNonMessageOutputItem() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        Map<String, Object> garments = new LinkedHashMap<>();
+        garments.put("TOP", null);
+        garments.put("BOTTOM", Map.of(
+                "canonicalTags", List.of(Map.of("type", "MATERIAL", "name", "데님")),
+                "suggestedTags", List.of()
+        ));
+        garments.put("DRESS", null);
+        garments.put("OUTER", null);
+        String outputText = objectMapper.writeValueAsString(Map.of("garments", garments));
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "output", List.of(
+                        Map.of("type", "reasoning", "summary", List.of()),
+                        Map.of(
+                                "type", "message",
+                                "content", List.of(Map.of(
+                                        "type", "output_text",
+                                        "text", outputText
+                                ))
+                        )
+                )
+        ));
+
+        AiTagModelResult result = analyze(clientReturning(200, responseBody));
+
+        assertThat(result.garments()).singleElement().satisfies(garment ->
+                assertThat(garment.piece()).isEqualTo(
+                        com.fitback.backend.external.aitag.GarmentPiece.BOTTOM
+                ));
+    }
+
+    @Test
+    void acceptsStructuredOutputAfterNonTextualOutputTypes() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        Map<String, Object> garments = new LinkedHashMap<>();
+        garments.put("TOP", null);
+        garments.put("BOTTOM", Map.of(
+                "canonicalTags", List.of(Map.of("type", "MATERIAL", "name", "데님")),
+                "suggestedTags", List.of()
+        ));
+        garments.put("DRESS", null);
+        garments.put("OUTER", null);
+        String outputText = objectMapper.writeValueAsString(Map.of("garments", garments));
+        Map<String, Object> message = Map.of(
+                "type", "message",
+                "content", List.of(Map.of("type", "output_text", "text", outputText))
+        );
+        List<Object> invalidTypes = List.of(Map.of(), List.of());
+
+        for (Object invalidType : invalidTypes) {
+            String responseBody = objectMapper.writeValueAsString(Map.of(
+                    "output", List.of(Map.of("type", invalidType), message)
+            ));
+
+            AiTagModelResult result = analyze(clientReturning(200, responseBody));
+
+            assertThat(result.garments()).singleElement().satisfies(garment ->
+                    assertThat(garment.piece()).isEqualTo(
+                            com.fitback.backend.external.aitag.GarmentPiece.BOTTOM
+                    ));
+        }
+    }
+
+    @Test
+    void findsOutputTextAcrossMultipleMessageContentEntries() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        Map<String, Object> garments = new LinkedHashMap<>();
+        garments.put("TOP", Map.of(
+                "canonicalTags", List.of(Map.of("type", "STYLE", "name", "캐주얼")),
+                "suggestedTags", List.of()
+        ));
+        garments.put("BOTTOM", null);
+        garments.put("DRESS", null);
+        garments.put("OUTER", null);
+        String outputText = objectMapper.writeValueAsString(Map.of("garments", garments));
+        String responseBody = objectMapper.writeValueAsString(Map.of(
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(
+                                Map.of("type", "refusal", "refusal", "unused"),
+                                Map.of("type", "output_text", "text", outputText)
+                        )
+                ))
+        ));
+
+        AiTagModelResult result = analyze(clientReturning(200, responseBody));
+
+        assertThat(result.garments()).singleElement().satisfies(garment ->
+                assertThat(garment.piece()).isEqualTo(
+                        com.fitback.backend.external.aitag.GarmentPiece.TOP
+                ));
+    }
+
+    @Test
+    void rejectsMalformedFencedProseAndTruncatedOutputTextAsInvalidModelOutputJson()
+            throws Exception {
+        String validJson = "{\"garments\":{\"TOP\":null,\"BOTTOM\":null,"
+                + "\"DRESS\":null,\"OUTER\":null}}";
+        List<String> invalidOutputs = List.of(
+                "not-json",
+                "```json\n" + validJson + "\n```",
+                "leading prose " + validJson,
+                validJson + " trailing prose",
+                validJson.substring(0, validJson.length() - 1)
+        );
+
+        for (String invalidOutput : invalidOutputs) {
+            assertParsingCategory(
+                    responseBodyWithOutputText(invalidOutput),
+                    "INVALID_MODEL_OUTPUT_JSON"
+            );
+        }
+    }
+
+    @Test
+    void classifiesMissingOutputTextSeparatelyFromInvalidModelJson() throws Exception {
+        String responseBody = new ObjectMapper().writeValueAsString(Map.of(
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of("type", "refusal", "refusal", "declined"))
+                ))
+        ));
+
+        assertParsingCategory(responseBody, "MISSING_OUTPUT_TEXT");
+    }
+
+    @Test
     void translatesHttpErrorToAnalysisNotReady() {
         OpenAiTagModelClient client = clientReturning(429, "rate limited");
 
@@ -936,6 +1064,22 @@ class OpenAiTagModelClientTest {
                         "content", List.of(Map.of("type", "output_text", "text", outputText))
                 ))
         ));
+    }
+
+    private static String responseBodyWithOutputText(String outputText) throws Exception {
+        return new ObjectMapper().writeValueAsString(Map.of(
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of("type", "output_text", "text", outputText))
+                ))
+        ));
+    }
+
+    private static void assertParsingCategory(String responseBody, String expectedCategory) {
+        assertThatThrownBy(() -> analyze(clientReturning(200, responseBody)))
+                .isInstanceOfSatisfying(OpenAiTagModelClient.ProviderFailure.class, failure ->
+                        assertThat(failure.responseParsingCategory()).isEqualTo(expectedCategory)
+                );
     }
 
     private static final class FakeNanoClock implements OpenAiTagModelClient.NanoClock {
