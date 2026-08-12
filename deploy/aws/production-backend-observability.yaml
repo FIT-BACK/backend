@@ -51,12 +51,98 @@ Resources:
           MetricValue: "1"
           Unit: Count
 
+  AlarmNotificationKey:
+    Type: AWS::KMS::Key
+    Condition: CreateAlarmTopic
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Encrypts the production OpenAI provider retry alarm topic.
+      EnableKeyRotation: true
+      KeySpec: SYMMETRIC_DEFAULT
+      KeyUsage: ENCRYPT_DECRYPT
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAccountKeyAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action:
+              - kms:CancelKeyDeletion
+              - kms:DescribeKey
+              - kms:DisableKey
+              - kms:DisableKeyRotation
+              - kms:EnableKey
+              - kms:EnableKeyRotation
+              - kms:GetKeyPolicy
+              - kms:GetKeyRotationStatus
+              - kms:ListGrants
+              - kms:ListKeyPolicies
+              - kms:ListResourceTags
+              - kms:PutKeyPolicy
+              - kms:RevokeGrant
+              - kms:ScheduleKeyDeletion
+              - kms:TagResource
+              - kms:UntagResource
+              - kms:UpdateKeyDescription
+            Resource: "*"
+          - Sid: AllowCloudWatchAlarmEncryption
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnEquals:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:fitback-prod-openai-provider-retry
+          - Sid: AllowSnsTopicEncryption
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                kms:EncryptionContext:aws:sns:topicArn: !Sub arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:fitback-prod-openai-provider-retry
+              ArnEquals:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:fitback-prod-openai-provider-retry
+
   AlarmNotificationTopic:
     Type: AWS::SNS::Topic
     Condition: CreateAlarmTopic
     Properties:
       TopicName: fitback-prod-openai-provider-retry
-      KmsMasterKeyId: alias/aws/sns
+      KmsMasterKeyId: !GetAtt AlarmNotificationKey.Arn
+
+  AlarmNotificationTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Condition: CreateAlarmTopic
+    Properties:
+      Topics:
+        - !Ref AlarmNotificationTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudWatchAlarmPublish
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref AlarmNotificationTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnEquals:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:fitback-prod-openai-provider-retry
 
   ProviderRetryAlarm:
     Type: AWS::CloudWatch::Alarm
