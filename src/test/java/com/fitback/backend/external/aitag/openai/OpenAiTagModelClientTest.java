@@ -140,6 +140,38 @@ class OpenAiTagModelClientTest {
     }
 
     @Test
+    void acceptsStructuredOutputAfterNonTextualOutputTypes() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        Map<String, Object> garments = new LinkedHashMap<>();
+        garments.put("TOP", null);
+        garments.put("BOTTOM", Map.of(
+                "canonicalTags", List.of(Map.of("type", "MATERIAL", "name", "데님")),
+                "suggestedTags", List.of()
+        ));
+        garments.put("DRESS", null);
+        garments.put("OUTER", null);
+        String outputText = objectMapper.writeValueAsString(Map.of("garments", garments));
+        Map<String, Object> message = Map.of(
+                "type", "message",
+                "content", List.of(Map.of("type", "output_text", "text", outputText))
+        );
+        List<Object> invalidTypes = List.of(Map.of(), List.of());
+
+        for (Object invalidType : invalidTypes) {
+            String responseBody = objectMapper.writeValueAsString(Map.of(
+                    "output", List.of(Map.of("type", invalidType), message)
+            ));
+
+            AiTagModelResult result = analyze(clientReturning(200, responseBody));
+
+            assertThat(result.garments()).singleElement().satisfies(garment ->
+                    assertThat(garment.piece()).isEqualTo(
+                            com.fitback.backend.external.aitag.GarmentPiece.BOTTOM
+                    ));
+        }
+    }
+
+    @Test
     void findsOutputTextAcrossMultipleMessageContentEntries() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         Map<String, Object> garments = new LinkedHashMap<>();
