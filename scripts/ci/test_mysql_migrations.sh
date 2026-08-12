@@ -706,6 +706,8 @@ validate_lookbook_product_link_contract() {
   local report_columns
   local report_member_foreign_key
   local report_delete_lifecycle
+  local report_created_at_before
+  local report_created_at_after
   local image_reference_collations
 
   columns="$(docker exec "$container_name" mysql -uroot \
@@ -934,8 +936,16 @@ validate_lookbook_product_link_contract() {
        member_id,
        reason,
        created_at
-     ) VALUES (9201, 9201, 9202, 'OTHER', NOW());
-     DELETE FROM member WHERE member_id = 9202;"
+     ) VALUES (9201, 9201, 9202, 'OTHER', NOW(6));"
+
+  report_created_at_before="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s.%f')
+        FROM $database.lookbook_report
+        WHERE report_id = 9201;")"
+
+  docker exec "$container_name" mysql -uroot "$database" -e \
+    "DELETE FROM member WHERE member_id = 9202;"
 
   report_delete_lifecycle="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
@@ -952,6 +962,18 @@ validate_lookbook_product_link_contract() {
   if [ "$report_delete_lifecycle" != 'NULL:OTHER:9201' ]; then
     echo "Unexpected lookbook report delete lifecycle in $database:" >&2
     printf '%s\n' "$report_delete_lifecycle" >&2
+    exit 1
+  fi
+
+  report_created_at_after="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s.%f')
+        FROM $database.lookbook_report
+        WHERE report_id = 9201;")"
+
+  if [ "$report_created_at_after" != "$report_created_at_before" ]; then
+    echo "Lookbook report created_at changed after reporter deletion in $database:" >&2
+    echo "before=$report_created_at_before after=$report_created_at_after" >&2
     exit 1
   fi
 }

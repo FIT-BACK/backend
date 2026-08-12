@@ -698,6 +698,10 @@ class MemberControllerIntegrationTest {
         Long lookbookId = lookbook.getId();
         Long reportId = report.getId();
 
+        //DB에 저장된 신고 시각을 회원 탈퇴 전 기준값으로 보관
+        entityManager.refresh(report);
+        LocalDateTime reportCreatedAt = report.getCreatedAt();
+
         mockMvc.perform(delete("/api/v1/members/me")
                         .header("Authorization", bearer(reporterToken)))
                 .andExpect(status().isOk())
@@ -709,12 +713,13 @@ class MemberControllerIntegrationTest {
 
         assertThat(memberRepository.existsByEmail(reporterEmail)).isFalse();
 
-        //신고 사유와 대상 룩북 유지 및 신고자 참조 제거 확인
+        //신고 사유와 대상 룩북, 신고 시각 유지 및 신고자 참조 제거 확인
         LookbookReport anonymizedReport = lookbookReportRepository.findById(reportId)
                 .orElseThrow();
         assertThat(anonymizedReport.getMember()).isNull();
         assertThat(anonymizedReport.getLookbook().getId()).isEqualTo(lookbookId);
         assertThat(anonymizedReport.getReason())
                 .isEqualTo(LookbookReportReason.INAPPROPRIATE_IMAGE);
+        assertThat(anonymizedReport.getCreatedAt()).isEqualTo(reportCreatedAt);
     }
 }
