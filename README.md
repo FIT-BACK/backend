@@ -79,6 +79,15 @@ Shopify 상품은 provider/product/variant/merchant ID만 저장하며 상품명
 상품 검색에서 발급하는 candidate token은 기본 10분 동안 유효하며
 `SHOPPING_CANDIDATE_TOKEN_TTL`에 ISO-8601 Duration 형식으로 설정합니다.
 
+추천 생성 POST 응답의 `data.browserReranking.candidates`는 해당 응답을 만들 때 이미 확보한
+`ExternalProductCandidate`의 표시 metadata snapshot입니다. 이 snapshot은 live Shopify 가격
+보장이 아니며, browser는 candidate token resolve API나 후속 Shopify metadata 호출을 하지
+않습니다. 표시용 `price`는 `ProductPriceResponse` 형태이며 가격·판매자·구매 URL이 없으면
+`null`로 전달합니다. browser는 같은 응답에서 normalized Fashion-CLIP cosine과
+`imageSimilarity * 0.70 + tagSimilarity * 0.30`을 계산하고 relevance top-10을 선택한 뒤,
+선택된 후보 내부에서 비교 가능한 동일 currency 가격만 ASC로 표시합니다. browser score는
+backend에 저장하지 않습니다.
+
 배포형 최소 프로토타입에서는 다음 비민감 runtime 설정을 함께 전달합니다.
 
 ```env
