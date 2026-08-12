@@ -313,6 +313,7 @@ async function fetchUrlBlob(url, index) {
     status: 'blocked',
   };
   const fetchStarted = performance.now();
+  result.fetchStartedAt = fetchStarted;
   let response;
   try {
     response = await fetch(url, {
@@ -321,32 +322,27 @@ async function fetchUrlBlob(url, index) {
       cache: 'no-store',
     });
   } catch (error) {
-    result.fetchLatencyMs = performance.now() - fetchStarted;
     result.status = `CORS/network failure: ${errorMessage(error)}`;
-    return result;
+    return completeStage(result, 'fetch', fetchStarted);
   }
   result.contentType = response.headers.get('content-type')?.split(';', 1)[0] ?? '-';
   if (!response.ok) {
-    result.fetchLatencyMs = performance.now() - fetchStarted;
     result.status = `HTTP ${response.status}`;
-    return result;
+    return completeStage(result, 'fetch', fetchStarted);
   }
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(result.contentType)) {
-    result.fetchLatencyMs = performance.now() - fetchStarted;
     result.status = `unsupported content type: ${result.contentType}`;
-    return result;
+    return completeStage(result, 'fetch', fetchStarted);
   }
 
   try {
     result.blob = await response.blob();
   } catch (error) {
-    result.fetchLatencyMs = performance.now() - fetchStarted;
     result.status = `body read failure: ${errorMessage(error)}`;
-    return result;
+    return completeStage(result, 'fetch', fetchStarted);
   }
-  result.fetchLatencyMs = performance.now() - fetchStarted;
   result.status = 'fetched';
-  return result;
+  return completeStage(result, 'fetch', fetchStarted);
 }
 
 async function decodeUrlImage(result) {
@@ -355,17 +351,16 @@ async function decodeUrlImage(result) {
   }
 
   const decodeStarted = performance.now();
+  result.decodeStartedAt = decodeStarted;
   try {
     result.image = await createImage(result.blob, `candidate ${result.index}`);
   } catch (error) {
-    result.decodeLatencyMs = performance.now() - decodeStarted;
     result.status = `decode failure: ${errorMessage(error)}`;
-    return result;
+    return completeStage(result, 'decode', decodeStarted);
   }
-  result.decodeLatencyMs = performance.now() - decodeStarted;
   result.blob = null;
   result.status = 'decoded';
-  return result;
+  return completeStage(result, 'decode', decodeStarted);
 }
 
 async function preprocessUrlImage(result) {
@@ -374,41 +369,33 @@ async function preprocessUrlImage(result) {
   }
 
   const preprocessStarted = performance.now();
+  result.preprocessStartedAt = preprocessStarted;
   try {
     result.tensorData = imageToTensorDataFromImage(result.image);
   } catch (error) {
-    result.preprocessLatencyMs = performance.now() - preprocessStarted;
     result.status = `preprocess failure: ${errorMessage(error)}`;
-    return result;
+    return completeStage(result, 'preprocess', preprocessStarted);
   }
-  result.preprocessLatencyMs = performance.now() - preprocessStarted;
   result.status = 'ready';
-  return result;
+  return completeStage(result, 'preprocess', preprocessStarted);
 }
 
 async function fetchCandidateTensorData(candidates) {
-  const fetchStarted = performance.now();
-  const fetched = await Promise.all(candidates.map((candidate) => (
-    fetchUrlBlob(candidate.imageUrl, candidate.originalIndex - 1)
-  )));
-  const fetchWallClockMs = performance.now() - fetchStarted;
-
-  const decodeStarted = performance.now();
-  const decoded = await Promise.all(fetched.map((result) => decodeUrlImage(result)));
-  const decodeWallClockMs = performance.now() - decodeStarted;
-
-  const preprocessStarted = performance.now();
-  const results = await Promise.all(decoded.map((result) => preprocessUrlImage(result)));
-  const preprocessWallClockMs = performance.now() - preprocessStarted;
+  const results = await Promise.all(candidates.map(async (candidate) => {
+    const fetched = await fetchUrlBlob(candidate.imageUrl, candidate.originalIndex - 1);
+    const decoded = await decodeUrlImage(fetched);
+    const ready = await preprocessUrlImage(decoded);
+    return { ...ready, ...candidate };
+  }));
 
   return {
-    results: results.map((result, index) => ({ ...result, ...candidates[index] })),
+    results,
     metrics: {
-      fetchWallClockMs,
-      fetchCumulativeMs: sumMetric(fetched, 'fetchLatencyMs'),
-      decodeWallClockMs,
-      decodeCumulativeMs: sumMetric(decoded, 'decodeLatencyMs'),
-      preprocessWallClockMs,
+      fetchWallClockMs: stageWallClock(results, 'fetchStartedAt', 'fetchCompletedAt'),
+      fetchCumulativeMs: sumMetric(results, 'fetchLatencyMs'),
+      decodeWallClockMs: stageWallClock(results, 'decodeStartedAt', 'decodeCompletedAt'),
+      decodeCumulativeMs: sumMetric(results, 'decodeLatencyMs'),
+      preprocessWallClockMs: stageWallClock(results, 'preprocessStartedAt', 'preprocessCompletedAt'),
       preprocessCumulativeMs: sumMetric(results, 'preprocessLatencyMs'),
     },
   };
@@ -632,11 +619,18 @@ async function runHandoffRerankingPass(session, queryFile, handoff, candidateLim
   const candidateSelectionWallClockMs = performance.now() - selectionStarted;
 
   const queryPreprocessStarted = performance.now();
-  const queryData = await imageToTensorData(queryFile, queryFile.name);
-  const queryPreprocessWallClockMs = performance.now() - queryPreprocessStarted;
-
+  let queryPreprocessCompletedAt = queryPreprocessStarted;
+  const queryDataPromise = (async () => {
+    try {
+      return await imageToTensorData(queryFile, queryFile.name);
+    } finally {
+      queryPreprocessCompletedAt = performance.now();
+    }
+  })();
   setStatus(`Fetching ${selectedCandidates.length}/${handoff.candidates.length} handoff image URL(s) directly in parallel…`);
-  const acquisition = await fetchCandidateTensorData(selectedCandidates);
+  const acquisitionPromise = fetchCandidateTensorData(selectedCandidates);
+  const [queryData, acquisition] = await Promise.all([queryDataPromise, acquisitionPromise]);
+  const queryPreprocessWallClockMs = queryPreprocessCompletedAt - queryPreprocessStarted;
   const { results } = acquisition;
   const failed = results.filter((result) => result.status !== 'ready');
   const readyCount = results.length - failed.length;
@@ -1183,6 +1177,40 @@ function showCosines(cosines, index) {
   elements.rawCosine.textContent = rawCosine.toFixed(8);
   elements.normalizedCosine.textContent = normalizedCosine.toFixed(8);
   elements.cosineDifference.textContent = Math.abs(rawCosine - normalizedCosine).toExponential(2);
+}
+
+function completeStage(result, stageName, startedAt) {
+  const completedAt = performance.now();
+  result[`${stageName}CompletedAt`] = completedAt;
+  result[`${stageName}LatencyMs`] = completedAt - startedAt;
+  return result;
+}
+
+function stageWallClock(items, startedAtName, completedAtName) {
+  const intervals = items
+    .map((item) => ({
+      start: item[startedAtName],
+      end: item[completedAtName],
+    }))
+    .filter(({ start, end }) => Number.isFinite(start) && Number.isFinite(end))
+    .sort((left, right) => left.start - right.start);
+  if (intervals.length === 0) {
+    return 0;
+  }
+
+  let total = 0;
+  let activeStart = intervals[0].start;
+  let activeEnd = intervals[0].end;
+  for (const interval of intervals.slice(1)) {
+    if (interval.start > activeEnd) {
+      total += activeEnd - activeStart;
+      activeStart = interval.start;
+      activeEnd = interval.end;
+    } else {
+      activeEnd = Math.max(activeEnd, interval.end);
+    }
+  }
+  return total + activeEnd - activeStart;
 }
 
 function sumMetric(items, metricName) {
