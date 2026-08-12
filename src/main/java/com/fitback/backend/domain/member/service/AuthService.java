@@ -15,6 +15,8 @@ import com.fitback.backend.global.security.util.JwtUtil;
 import com.fitback.backend.global.util.LowercaseNormalizer;
 import com.fitback.backend.global.validation.BCryptPasswordPolicy;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +26,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    private static final String EMAIL_UNIQUE_CONSTRAINT = "UK_MEMBER_EMAIL";
 
     // 미가입·소셜 이메일도 실제 회원과 동일한 BCrypt 비용으로 검증하기 위한 고정 해시
     private static final String DUMMY_PASSWORD_HASH =
@@ -66,7 +70,17 @@ public class AuthService {
 
         //member 객체 생성 후 저장
         Member newMember = Member.create(email, temporalNickName, encodedPassword, LoginProvider.EMAIL);
-        Member savedMember = memberRepository.save(newMember);
+        Member savedMember;
+        try {
+            // 동시 가입 요청은 사전 조회를 함께 통과할 수 있으므로 DB UNIQUE 제약으로 최종 중복 방지
+            savedMember = memberRepository.saveAndFlush(newMember);
+        } catch (DataIntegrityViolationException exception) {
+            // 이메일 중복만 회원가입 비즈니스 예외로 변환
+            if (isEmailUniqueViolation(exception)) {
+                throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
+            }
+            throw exception;
+        }
 
         //회원가입과 같은 트랜잭션에서 기본 알림 설정 row 생성
         notificationSettingService.createDefaultSetting(savedMember);
@@ -85,6 +99,21 @@ public class AuthService {
         loginAttemptService.clear(email);
 
         return MemberResponse.toSignUpResponse(accessToken, refreshToken, savedMember);
+    }
+
+    private boolean isEmailUniqueViolation(Throwable exception) {
+        Throwable cause = exception;
+
+        while (cause != null) {
+            if (cause instanceof ConstraintViolationException constraintViolation) {
+                return EMAIL_UNIQUE_CONSTRAINT.equalsIgnoreCase(
+                        constraintViolation.getConstraintName()
+                );
+            }
+            cause = cause.getCause();
+        }
+
+        return false;
     }
 
 
