@@ -76,12 +76,26 @@ public class LookbookService {
     private final ProductRepository productRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final MemberProfileImageService memberProfileImageService;
+    private final LookbookProductImageResolver productImageResolver;
+    private final LookbookTransactionExecutor transactionExecutor;
 
     // 룩북 업로드
-    @Transactional
     public LookbookResponse.LookbookCreate createLookbook(
             Member member,
             LookbookRequest.LookbookCreate request
+    ) {
+        String matchedProductImageUrl = resolveMatchedProductImage(member, request);
+        return transactionExecutor.execute(() -> createLookbookInTransaction(
+                member,
+                request,
+                matchedProductImageUrl
+        ));
+    }
+
+    private LookbookResponse.LookbookCreate createLookbookInTransaction(
+            Member member,
+            LookbookRequest.LookbookCreate request,
+            String matchedProductImageUrl
     ) {
 
         // tagId로 태그 객체 찾기
@@ -100,7 +114,12 @@ public class LookbookService {
         );
 
         // 룩북 객체 생성 후 저장
-        Lookbook lookbook = createLookbook(member, request, assets);
+        Lookbook lookbook = createLookbook(
+                member,
+                request,
+                assets,
+                matchedProductImageUrl
+        );
         Lookbook savedLookbook = lookbookRepository.save(lookbook);
 
         // tagId로 룩북-태그 객체 생성 후 저장
@@ -116,24 +135,33 @@ public class LookbookService {
     }
 
     // 룩북 수정
-    @Transactional
     public LookbookResponse.LookbookUpdate updateLookbook(
             Long lookbookId,
             Member member,
             LookbookRequest.LookbookUpdate request
     ) {
+        String matchedProductImageUrl = resolveMatchedProductImage(
+                lookbookId,
+                member,
+                request
+        );
+        return transactionExecutor.execute(() -> updateLookbookInTransaction(
+                lookbookId,
+                member,
+                request,
+                matchedProductImageUrl
+        ));
+    }
+
+    private LookbookResponse.LookbookUpdate updateLookbookInTransaction(
+            Long lookbookId,
+            Member member,
+            LookbookRequest.LookbookUpdate request,
+            String matchedProductImageUrl
+    ) {
 
         // lookbookId 유효성 검사 및 조회
-        Lookbook lookbook = lookbookRepository.findByIdAndDeletedAtIsNull(lookbookId)
-                .orElseThrow(() -> new BusinessException(
-                        ErrorCode.NOT_FOUND,
-                        "룩북을 찾을 수 없습니다."
-                ));
-
-        // 룩북 게시자 본인이 아니면 수정 불가
-        if (!Objects.equals(lookbook.getMember().getId(), member.getId())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "룩북 수정 권한이 없습니다.");
-        }
+        Lookbook lookbook = findAuthorizedLookbook(lookbookId, member);
 
         // 룩북 내용 수정
         List<Long> tagIds = request.tagIds();
@@ -149,7 +177,7 @@ public class LookbookService {
         );
 
         List<String> releasedImageIds = imageIdsOf(lookbook);
-        updateLookbook(lookbook, request, assets);
+        updateLookbook(lookbook, request, assets, matchedProductImageUrl);
 
         // 수정된 태그로 교체
         lookbookTagRepository.deleteAllByLookbookId(lookbookId);
@@ -627,6 +655,56 @@ public class LookbookService {
         }
     }
 
+    private String resolveMatchedProductImage(
+            Member member,
+            LookbookRequest.LookbookCreate request
+    ) {
+        if (request.matchedProductId() == null) {
+            return null;
+        }
+        Product product = transactionExecutor.execute(() -> resolveAssets(
+                member,
+                request.originalImageId(),
+                request.matchedImageId(),
+                request.matchedProductId(),
+                request.sourceReportId()
+        ).matchedProduct());
+        return productImageResolver.resolve(product);
+    }
+
+    private String resolveMatchedProductImage(
+            Long lookbookId,
+            Member member,
+            LookbookRequest.LookbookUpdate request
+    ) {
+        if (request.matchedProductId() == null) {
+            return null;
+        }
+        Product product = transactionExecutor.execute(() -> {
+            findAuthorizedLookbook(lookbookId, member);
+            return resolveAssets(
+                    member,
+                    request.originalImageId(),
+                    request.matchedImageId(),
+                    request.matchedProductId(),
+                    request.sourceReportId()
+            ).matchedProduct();
+        });
+        return productImageResolver.resolve(product);
+    }
+
+    private Lookbook findAuthorizedLookbook(Long lookbookId, Member member) {
+        Lookbook lookbook = lookbookRepository.findByIdAndDeletedAtIsNull(lookbookId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.NOT_FOUND,
+                        "룩북을 찾을 수 없습니다."
+                ));
+        if (!Objects.equals(lookbook.getMember().getId(), member.getId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "룩북 수정 권한이 없습니다.");
+        }
+        return lookbook;
+    }
+
     private LookbookAssets resolveAssets(
             Member member,
             String originalImageId,
@@ -728,12 +806,6 @@ public class LookbookService {
         }
         Product product = productRepository.findById(matchedProductId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
-        if (product.getImageUrl() == null || product.getImageUrl().isBlank()) {
-            throw new BusinessException(
-                    ErrorCode.BAD_REQUEST,
-                    "이미지가 없는 상품은 룩북에 사용할 수 없습니다."
-            );
-        }
         return product;
     }
 
@@ -766,7 +838,8 @@ public class LookbookService {
     private Lookbook createLookbook(
             Member member,
             LookbookRequest.LookbookCreate request,
-            LookbookAssets assets
+            LookbookAssets assets,
+            String matchedProductImageUrl
     ) {
         String purchaseUrl = resolvePurchaseUrl(request.purchaseUrl(), assets.matchedProduct());
         if (assets.matchedProduct() != null) {
@@ -774,6 +847,7 @@ public class LookbookService {
                     member,
                     assets.originalImage(),
                     assets.matchedProduct(),
+                    matchedProductImageUrl,
                     purchaseUrl,
                     request.comment()
             );
@@ -790,13 +864,15 @@ public class LookbookService {
     private void updateLookbook(
             Lookbook lookbook,
             LookbookRequest.LookbookUpdate request,
-            LookbookAssets assets
+            LookbookAssets assets,
+            String matchedProductImageUrl
     ) {
         String purchaseUrl = resolvePurchaseUrl(request.purchaseUrl(), assets.matchedProduct());
         if (assets.matchedProduct() != null) {
             lookbook.updateWithProduct(
                     assets.originalImage(),
                     assets.matchedProduct(),
+                    matchedProductImageUrl,
                     purchaseUrl,
                     request.comment()
             );

@@ -611,6 +611,10 @@ SCR-09 직접 업로드 경로는 기존 `matched_image_id`를 사용하고, SCR
 `matched_product_image_url`에 게시 시점 이미지를 보존한다. 분석 원본 이미지는 기존
 `original_image_id` 관계를 재사용한다.
 
+`matched_product_image_url`은 `SNAPSHOT` 상품이면 `product.image_url`, `IDENTITY_ONLY` 상품이면
+게시 직전 공급자 live lookup의 `imageUrl`로 결정한다. 이 값은 게시 이후 공급자 데이터와 동기화하지
+않으며, 룩북 수정으로 매칭 상품을 교체할 때만 새 게시 시점 URL로 교체한다.
+
 ```text
 FK_LOOKBOOK_MATCHED_PRODUCT(matched_product_id)
   -> product(product_id) ON DELETE RESTRICT ON UPDATE RESTRICT

@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +55,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -121,6 +123,12 @@ class LookbookServiceTest {
     @Mock
     private MemberProfileImageService memberProfileImageService;
 
+    @Mock
+    private LookbookProductImageResolver productImageResolver;
+
+    @Mock
+    private LookbookTransactionExecutor transactionExecutor;
+
     @InjectMocks
     private LookbookService lookbookService;
 
@@ -166,6 +174,15 @@ class LookbookServiceTest {
                 .thenAnswer(invocation -> {
                     Image image = invocation.getArgument(0);
                     return "https://s3.example.com/" + image.getId() + ".jpg";
+                });
+        lenient().when(transactionExecutor.execute(any())).thenAnswer(invocation -> {
+            Supplier<?> action = invocation.getArgument(0);
+            return action.get();
+        });
+        lenient().when(productImageResolver.resolve(any(Product.class)))
+                .thenAnswer(invocation -> {
+                    Product product = invocation.getArgument(0);
+                    return product.getImageUrl();
                 });
     }
 
@@ -258,6 +275,110 @@ class LookbookServiceTest {
                 eq(ImageStatus.ACTIVE),
                 any(Instant.class)
         );
+        verify(analysisReportRepository, times(2))
+                .findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L);
+        verify(recommendedItemRepository, times(2))
+                .existsByReportIdAndProductId(501L, 101L);
+    }
+
+    @Test
+    void createLookbookUsesResolvedIdentityOnlyProductImage() {
+        Image analysisImage = readyImage(
+                "identity-analysis-original",
+                member,
+                ImagePurpose.ANALYSIS
+        );
+        Product product = mock(Product.class);
+        when(product.getImageUrl()).thenReturn(null);
+        when(productImageResolver.resolve(product))
+                .thenReturn("https://shopify.example.com/live-product.jpg");
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("identity-analysis-original"),
+                1L
+        )).thenReturn(List.of(analysisImage));
+        AnalysisReport report = AnalysisReport.create(member, analysisImage, 70);
+        report.markRecommendationGenerated(
+                report.getRecommendationInputRevision(),
+                "IMAGE_TAG_WEIGHTED_V1",
+                Instant.parse("2026-08-12T00:00:00Z")
+        );
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(recommendedItemRepository.existsByReportIdAndProductId(501L, 101L))
+                .thenReturn(true);
+        when(productRepository.findById(101L)).thenReturn(Optional.of(product));
+        when(lookbookRepository.save(any(Lookbook.class))).thenAnswer(invocation -> {
+            Lookbook lookbook = invocation.getArgument(0);
+            ReflectionTestUtils.setField(lookbook, "id", 100L);
+            return lookbook;
+        });
+        LookbookRequest.LookbookCreate request = new LookbookRequest.LookbookCreate(
+                "identity-analysis-original",
+                null,
+                101L,
+                501L,
+                null,
+                List.of(10L),
+                null
+        );
+
+        lookbookService.createLookbook(member, request);
+
+        ArgumentCaptor<Lookbook> lookbookCaptor = ArgumentCaptor.forClass(Lookbook.class);
+        verify(lookbookRepository).save(lookbookCaptor.capture());
+        assertThat(lookbookCaptor.getValue().getMatchedProductImageUrl())
+                .isEqualTo("https://shopify.example.com/live-product.jpg");
+        verify(analysisReportRepository, times(2))
+                .findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L);
+        verify(recommendedItemRepository, times(2))
+                .existsByReportIdAndProductId(501L, 101L);
+    }
+
+    @Test
+    void createLookbookDoesNotSaveWhenProductImageLookupFails() {
+        Image analysisImage = readyImage(
+                "failed-lookup-analysis-original",
+                member,
+                ImagePurpose.ANALYSIS
+        );
+        Product product = mock(Product.class);
+        when(productImageResolver.resolve(product)).thenThrow(new BusinessException(
+                ErrorCode.PRODUCT_PROVIDER_UNAVAILABLE
+        ));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("failed-lookup-analysis-original"),
+                1L
+        )).thenReturn(List.of(analysisImage));
+        AnalysisReport report = AnalysisReport.create(member, analysisImage, 70);
+        report.markRecommendationGenerated(
+                report.getRecommendationInputRevision(),
+                "IMAGE_TAG_WEIGHTED_V1",
+                Instant.parse("2026-08-12T00:00:00Z")
+        );
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(recommendedItemRepository.existsByReportIdAndProductId(501L, 101L))
+                .thenReturn(true);
+        when(productRepository.findById(101L)).thenReturn(Optional.of(product));
+        LookbookRequest.LookbookCreate request = new LookbookRequest.LookbookCreate(
+                "failed-lookup-analysis-original",
+                null,
+                101L,
+                501L,
+                null,
+                List.of(10L),
+                null
+        );
+
+        assertThatThrownBy(() -> lookbookService.createLookbook(member, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.PRODUCT_PROVIDER_UNAVAILABLE));
+
+        verify(lookbookRepository, never()).save(any(Lookbook.class));
+        verify(tagRepository, never()).findAllById(anyList());
+        verify(transactionExecutor).execute(any());
     }
 
     @Test
@@ -272,7 +393,6 @@ class LookbookServiceTest {
                 member,
                 ImagePurpose.ANALYSIS
         );
-        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
         when(lookbookImageRepository.findAllOwnedImages(
                 List.of("analysis-original"),
                 1L
@@ -462,6 +582,58 @@ class LookbookServiceTest {
         verify(eventPublisher).publishEvent(
                 new ImageReferencesReleasedEvent(List.of("original", "matched"))
         );
+    }
+
+    @Test
+    void updateLookbookUsesResolvedIdentityOnlyProductImage() {
+        Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 8, 12, 12, 0));
+        Image analysisImage = readyImage(
+                "updated-analysis-original",
+                member,
+                ImagePurpose.ANALYSIS
+        );
+        Product product = mock(Product.class);
+        when(product.getImageUrl()).thenReturn(null);
+        when(productImageResolver.resolve(product))
+                .thenReturn("https://shopify.example.com/updated-live-product.jpg");
+        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L))
+                .thenReturn(Optional.of(lookbook));
+        when(tagRepository.findAllById(List.of(10L))).thenReturn(List.of(minimalTag));
+        when(lookbookImageRepository.findAllOwnedImages(
+                List.of("updated-analysis-original"),
+                1L
+        )).thenReturn(List.of(analysisImage));
+        AnalysisReport report = AnalysisReport.create(member, analysisImage, 70);
+        report.markRecommendationGenerated(
+                report.getRecommendationInputRevision(),
+                "IMAGE_TAG_WEIGHTED_V1",
+                Instant.parse("2026-08-12T00:00:00Z")
+        );
+        when(analysisReportRepository.findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(recommendedItemRepository.existsByReportIdAndProductId(501L, 101L))
+                .thenReturn(true);
+        when(productRepository.findById(101L)).thenReturn(Optional.of(product));
+        LookbookRequest.LookbookUpdate request = new LookbookRequest.LookbookUpdate(
+                "updated-analysis-original",
+                null,
+                101L,
+                501L,
+                null,
+                List.of(10L),
+                null
+        );
+
+        lookbookService.updateLookbook(100L, member, request);
+
+        assertThat(lookbook.getMatchedProduct()).isEqualTo(product);
+        assertThat(lookbook.getMatchedProductImageUrl())
+                .isEqualTo("https://shopify.example.com/updated-live-product.jpg");
+        verify(lookbookRepository, times(2)).findByIdAndDeletedAtIsNull(100L);
+        verify(analysisReportRepository, times(2))
+                .findByIdAndMemberIdAndDeletedAtIsNull(501L, 1L);
+        verify(recommendedItemRepository, times(2))
+                .existsByReportIdAndProductId(501L, 101L);
     }
 
     @Test
@@ -1186,11 +1358,11 @@ class LookbookServiceTest {
     @Test
     void findClosetViewsUsesProductImageUrlWhenMatchedByProduct() {
         Product product = mock(Product.class);
-        when(product.getImageUrl()).thenReturn("https://shop.example.com/product.jpg");
         Lookbook lookbook = Lookbook.createWithProduct(
                 member,
                 readyImage("original-13", member, ImagePurpose.LOOKBOOK),
                 product,
+                "https://shop.example.com/product.jpg",
                 null,
                 null
         );

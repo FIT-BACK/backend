@@ -78,6 +78,7 @@ public class Lookbook extends BaseTimeEntity {
             Image originalImage,
             Image matchedImage,
             Product matchedProduct,
+            String matchedProductImageUrl,
             String purchaseUrl,
             String comment
     ) {
@@ -87,7 +88,7 @@ public class Lookbook extends BaseTimeEntity {
         this.matchedProduct = matchedProduct;
         this.matchedProductImageUrl = matchedProduct == null
                 ? null
-                : matchedProduct.getImageUrl();
+                : requireProductImageUrl(matchedProductImageUrl);
         this.purchaseUrl = purchaseUrl;
         this.comment = comment;
     }
@@ -104,6 +105,7 @@ public class Lookbook extends BaseTimeEntity {
                 originalImage,
                 matchedImage,
                 null,
+                null,
                 purchaseUrl,
                 comment
         );
@@ -113,6 +115,7 @@ public class Lookbook extends BaseTimeEntity {
             Member member,
             Image originalImage,
             Product matchedProduct,
+            String matchedProductImageUrl,
             String purchaseUrl,
             String comment
     ) {
@@ -121,6 +124,7 @@ public class Lookbook extends BaseTimeEntity {
                 originalImage,
                 null,
                 matchedProduct,
+                matchedProductImageUrl,
                 purchaseUrl,
                 comment
         );
@@ -143,17 +147,23 @@ public class Lookbook extends BaseTimeEntity {
     public void updateWithProduct(
             Image originalImage,
             Product matchedProduct,
+            String matchedProductImageUrl,
             String purchaseUrl,
             String comment
     ) {
         this.originalImage = originalImage;
         this.matchedImage = null;
         this.matchedProduct = matchedProduct;
-        this.matchedProductImageUrl = matchedProduct == null
-                ? null
-                : matchedProduct.getImageUrl();
+        this.matchedProductImageUrl = requireProductImageUrl(matchedProductImageUrl);
         this.purchaseUrl = purchaseUrl;
         this.comment = comment;
+    }
+
+    private static String requireProductImageUrl(String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            throw new IllegalArgumentException("matchedProductImageUrl must not be blank");
+        }
+        return imageUrl;
     }
 
     public void changePurchaseUrl(String purchaseUrl) {
