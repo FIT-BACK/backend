@@ -842,7 +842,7 @@ class MemberServiceTest {
 
         memberService.deleteAccount(authMember);
 
-        //좋아요 수 보정과 재배정이 회원 삭제보다 먼저
+        //프로필 이미지 참조 해제 후 룩북·분석·이미지 연관 데이터 정리
         InOrder inOrder = inOrder(
                 lookbookLikeRepository,
                 lookbookRepository,
@@ -850,10 +850,10 @@ class MemberServiceTest {
                 imageRepository,
                 memberRepository
         );
+        inOrder.verify(memberRepository).flush();
         inOrder.verify(lookbookLikeRepository).findLookbookIdsByMemberId(1L);
         inOrder.verify(lookbookRepository).decrementLikeCountByIds(List.of(10L, 20L));
         inOrder.verify(lookbookRepository).reassignToWithdrawnMember(1L, withdrawnMember);
-        inOrder.verify(memberRepository).flush();
         inOrder.verify(analysisReportRepository).deleteAllByMemberId(1L);
         inOrder.verify(imageRepository).reassignToWithdrawnMember(1L, withdrawnMember);
         inOrder.verify(memberRepository).delete(deleteMember);

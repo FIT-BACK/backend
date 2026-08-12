@@ -157,6 +157,11 @@ public class MemberService {
             withdrawalEmailBlockRepository.save(WithdrawalEmailBlock.create(hashedEmail, blockedUntil));
         }
 
+        //영속성 컨텍스트를 비우는 룩북 일괄 수정 전에 프로필 이미지 참조 해제
+        String profileImageId = deleteMember.getProfileImageId();
+        deleteMember.clearProfileImageId();
+        memberRepository.flush();
+
         //회원 삭제 시 lookbook_like가 cascade 삭제되므로, 삭제 전에 좋아요 수를 먼저 보정
         List<Long> likedLookbookIds = lookbookLikeRepository.findLookbookIdsByMemberId(deleteMember.getId());
         if (!likedLookbookIds.isEmpty()) {
@@ -165,11 +170,6 @@ public class MemberService {
 
         //룩북은 삭제하지 않고 탈퇴 회원 계정으로 익명화 (member 삭제 전에)
         lookbookRepository.reassignToWithdrawnMember(deleteMember.getId(), withdrawnMember);
-
-        //프로필 이미지 참조를 먼저 해제해야 이미지 소유자를 안전하게 변경할 수 있다.
-        String profileImageId = deleteMember.getProfileImageId();
-        deleteMember.clearProfileImageId();
-        memberRepository.flush();
 
         //분석은 이미지와 복합 FK로 연결되어 있어 먼저 삭제하고,
         //룩북에 남을 수 있는 이미지는 탈퇴 회원 계정으로 재배정한다.
