@@ -145,7 +145,7 @@ erDiagram
 
     MEMBER {
         BIGINT member_id PK
-        VARCHAR email
+        VARCHAR email UK
         VARCHAR nickname
         VARCHAR profile_image_id FK
         VARCHAR profile_image_url
@@ -785,6 +785,15 @@ FK_LOOKBOOK_REPORT_MEMBER_SET_NULL(member_id)
 V14에서 테이블을 생성할 때는 `member_id`가 `NOT NULL` + `FK ... ON DELETE RESTRICT`였고,
 V29가 회원 탈퇴를 지원하기 위해 이를 `NULL` 허용 + `ON DELETE SET NULL`로 교체했다.
 
+### 4.15 `member` 이메일 UNIQUE 제약
+
+V30은 동시 회원가입 요청에서도 동일 이메일이 하나만 저장되도록 운영 DB에 이메일 UNIQUE
+제약을 보장한다. 회원가입 서비스는 해당 제약 위반만 이메일 중복 응답으로 변환한다.
+
+```text
+UK_MEMBER_EMAIL(email)
+```
+
 ---
 
 ## 5. 유사도 점수 영속 근거
@@ -828,7 +837,7 @@ JPA에는 대규모 `CascadeType.ALL`을 기본 적용하지 않는다. 특히 P
 
 ## 7. Entity·migration 상태
 
-현재 운영 migration 계약은 V1~V28이며, 프로덕션에서 Flyway 적용 후
+현재 운영 migration 계약은 V1~V30이며, 프로덕션에서 Flyway 적용 후
 Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
 
 ### 7.1 `Product`

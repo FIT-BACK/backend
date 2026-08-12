@@ -154,6 +154,17 @@ class AuthControllerIntegrationTest {
         assertThat(memberRepository.existsByEmail("byte-limit@fitback.com")).isFalse();
     }
 
+    @Test
+    void signUpRejectsShortPassword() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/sign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody("short-password@fitback.com", "short")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+
+        assertThat(memberRepository.existsByEmail("short-password@fitback.com")).isFalse();
+    }
+
     //로그인 성공 테스트 - 200, 토큰 발급
     @Test
     void loginSuccessTest() throws Exception {
