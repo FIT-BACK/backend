@@ -12,6 +12,7 @@ import com.fitback.backend.domain.lookbook.entity.LookbookReportReason;
 import com.fitback.backend.domain.lookbook.repository.LookbookReportRepository;
 import com.fitback.backend.domain.lookbook.repository.LookbookRepository;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.member.init.WithdrawnMember;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.member.service.LoginAttemptService;
 import com.fitback.backend.domain.tag.entity.Tag;
@@ -658,6 +659,51 @@ class MemberControllerIntegrationTest {
                         .content(json(Map.of("email", "delete@fitback.com", "password", "password123"))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("MEMBER403_1"));
+    }
+
+    //회원 탈퇴 - 프로필 이미지 참조 해제 후 이미지 소유자를 탈퇴 회원 계정으로 변경
+    @Test
+    void deleteAccountWithProfileImageTest() throws Exception {
+        String email = "delete-profile@fitback.com";
+        String profileImageId = "delete-profile-image";
+        String token = signUpAndGetAccessToken(email, "password123");
+
+        //업로드 완료된 프로필 이미지를 회원 프로필에 연결
+        saveReadyImage(email, profileImageId, ImagePurpose.PROFILE);
+        when(imageAccessUrlProvider.createReadUrl(any(Image.class)))
+                .thenReturn("https://cdn.example.com/delete-profile");
+
+        mockMvc.perform(put("/api/v1/members/me/onboarding")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "nickname", "deleteProfile",
+                                "profileImageId", profileImageId,
+                                "tagIds", List.of()))))
+                .andExpect(status().isOk());
+
+        memberRepository.flush();
+        entityManager.clear();
+
+        //탈퇴 전 프로필 이미지 연결 확인
+        Member member = memberRepository.findByEmail(email).orElseThrow();
+        assertThat(member.getProfileImageId()).isEqualTo(profileImageId);
+
+        mockMvc.perform(delete("/api/v1/members/me")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("COMMON200_1"));
+
+        memberRepository.flush();
+        entityManager.clear();
+
+        //회원 삭제 및 이미지 소유자 익명 계정 재배정 확인
+        assertThat(memberRepository.existsByEmail(email)).isFalse();
+
+        Image reassignedImage = imageRepository.findById(profileImageId)
+                .orElseThrow();
+        assertThat(reassignedImage.getOwner().getEmail())
+                .isEqualTo(WithdrawnMember.EMAIL);
     }
 
     //회원 탈퇴 - 신고 내역 유지 및 신고자 정보 익명 처리
