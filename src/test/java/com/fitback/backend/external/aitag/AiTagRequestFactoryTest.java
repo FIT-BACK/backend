@@ -138,7 +138,7 @@ class AiTagRequestFactoryTest {
                 "regular knit loops or ribs indicate 니트",
                 "even when the image is rotated",
                 "do not reinterpret repeated knit stitches as 트위드",
-                "트위드 requires a visibly woven",
+                "트위드 requires a visibly woven multicolor or nubby yarn structure rather than uniform repeated knit ribs",
                 "If multiple materials remain plausible, omit MATERIAL",
                 "garment geometry separately from body fit",
                 "complete outline is shown",
