@@ -21,9 +21,13 @@ import com.fitback.backend.domain.image.entity.ImageVisibility;
 import com.fitback.backend.domain.image.service.ImageUploadService;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
+import com.fitback.backend.domain.product.dto.ProductDetailResponse;
+import com.fitback.backend.domain.product.dto.ProductPriceResponse;
 import com.fitback.backend.domain.product.entity.Product;
+import com.fitback.backend.domain.product.service.ProductDetailService;
 import com.fitback.backend.domain.product.service.model.ProductAvailability;
 import com.fitback.backend.domain.product.service.model.ProductCategory;
+import com.fitback.backend.domain.product.service.model.ProductDataStatus;
 import com.fitback.backend.domain.product.service.model.ProductStorageMode;
 import com.fitback.backend.domain.product.service.model.ProviderIdentityType;
 import com.fitback.backend.domain.recommendation.entity.RecommendedItem;
@@ -65,6 +69,9 @@ class AnalysisReportSaveServiceTest {
     private ImageUploadService imageUploadService;
 
     @Mock
+    private ProductDetailService productDetailService;
+
+    @Mock
     private EntityManager entityManager;
 
     private AnalysisReportSaveService service;
@@ -77,6 +84,7 @@ class AnalysisReportSaveServiceTest {
                 savedAnalysisItemRepository,
                 recommendedItemRepository,
                 imageUploadService,
+                productDetailService,
                 entityManager
         );
     }
@@ -150,6 +158,118 @@ class AnalysisReportSaveServiceTest {
         assertThat(outcome.response().selectedItems().getFirst().price().amount())
                 .isEqualByComparingTo("28900");
         verify(entityManager).refresh(any(ClosetSave.class));
+    }
+
+    @Test
+    void hydratesLiveProductDetailWhenStorageModeIsIdentityOnly() {
+        // IDENTITY_ONLY 상품은 Product 엔티티에 표시 데이터(이미지/이름/가격)를 저장하지
+        // 않고 응답 시점에만 live hydrate한다 — 저장 스냅샷도 raw 엔티티 값이 아니라
+        // productDetailService가 돌려주는 live 데이터를 써야 "상품 정보 없음"으로
+        // 영구히 굳지 않는다.
+        Member member = member(1L);
+        AnalysisReport report = currentReport(501L, member);
+        Product outer = identityOnlyProduct(303L, ProductCategory.OUTER);
+        RecommendedItem outerItem = recommendation(report, outer, ProductCategory.OUTER, 1);
+
+        when(analysisReportRepository.findOwnedReportForSave(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
+                1L,
+                ClosetTargetType.ANALYSIS_REPORT,
+                501L
+        )).thenReturn(Optional.empty());
+        when(recommendedItemRepository.findByReportIdOrderByCategoryAscRankNoAsc(501L))
+                .thenReturn(List.of(outerItem));
+        when(closetSaveRepository.saveAndFlush(any(ClosetSave.class)))
+                .thenAnswer(invocation -> {
+                    ClosetSave save = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(save, "id", 902L);
+                    ReflectionTestUtils.setField(
+                            save,
+                            "createdAt",
+                            LocalDateTime.parse("2026-07-26T09:00:00")
+                    );
+                    return save;
+                });
+        when(savedAnalysisItemRepository.saveAll(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(productDetailService.getDetail(303L)).thenReturn(new ProductDetailResponse(
+                303L,
+                "https://cdn.example.com/live/303.jpg",
+                "라이브로 조회된 코트",
+                null,
+                "라이브 판매처",
+                ProductCategory.OUTER,
+                new ProductPriceResponse(
+                        new BigDecimal("59000"),
+                        "KRW",
+                        ProductPriceResponse.Type.CURRENT,
+                        Instant.parse("2026-08-12T00:00:00Z")
+                ),
+                "https://example.com/products/303",
+                null,
+                ProductAvailability.AVAILABLE,
+                ProductDataStatus.LIVE,
+                List.of(),
+                false
+        ));
+
+        AnalysisReportSaveService.SaveOutcome outcome = service.save(
+                1L,
+                501L,
+                request(selected(ProductCategory.OUTER, 303L))
+        );
+
+        var saved = outcome.response().selectedItems().getFirst();
+        assertThat(saved.imageUrl()).isEqualTo("https://cdn.example.com/live/303.jpg");
+        assertThat(saved.name()).isEqualTo("라이브로 조회된 코트");
+        assertThat(saved.sellerName()).isEqualTo("라이브 판매처");
+        assertThat(saved.price().amount()).isEqualByComparingTo("59000");
+    }
+
+    @Test
+    void fallsBackToEntityValuesWhenLiveProductDetailLookupFails() {
+        // 저장 시점에 live 조회(외부 API)가 레이트리밋 등으로 실패해도 저장 자체는
+        // 막지 않아야 한다 — 실패하면 기존처럼 null로 폴백(엔티티 원본 값 그대로).
+        Member member = member(1L);
+        AnalysisReport report = currentReport(501L, member);
+        Product outer = identityOnlyProduct(304L, ProductCategory.OUTER);
+        RecommendedItem outerItem = recommendation(report, outer, ProductCategory.OUTER, 1);
+
+        when(analysisReportRepository.findOwnedReportForSave(501L, 1L))
+                .thenReturn(Optional.of(report));
+        when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
+                1L,
+                ClosetTargetType.ANALYSIS_REPORT,
+                501L
+        )).thenReturn(Optional.empty());
+        when(recommendedItemRepository.findByReportIdOrderByCategoryAscRankNoAsc(501L))
+                .thenReturn(List.of(outerItem));
+        when(closetSaveRepository.saveAndFlush(any(ClosetSave.class)))
+                .thenAnswer(invocation -> {
+                    ClosetSave save = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(save, "id", 903L);
+                    ReflectionTestUtils.setField(
+                            save,
+                            "createdAt",
+                            LocalDateTime.parse("2026-07-26T09:00:00")
+                    );
+                    return save;
+                });
+        when(savedAnalysisItemRepository.saveAll(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(productDetailService.getDetail(304L))
+                .thenThrow(new BusinessException(ErrorCode.PRODUCT_PROVIDER_UNAVAILABLE));
+
+        AnalysisReportSaveService.SaveOutcome outcome = service.save(
+                1L,
+                501L,
+                request(selected(ProductCategory.OUTER, 304L))
+        );
+
+        var saved = outcome.response().selectedItems().getFirst();
+        assertThat(saved.imageUrl()).isNull();
+        assertThat(saved.name()).isNull();
     }
 
     @Test
@@ -516,6 +636,38 @@ class AnalysisReportSaveServiceTest {
                 null,
                 ProductAvailability.AVAILABLE,
                 Instant.parse("2026-07-27T00:00:00Z")
+        );
+        ReflectionTestUtils.setField(product, "id", id);
+        return product;
+    }
+
+    // IDENTITY_ONLY 상품은 실제로 표시 데이터(이미지/이름/가격 등)를 엔티티에 저장하지
+    // 않는 게 정상 상태라, 테스트에서도 그 필드들을 전부 null로 둬서 실제 상황을 그대로
+    // 재현한다.
+    private Product identityOnlyProduct(Long id, ProductCategory category) {
+        Product product = Product.createProviderProduct(
+                "fixture",
+                ProviderIdentityType.PROVIDER_KEY,
+                "identity-" + id,
+                "materialization-" + id,
+                "external-" + id,
+                null,
+                "merchant-" + id,
+                ProductStorageMode.IDENTITY_ONLY,
+                null,
+                null,
+                null,
+                category,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                ProductAvailability.AVAILABLE,
+                null
         );
         ReflectionTestUtils.setField(product, "id", id);
         return product;

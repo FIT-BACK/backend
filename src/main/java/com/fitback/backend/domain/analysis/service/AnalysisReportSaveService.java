@@ -14,7 +14,10 @@ import com.fitback.backend.domain.closet.entity.SavedAnalysisItem;
 import com.fitback.backend.domain.closet.repository.ClosetSaveRepository;
 import com.fitback.backend.domain.closet.repository.SavedAnalysisItemRepository;
 import com.fitback.backend.domain.image.service.ImageUploadService;
+import com.fitback.backend.domain.product.dto.ProductDetailResponse;
+import com.fitback.backend.domain.product.service.ProductDetailService;
 import com.fitback.backend.domain.product.service.model.ProductCategory;
+import com.fitback.backend.domain.product.service.model.ProductStorageMode;
 import com.fitback.backend.domain.recommendation.entity.RecommendedItem;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
 import com.fitback.backend.domain.tag.entity.Tag;
@@ -49,6 +52,7 @@ public class AnalysisReportSaveService {
     private final SavedAnalysisItemRepository savedAnalysisItemRepository;
     private final RecommendedItemRepository recommendedItemRepository;
     private final ImageUploadService imageUploadService;
+    private final ProductDetailService productDetailService;
     private final EntityManager entityManager;
 
     @Transactional
@@ -196,7 +200,7 @@ public class AnalysisReportSaveService {
         entityManager.refresh(save);
         List<SavedAnalysisItem> savedItems = savedAnalysisItemRepository.saveAll(
                 selections.stream()
-                        .map(item -> SavedAnalysisItem.from(save, item))
+                        .map(item -> SavedAnalysisItem.from(save, item, resolveLiveDetailIfNeeded(item)))
                         .toList()
         );
         return new SaveOutcome(
@@ -210,6 +214,24 @@ public class AnalysisReportSaveService {
                 ),
                 true
         );
+    }
+
+    // IDENTITY_ONLY 저장 모드 상품은 Product 엔티티 컬럼에 표시 데이터(이미지/이름/가격 등)를
+    // 저장하지 않고 응답 시점에만 live hydrate한다(RecommendationQueryService.toResponse와
+    // 동일 전제). 그걸 모르고 저장 스냅샷을 엔티티 원본 값으로만 채우면 사용자가 방금 화면에서
+    // 본 이미지·이름이 저장 즉시 "상품 정보 없음"으로 영구히 굳어버리고, 이미지가 없다는
+    // 이유로 룩북 게시도 거절당하는 문제가 있었다(실제로 보고된 두 증상의 공통 원인).
+    // live 조회 자체가 실패해도(레이트리밋 등 일시 장애) 저장 자체를 막으면 안 되므로,
+    // 실패 시엔 기존처럼 null로 폴백해 저장은 그대로 진행한다.
+    private ProductDetailResponse resolveLiveDetailIfNeeded(RecommendedItem item) {
+        if (item.getProduct().getStorageMode() != ProductStorageMode.IDENTITY_ONLY) {
+            return null;
+        }
+        try {
+            return productDetailService.getDetail(item.getProduct().getId());
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private void validateRecommendationReady(
