@@ -840,6 +840,12 @@ class MemberServiceTest {
         when(withdrawalEmailBlockRepository.findByEmailHash(EMAIL_HASH)).thenReturn(Optional.empty());
         when(lookbookLikeRepository.findLookbookIdsByMemberId(1L)).thenReturn(List.of(10L, 20L));
 
+        //DB 반영 시점에 프로필 이미지 참조가 이미 해제됐는지 확인
+        doAnswer(invocation -> {
+            assertThat(deleteMember.getProfileImageId()).isNull();
+            return null;
+        }).when(memberRepository).flush();
+
         memberService.deleteAccount(authMember);
 
         //프로필 이미지 참조 해제 후 룩북·분석·이미지 연관 데이터 정리
