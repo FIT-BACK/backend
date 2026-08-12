@@ -109,6 +109,64 @@ class OpenAiTagEvaluationMainTest {
     }
 
     @Test
+    void pacesFiveCasesInOrderWithFourFixedWaitsIncludingAfterAFailedCase() throws Exception {
+        List<OpenAiTagEvaluationMain.EvaluationCase> cases = List.of(
+                evaluationCase("top-01"),
+                evaluationCase("public-bottom-01"),
+                evaluationCase("ai-bottom-02"),
+                evaluationCase("ai-dress-01"),
+                evaluationCase("outer-01")
+        );
+        List<String> evaluatedCaseIds = new ArrayList<>();
+        List<Long> delays = new ArrayList<>();
+
+        List<OpenAiTagEvaluationMain.CaseResult> results = OpenAiTagEvaluationMain.evaluateCases(
+                cases,
+                evaluationCase -> {
+                    evaluatedCaseIds.add(evaluationCase.imageId());
+                    return OpenAiTagEvaluationMain.CaseResult.failed(evaluationCase, "ANALYSIS409_1");
+                },
+                delays::add
+        );
+
+        assertThat(OpenAiTagEvaluationMain.INTER_CASE_DELAY_MILLIS).isEqualTo(30_000L);
+        assertThat(evaluatedCaseIds).containsExactly(
+                "top-01", "public-bottom-01", "ai-bottom-02", "ai-dress-01", "outer-01"
+        );
+        assertThat(results).extracting(OpenAiTagEvaluationMain.CaseResult::imageId)
+                .containsExactlyElementsOf(evaluatedCaseIds);
+        assertThat(delays).containsExactly(30_000L, 30_000L, 30_000L, 30_000L);
+        assertThat(delays.stream().mapToLong(Long::longValue).sum()).isEqualTo(120_000L);
+    }
+
+    @Test
+    void stopsBeforeTheNextCaseAndRestoresInterruptFlagWhenPacingIsInterrupted() {
+        AtomicInteger evaluatedCases = new AtomicInteger();
+        List<OpenAiTagEvaluationMain.EvaluationCase> cases = List.of(
+                evaluationCase("top-01"),
+                evaluationCase("public-bottom-01")
+        );
+
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> OpenAiTagEvaluationMain.evaluateCases(
+                    cases,
+                    evaluationCase -> {
+                        evaluatedCases.incrementAndGet();
+                        return OpenAiTagEvaluationMain.CaseResult.failed(evaluationCase, "ANALYSIS409_1");
+                    },
+                    ignoredDelay -> {
+                        throw new InterruptedException("interrupted");
+                    }
+            )).isInstanceOf(InterruptedException.class);
+
+            assertThat(evaluatedCases).hasValue(1);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
     void retries500OnceThenReturnsSuccessWithSingleFinalCase() {
         List<Long> delays = new ArrayList<>();
         AiTagModelResult result = modelResult();
@@ -145,6 +203,200 @@ class OpenAiTagEvaluationMainTest {
         assertThat(retryResult.successful()).isTrue();
         assertThat(retryResult.attemptCount()).isEqualTo(3);
         assertThat(delays).containsExactly(250L, 500L);
+    }
+
+    @Test
+    void retriesInvalidModelOutputJsonOnceThenReturnsSuccess() {
+        List<Long> delays = new ArrayList<>();
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        invalidModelOutputJsonFailure(),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(2);
+        assertThat(delays).containsExactly(250L);
+    }
+
+    @Test
+    void retriesInvalidModelOutputJsonTwiceThenReturnsSuccessAtGlobalCeiling() {
+        List<Long> delays = new ArrayList<>();
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        invalidModelOutputJsonFailure(),
+                        invalidModelOutputJsonFailure(),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(3);
+        assertThat(delays).containsExactly(250L, 500L);
+    }
+
+    @Test
+    void stopsAfterThreeInvalidModelOutputJsonFailuresAndKeepsFinalParsingCategory() {
+        List<Long> delays = new ArrayList<>();
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        invalidModelOutputJsonFailure(),
+                        invalidModelOutputJsonFailure(),
+                        invalidModelOutputJsonFailure()
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isFalse();
+        assertThat(retryResult.attemptCount()).isEqualTo(3);
+        assertThat(retryResult.failure().providerHttpStatus()).isEqualTo(200);
+        assertThat(retryResult.failure().responseParsingCategory())
+                .isEqualTo("INVALID_MODEL_OUTPUT_JSON");
+        assertThat(delays).containsExactly(250L, 500L);
+    }
+
+    @Test
+    void doesNotRetryInvalidModelOutputSchema() {
+        AtomicInteger calls = new AtomicInteger();
+        OpenAiTagEvaluationMain.EvaluationFailure schemaFailure =
+                new OpenAiTagEvaluationMain.EvaluationFailure(
+                        "ANALYSIS409_1",
+                        1L,
+                        200,
+                        null,
+                        "INVALID_MODEL_OUTPUT_SCHEMA:EMPTY_GARMENT_TAGS"
+                );
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                () -> {
+                    calls.incrementAndGet();
+                    return OpenAiTagEvaluationMain.EvaluationAttempt.failure(schemaFailure);
+                },
+                ignoredDelay -> {
+                    throw new AssertionError("schema failures must not sleep");
+                },
+                ignoredBound -> 0L
+        );
+
+        assertThat(calls).hasValue(1);
+        assertThat(retryResult.attemptCount()).isEqualTo(1);
+        assertThat(retryResult.failure()).isEqualTo(schemaFailure);
+    }
+
+    @Test
+    void doesNotRetryCanonicalFailure() {
+        AtomicInteger calls = new AtomicInteger();
+        OpenAiTagEvaluationMain.EvaluationFailure canonicalFailure =
+                new OpenAiTagEvaluationMain.EvaluationFailure(
+                        "ANALYSIS409_1", 1L, null, null, null
+                );
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                () -> {
+                    calls.incrementAndGet();
+                    return OpenAiTagEvaluationMain.EvaluationAttempt.failure(canonicalFailure);
+                },
+                ignoredDelay -> {
+                    throw new AssertionError("canonical failures must not sleep");
+                },
+                ignoredBound -> 0L
+        );
+
+        assertThat(calls).hasValue(1);
+        assertThat(retryResult.attemptCount()).isEqualTo(1);
+        assertThat(retryResult.failure()).isEqualTo(canonicalFailure);
+    }
+
+    @Test
+    void sharesGlobalAttemptCeilingFor429ThenInvalidJsonThenSuccess() {
+        List<Long> delays = new ArrayList<>();
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(429, "RATE_LIMIT", "rate_limit_exceeded", null),
+                        invalidModelOutputJsonFailure(),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(3);
+        assertThat(delays).containsExactly(5_000L, 500L);
+    }
+
+    @Test
+    void sharesGlobalAttemptCeilingFor500ThenInvalidJsonThenSuccess() {
+        List<Long> delays = new ArrayList<>();
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        providerFailure(500, "SERVER_ERROR"),
+                        invalidModelOutputJsonFailure(),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(3);
+        assertThat(delays).containsExactly(250L, 500L);
+    }
+
+    @Test
+    void sharesGlobalAttemptCeilingForInvalidJsonThen429ThenSuccess() {
+        List<Long> delays = new ArrayList<>();
+
+        OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                sequence(
+                        invalidModelOutputJsonFailure(),
+                        providerFailure(429, "RATE_LIMIT", "rate_limit_exceeded", null),
+                        OpenAiTagEvaluationMain.EvaluationAttempt.success(modelResult())
+                ),
+                delays::add,
+                ignoredBound -> 0L
+        );
+
+        assertThat(retryResult.successful()).isTrue();
+        assertThat(retryResult.attemptCount()).isEqualTo(3);
+        assertThat(delays).containsExactly(250L, 10_000L);
+    }
+
+    @Test
+    void stopsBeforeAdditionalProviderCallWhenJsonRetrySleepIsInterrupted() {
+        AtomicInteger calls = new AtomicInteger();
+
+        try {
+            OpenAiTagEvaluationMain.RetryResult retryResult = OpenAiTagEvaluationMain.analyzeWithRetry(
+                    () -> {
+                        calls.incrementAndGet();
+                        return invalidModelOutputJsonFailure();
+                    },
+                    ignoredDelay -> {
+                        throw new InterruptedException("interrupted");
+                    },
+                    ignoredBound -> 0L
+            );
+
+            assertThat(calls).hasValue(1);
+            assertThat(retryResult.successful()).isFalse();
+            assertThat(retryResult.attemptCount()).isEqualTo(1);
+            assertThat(retryResult.failure().error()).isEqualTo("EVALUATION_RETRY_INTERRUPTED");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     @Test
@@ -568,10 +820,26 @@ class OpenAiTagEvaluationMainTest {
         return () -> attempts[index.getAndIncrement()];
     }
 
+    private static OpenAiTagEvaluationMain.EvaluationCase evaluationCase(String imageId) {
+        return new OpenAiTagEvaluationMain.EvaluationCase(
+                imageId,
+                "images/" + imageId + ".jpeg",
+                List.of(new AiTagPrediction(TagType.STYLE, "캐주얼"))
+        );
+    }
+
     private static OpenAiTagEvaluationMain.EvaluationAttempt providerFailure(
             int status, String category
     ) {
         return providerFailure(status, category, "UNAVAILABLE");
+    }
+
+    private static OpenAiTagEvaluationMain.EvaluationAttempt invalidModelOutputJsonFailure() {
+        return OpenAiTagEvaluationMain.EvaluationAttempt.failure(
+                new OpenAiTagEvaluationMain.EvaluationFailure(
+                        "ANALYSIS409_1", 1L, 200, null, "INVALID_MODEL_OUTPUT_JSON"
+                )
+        );
     }
 
     private static OpenAiTagEvaluationMain.EvaluationAttempt providerFailure(
