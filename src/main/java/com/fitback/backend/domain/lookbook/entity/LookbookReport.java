@@ -17,6 +17,8 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 @Getter
 @Entity
@@ -39,8 +41,10 @@ public class LookbookReport extends BaseCreateTimeEntity {
     @JoinColumn(name = "lookbook_id", nullable = false)
     private Lookbook lookbook;
 
+    //회원 탈퇴 후 신고 내역 유지 및 신고자 정보 익명 처리
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "member_id", nullable = false)
+    @JoinColumn(name = "member_id")
+    @OnDelete(action = OnDeleteAction.SET_NULL)
     private Member member;
 
     @Enumerated(EnumType.STRING)
