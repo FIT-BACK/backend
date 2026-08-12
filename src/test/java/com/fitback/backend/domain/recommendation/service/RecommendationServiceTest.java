@@ -35,6 +35,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,7 +47,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class RecommendationServiceTest {
 
-    private static final int TEST_CANDIDATE_LIMIT = 64;
+    private static final int TEST_CANDIDATE_LIMIT = 30;
 
     @Mock
     private RecommendationInputReader inputReader;
@@ -69,6 +70,9 @@ class RecommendationServiceTest {
     @Mock
     private RecommendationQueryService queryService;
 
+    @Mock
+    private BrowserRerankingHandoffService browserRerankingHandoffService;
+
     @Spy
     private RecommendationScorer scorer = new RecommendationScorer();
 
@@ -77,6 +81,15 @@ class RecommendationServiceTest {
     @BeforeEach
     void setUp() {
         lenient().when(candidateMapper.category(any())).thenReturn(ProductCategory.TOP);
+        lenient().when(browserRerankingHandoffService.create(
+                org.mockito.ArgumentMatchers.anyLong(),
+                any(),
+                any(),
+                any()
+        )).thenReturn(new com.fitback.backend.domain.recommendation.dto.BrowserRerankingHandoff(
+                ProductCategory.TOP,
+                List.of()
+        ));
         recommendationService = recommendationService(TEST_CANDIDATE_LIMIT);
     }
 
@@ -91,6 +104,7 @@ class RecommendationServiceTest {
                         new MultiTagPriorityImageComparisonCandidateOrderingPolicy(),
                         candidateLimit
                 ),
+                browserRerankingHandoffService,
                 scorer,
                 setWriter,
                 queryService
@@ -160,6 +174,34 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void handsOffAtMostThirtyCandidatesAfterSelector() {
+        RecommendationInputSnapshot input = input();
+        List<ExternalProductCandidate> candidates = IntStream.rangeClosed(1, 35)
+                .mapToObj(id -> candidate(id, null, true))
+                .toList();
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenReturn(new ProductSearchResult(candidates, null));
+        when(candidateMapper.category(any())).thenReturn(ProductCategory.TOP);
+        when(materializationService.materializeForRecommendation(any()))
+                .thenReturn(new RecommendationMaterializationResult(1L, true));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ExternalProductCandidate>> candidatesCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(browserRerankingHandoffService).create(
+                org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(ProductCategory.TOP),
+                org.mockito.ArgumentMatchers.eq(input.tags()),
+                candidatesCaptor.capture()
+        );
+        assertThat(candidatesCaptor.getValue()).hasSize(30);
+    }
+
+    @Test
     void ranksCandidatesByWeightedSimilarityScore() {
         RecommendationInputSnapshot input = new RecommendationInputSnapshot(
                 501L,
@@ -222,7 +264,10 @@ class RecommendationServiceTest {
                         org.assertj.core.groups.Tuple.tuple(
                                 1L,
                                 2,
-                                new BigDecimal("64.00")
+                                // 매칭된 태그가 COLOR("Perfect")가 아니라 DETAIL 하나뿐이라
+                                // COLOR 가중치(6) 도입 이후엔 1/7 비율이 적용돼 64.00이 아닌
+                                // 53.29가 된다.
+                                new BigDecimal("53.29")
                         )
                 );
     }

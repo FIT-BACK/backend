@@ -1237,6 +1237,25 @@ if [ "$member_social_uid_unique" != 'UK_MEMBER_PROVIDER_UID:login_provider,socia
   exit 1
 fi
 
+member_email_unique="$(docker exec "$container_name" mysql -uroot \
+  --batch --skip-column-names \
+  -e "SELECT CONCAT(tc.CONSTRAINT_NAME, ':', GROUP_CONCAT(k.COLUMN_NAME ORDER BY k.ORDINAL_POSITION))
+      FROM information_schema.TABLE_CONSTRAINTS tc
+      JOIN information_schema.KEY_COLUMN_USAGE k
+        ON k.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+       AND k.TABLE_NAME = tc.TABLE_NAME
+       AND k.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+      WHERE tc.TABLE_SCHEMA = 'fitback'
+        AND tc.TABLE_NAME = 'member'
+        AND tc.CONSTRAINT_TYPE = 'UNIQUE'
+        AND tc.CONSTRAINT_NAME = 'UK_MEMBER_EMAIL'
+      GROUP BY tc.CONSTRAINT_NAME;")"
+
+if [ "$member_email_unique" != 'UK_MEMBER_EMAIL:email' ]; then
+  echo "Unexpected member email unique constraint: $member_email_unique" >&2
+  exit 1
+fi
+
 notification_defaults="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CONCAT(

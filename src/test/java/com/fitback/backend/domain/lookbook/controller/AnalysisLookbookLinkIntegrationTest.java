@@ -3,6 +3,9 @@ package com.fitback.backend.domain.lookbook.controller;
 import static com.fitback.backend.domain.lookbook.LookbookImageFixtures.readyImage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -20,19 +23,25 @@ import com.fitback.backend.domain.member.entity.Member;
 import com.fitback.backend.domain.member.repository.MemberRepository;
 import com.fitback.backend.domain.product.entity.Product;
 import com.fitback.backend.domain.product.repository.ProductRepository;
+import com.fitback.backend.domain.product.service.model.ExternalProductCandidate;
 import com.fitback.backend.domain.product.service.model.ProductAvailability;
 import com.fitback.backend.domain.product.service.model.ProductCategory;
+import com.fitback.backend.domain.product.service.model.ProductOffer;
 import com.fitback.backend.domain.product.service.model.ProductStorageMode;
 import com.fitback.backend.domain.product.service.model.ProviderIdentityType;
+import com.fitback.backend.domain.product.service.model.ProviderProductRef;
+import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
 import com.fitback.backend.domain.recommendation.entity.RecommendedItem;
 import com.fitback.backend.domain.recommendation.repository.RecommendedItemRepository;
 import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,7 +50,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
 @ActiveProfiles("test")
@@ -80,6 +91,9 @@ class AnalysisLookbookLinkIntegrationTest {
 
     @Autowired
     private MemberRepository memberRepository;
+
+    @MockitoBean
+    private ProductCatalogPort productCatalogPort;
 
     @BeforeEach
     void cleanBefore() {
@@ -167,6 +181,110 @@ class AnalysisLookbookLinkIntegrationTest {
                 .andExpect(jsonPath("$.data.matchedProductId").value(product.getId()))
                 .andExpect(jsonPath("$.data.matchedImageUrl").value(product.getImageUrl()))
                 .andExpect(jsonPath("$.data.originalImageUrl").isNotEmpty());
+    }
+
+    @Test
+    void createsLookbookFromIdentityOnlyProductUsingLiveImageOutsideTransaction()
+            throws Exception {
+        String accessToken = signUpAndGetAccessToken(TEST_EMAIL);
+        Member member = memberRepository.findByEmail(TEST_EMAIL).orElseThrow();
+        Image originalImage = imageRepository.save(readyImage(
+                "identity-analysis-original",
+                member,
+                ImagePurpose.ANALYSIS
+        ));
+        AnalysisReport report = analysisReportRepository.save(
+                AnalysisReport.create(member, originalImage, 70)
+        );
+        report.markRecommendationGenerated(
+                report.getRecommendationInputRevision(),
+                "SIMILARITY_V1",
+                Instant.parse("2026-08-12T00:00:00Z")
+        );
+        report = analysisReportRepository.save(report);
+        Product product = productRepository.save(Product.createIdentityOnly(
+                "shopify",
+                "identity-provider-key",
+                "identity-external-product",
+                "identity-external-variant",
+                "identity-merchant"
+        ));
+        assertThat(product.getImageUrl()).isNull();
+        recommendedItemRepository.save(RecommendedItem.create(
+                report,
+                product,
+                report.getRecommendationInputRevision(),
+                1,
+                ProductCategory.TOP,
+                new BigDecimal("90.00"),
+                new BigDecimal("88.00"),
+                "SIMILARITY_V1",
+                List.of("HIGH_SIMILARITY")
+        ));
+        Tag tag = tagRepository.save(Tag.create("미니멀", TagType.DETAIL));
+        ProviderProductRef providerRef = ProviderProductRef.stable(
+                "shopify",
+                "identity-external-product",
+                "identity-external-variant",
+                "identity-merchant"
+        );
+        String liveImageUrl = "https://cdn.example.com/live-identity-product.jpg";
+        ExternalProductCandidate candidate = new ExternalProductCandidate(
+                providerRef,
+                "라이브 상품",
+                null,
+                null,
+                new ProductOffer(
+                        null,
+                        null,
+                        null,
+                        ProductAvailability.TEMPORARILY_UNRESOLVED,
+                        null,
+                        null,
+                        null,
+                        Instant.parse("2026-08-12T00:00:00Z")
+                ),
+                URI.create(liveImageUrl),
+                null,
+                Instant.parse("2026-08-12T00:00:00Z")
+        );
+        when(productCatalogPort.lookup(providerRef)).thenAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                    .isFalse();
+            return Optional.of(candidate);
+        });
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "originalImageId",
+                originalImage.getId(),
+                "matchedProductId",
+                product.getId(),
+                "sourceReportId",
+                report.getId(),
+                "tagIds",
+                List.of(tag.getId()),
+                "comment",
+                "라이브 이미지 상품 룩"
+        ));
+
+        String response = mockMvc.perform(post("/api/v1/lookbooks")
+                        .header("Authorization", bearer(accessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value("COMMON201_1"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long lookbookId = objectMapper.readTree(response).at("/data/lookbookId").asLong();
+
+        Lookbook lookbook = lookbookRepository
+                .findByIdAndDeletedAtIsNull(lookbookId)
+                .orElseThrow();
+        assertThat(lookbook.getMatchedProduct().getId()).isEqualTo(product.getId());
+        assertThat(lookbook.getMatchedProductImageUrl()).isEqualTo(liveImageUrl);
+        assertThat(productRepository.findById(product.getId()).orElseThrow().getImageUrl())
+                .isNull();
+        verify(productCatalogPort, times(1)).lookup(providerRef);
     }
 
     private Product product() {

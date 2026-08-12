@@ -561,11 +561,48 @@ Demo와 Prototype 분석기는 실제 AI 의류 분류 결과가 없는 흐름 �
       {"category": "ACCESSORY", "items": []},
       {"category": "OTHER", "items": []}
     ],
+    "browserReranking": {
+      "category": "TOP",
+      "candidates": [
+        {
+          "candidateId": "v1.opaque-member-bound-token",
+          "imageUrl": "https://provider.example/items/100.jpg",
+          "tagSimilarity": 0.50,
+          "name": "오버핏 셔츠",
+          "sellerName": "에이블리",
+          "price": {
+            "amount": 28900.00,
+            "currency": "KRW",
+            "type": "CURRENT",
+            "observedAt": "2026-07-18T03:00:00Z"
+          },
+          "purchaseUrl": "https://mall.example/products/100"
+        }
+      ]
+    },
     "partial": false,
     "warnings": []
   }
 }
 ```
+
+`browserReranking`은 추천 생성 POST 1회 응답에만 포함되는 browser handoff namespace다.
+`candidates`는 `ImageComparisonCandidateSelector`가 선택한 기존
+`ExternalProductCandidate`의 response-time snapshot이며 최대 30개다. `candidateId`는
+기존 member-bound opaque candidate token이고, `imageUrl`, `tagSimilarity`, `name`,
+`sellerName`, `price`(`ProductPriceResponse` 재사용), `purchaseUrl`만 표시용으로 전달한다.
+판매자·가격·구매 URL이 없으면 해당 값은 `null`이며 임의의 기본값이나 URL을 만들지 않는다.
+이 snapshot은 live Shopify 가격 보장이 아니며, browser는 candidate token resolve API나
+추가 Shopify metadata lookup을 호출하지 않는다. Shopify GID, merchant identity, provider
+internal ID, persisted productId는 이 contract에 노출하지 않는다.
+
+Browser는 이 응답의 후보 전체에 대해 현재 normalized Fashion-CLIP cosine과
+`finalScore = imageSimilarity * 0.70 + tagSimilarity * 0.30`을 계산하고, threshold 없이
+`finalScore DESC`로 `min(10, candidateCount)` relevance shortlist를 선택한다. 선택된
+shortlist의 모든 후보가 유한하고 비교 가능한 `price.amount`를 가지며 동일 currency일 때만
+`price.amount ASC`로 표시한다. 그 외에는 shortlist 전체의 기존 relevance 순서를 유지한다.
+동일 가격은 `finalScore DESC`, 그 다음 original handoff index ASC다. Browser score는 backend에
+저장하거나 submit하지 않는다.
 
 ### 생성·교체 규칙
 
@@ -1170,6 +1207,13 @@ transaction commit 후 참조 release 이벤트의 대상이 된다. cleanup은 
 `matchedImageId`와 `matchedProductId`는 정확히 하나만 전달해야 한다. 상품 경로에서는
 `sourceReportId`가 본인 소유의 삭제되지 않은 리포트인지, 해당 상품이 현재 추천 결과 또는
 저장된 선택 상품인지 검증한다. 구매 링크를 생략하면 선택 상품의 구매 URL을 사용한다.
+상품 이미지는 저장 방식에 따라 결정한다. `SNAPSHOT` 상품은 DB의 `product.image_url`을 사용하고,
+`IDENTITY_ONLY` 상품은 저장된 공급자 식별자로 live lookup한 응답의 `imageUrl`을 사용한다.
+`IDENTITY_ONLY`의 availability가 `TEMPORARILY_UNRESOLVED`여도 실제 조회 응답에 `imageUrl`이 있으면
+사용할 수 있으며, live lookup 실패 또는 응답 이미지 누락 시 룩북을 저장하지 않는다. 외부 조회 후
+DB 저장 트랜잭션에서 리포트 소유권, 원본 이미지 연결 및 선택 상품 포함 여부를 다시 검증한다.
+결정된 URL은 `matched_product_image_url`에 게시 시점 snapshot으로 저장하므로 이후 공급자 이미지가
+변경되어도 기존 룩북의 이미지는 바뀌지 않는다.
 목록·상세 응답의 `matchedImageUrl`은 어느 경로로 생성했든 동일하게 표시 가능하며,
 상품 경로인 경우 `matchedProductId`도 반환한다.
 
@@ -1183,6 +1227,8 @@ URL을 받아야 한다.
 작성자만 룩북을 수정할 수 있다. body는 생성 요청과 같은 전체 교체 계약이며, 새 이미지가
 `READY`라면 `ACTIVE`로 전환하고 더 이상 참조하지 않는 기존 이미지 ID는 transaction commit 후
 참조 재확인·cleanup 흐름으로 전달한다. 성공 응답은 `lookbookId`를 반환한다.
+분석 추천 상품으로 교체할 때도 생성과 같은 저장 방식별 이미지 결정, 외부 조회와 DB 트랜잭션 분리,
+저장 직전 권한·연결 관계 재검증 및 게시 시점 URL snapshot 정책을 적용한다.
 
 ### `POST /api/v1/lookbooks/{lookbookId}/reports`
 
@@ -1229,6 +1275,9 @@ URL을 받아야 한다.
 | 원본 이미지가 해당 분석 리포트의 원본 이미지와 다른 경우 | 400 | `COMMON400_1` |
 | 선택 상품이 현재 추천 결과 또는 저장된 선택 상품에 없는 경우 | 400 | `COMMON400_1` |
 | 선택 상품에 표시할 이미지가 없는 경우 | 400 | `COMMON400_1` |
+| `IDENTITY_ONLY` 상품 live lookup 응답을 해석할 수 없는 경우 | 502 | `PRODUCT502_1` |
+| `IDENTITY_ONLY` 상품 live lookup이 실패하거나 결과가 없는 경우 | 503 | `PRODUCT503_1` |
+| `IDENTITY_ONLY` 상품 live lookup이 rate limit 또는 quota를 초과한 경우 | 503 | `PRODUCT503_2` |
 | 분석 리포트가 없거나 본인 소유가 아니거나 삭제된 경우 | 404 | `ANALYSIS404_1` |
 | 이미지가 없거나 본인 소유가 아닌 경우 | 404 | `IMAGE404_1` |
 | 상품이 존재하지 않는 경우 | 404 | `COMMON404_1` |

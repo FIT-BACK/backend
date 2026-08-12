@@ -145,7 +145,7 @@ erDiagram
 
     MEMBER {
         BIGINT member_id PK
-        VARCHAR email
+        VARCHAR email UK
         VARCHAR nickname
         VARCHAR profile_image_id FK
         VARCHAR profile_image_url
@@ -611,6 +611,10 @@ SCR-09 직접 업로드 경로는 기존 `matched_image_id`를 사용하고, SCR
 `matched_product_image_url`에 게시 시점 이미지를 보존한다. 분석 원본 이미지는 기존
 `original_image_id` 관계를 재사용한다.
 
+`matched_product_image_url`은 `SNAPSHOT` 상품이면 `product.image_url`, `IDENTITY_ONLY` 상품이면
+게시 직전 공급자 live lookup의 `imageUrl`로 결정한다. 이 값은 게시 이후 공급자 데이터와 동기화하지
+않으며, 룩북 수정으로 매칭 상품을 교체할 때만 새 게시 시점 URL로 교체한다.
+
 ```text
 FK_LOOKBOOK_MATCHED_PRODUCT(matched_product_id)
   -> product(product_id) ON DELETE RESTRICT ON UPDATE RESTRICT
@@ -759,6 +763,37 @@ V27은 프론트의 `targetId` 계약에 맞춰 `trend_content.trend_id` 1~6과 
 `created_by`는 사전에 생성된 콘텐츠 계정 `fitback.demo+content@gmail.com`의 회원 ID를 사용하며,
 계정이 없으면 필수 FK 값을 채울 수 없어 마이그레이션이 실패한다.
 
+### 4.14 `lookbook_report`
+
+| 컬럼 | 타입 | NULL | 키/설명 |
+| --- | --- | --- | --- |
+| `report_id` | `BIGINT` | N | PK, auto increment |
+| `lookbook_id` | `BIGINT` | N | FK, 신고 대상 룩북 |
+| `member_id` | `BIGINT` | Y | FK, 신고한 회원. V29부터 nullable — 회원 탈퇴 시 신고 이력은 유지하고 신고자만 익명 처리 |
+| `reason` | `VARCHAR(50)` | N | 신고 사유 |
+| `created_at` | `DATETIME(6)` | N | 생성 시각 |
+
+```text
+UK_LOOKBOOK_REPORT_LOOKBOOK_ID_MEMBER_ID(lookbook_id, member_id)
+FK_LOOKBOOK_REPORT_LOOKBOOK(lookbook_id)
+  -> lookbook(lookbook_id) ON DELETE RESTRICT ON UPDATE RESTRICT
+FK_LOOKBOOK_REPORT_MEMBER_SET_NULL(member_id)
+  -> member(member_id) ON DELETE SET NULL ON UPDATE RESTRICT   -- V29에서 RESTRICT였던 원래 FK를 교체
+```
+
+`UK_LOOKBOOK_REPORT_LOOKBOOK_ID_MEMBER_ID`가 동일 회원의 동일 룩북 중복 신고를 막는다.
+V14에서 테이블을 생성할 때는 `member_id`가 `NOT NULL` + `FK ... ON DELETE RESTRICT`였고,
+V29가 회원 탈퇴를 지원하기 위해 이를 `NULL` 허용 + `ON DELETE SET NULL`로 교체했다.
+
+### 4.15 `member` 이메일 UNIQUE 제약
+
+V30은 동시 회원가입 요청에서도 동일 이메일이 하나만 저장되도록 운영 DB에 이메일 UNIQUE
+제약을 보장한다. 회원가입 서비스는 해당 제약 위반만 이메일 중복 응답으로 변환한다.
+
+```text
+UK_MEMBER_EMAIL(email)
+```
+
 ---
 
 ## 5. 유사도 점수 영속 근거
@@ -802,7 +837,7 @@ JPA에는 대규모 `CascadeType.ALL`을 기본 적용하지 않는다. 특히 P
 
 ## 7. Entity·migration 상태
 
-현재 운영 migration 계약은 V1~V28이며, 프로덕션에서 Flyway 적용 후
+현재 운영 migration 계약은 V1~V30이며, 프로덕션에서 Flyway 적용 후
 Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
 
 ### 7.1 `Product`

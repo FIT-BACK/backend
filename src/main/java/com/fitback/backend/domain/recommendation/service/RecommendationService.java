@@ -11,6 +11,7 @@ import com.fitback.backend.domain.product.service.model.ProductSearchQuery;
 import com.fitback.backend.domain.product.service.model.ProductSearchResult;
 import com.fitback.backend.domain.product.service.model.ProviderProductRef;
 import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
+import com.fitback.backend.domain.recommendation.dto.BrowserRerankingHandoff;
 import com.fitback.backend.domain.recommendation.dto.RecommendationCreateResponse;
 import com.fitback.backend.domain.recommendation.dto.RecommendationGenerateRequest;
 import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
@@ -49,6 +50,7 @@ public class RecommendationService {
     private final ProductCandidateMapper candidateMapper;
     private final ProductMaterializationService materializationService;
     private final ImageComparisonCandidateSelector imageComparisonCandidateSelector;
+    private final BrowserRerankingHandoffService browserRerankingHandoffService;
     private final RecommendationScorer scorer;
     private final RecommendationSetWriter setWriter;
     private final RecommendationQueryService queryService;
@@ -60,6 +62,7 @@ public class RecommendationService {
             ProductCandidateMapper candidateMapper,
             ProductMaterializationService materializationService,
             ImageComparisonCandidateSelector imageComparisonCandidateSelector,
+            BrowserRerankingHandoffService browserRerankingHandoffService,
             RecommendationScorer scorer,
             RecommendationSetWriter setWriter,
             RecommendationQueryService queryService
@@ -70,6 +73,7 @@ public class RecommendationService {
         this.candidateMapper = candidateMapper;
         this.materializationService = materializationService;
         this.imageComparisonCandidateSelector = imageComparisonCandidateSelector;
+        this.browserRerankingHandoffService = browserRerankingHandoffService;
         this.scorer = scorer;
         this.setWriter = setWriter;
         this.queryService = queryService;
@@ -92,6 +96,12 @@ public class RecommendationService {
                 input.category(),
                 input.tags(),
                 input.customTagNames()
+        );
+        BrowserRerankingHandoff browserReranking = browserRerankingHandoffService.create(
+                memberId,
+                input.category(),
+                input.tags(),
+                candidateCollection.candidates()
         );
         Set<String> warnings = new TreeSet<>(candidateCollection.warnings());
         List<ScoredCandidate> eligibleCandidates = scoreEligibleCandidates(
@@ -118,6 +128,7 @@ public class RecommendationService {
                 scoreVersion,
                 result.recommendationStatus(),
                 result.recommendationGroups(),
+                browserReranking,
                 !warnings.isEmpty(),
                 List.copyOf(warnings)
         );

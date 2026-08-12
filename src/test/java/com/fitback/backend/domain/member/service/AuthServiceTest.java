@@ -14,12 +14,14 @@ import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.security.token.TempTokenPayload;
 import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -77,7 +79,7 @@ class AuthServiceTest {
         //테스트용 비밀번호
         when(passwordEncoder.encode(request.password())).thenReturn("encodedPw");
         //0번째 인자값 반환(member 객체)
-        when(memberRepository.save(any(Member.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(memberRepository.saveAndFlush(any(Member.class))).thenAnswer(inv -> inv.getArgument(0));
         //테스트용 토큰
         when(jwtUtil.createAccessToken(any(AuthMember.class))).thenReturn("access-token");
         when(jwtUtil.createRefreshToken(any(AuthMember.class))).thenReturn("refresh-token");
@@ -94,7 +96,7 @@ class AuthServiceTest {
 
         //실제 저장된 member 필드 검증 (raw 아닌 암호화 비밀번호 포함)
         ArgumentCaptor<Member> memberCaptor = ArgumentCaptor.forClass(Member.class);
-        verify(memberRepository).save(memberCaptor.capture());
+        verify(memberRepository).saveAndFlush(memberCaptor.capture());
         Member savedMember = memberCaptor.getValue();
         assertThat(savedMember.getEmail()).isEqualTo("test@fitback.com");
         assertThat(savedMember.getPassword()).isEqualTo("encodedPw");
@@ -118,7 +120,7 @@ class AuthServiceTest {
                                 .isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS));
 
         //save가 한번도 호출되지 않았는지 검증
-        verify(memberRepository, never()).save(any(Member.class));
+        verify(memberRepository, never()).saveAndFlush(any(Member.class));
         verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
     }
 
@@ -138,8 +140,61 @@ class AuthServiceTest {
                                 .isEqualTo(ErrorCode.REJOIN_BLOCKED));
 
         //차단 시 save 미호출 검증
-        verify(memberRepository, never()).save(any(Member.class));
+        verify(memberRepository, never()).saveAndFlush(any(Member.class));
         verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
+    }
+
+    //회원가입 실패 - 동시 요청으로 이메일 UNIQUE 제약이 충돌하면 EMAIL_ALREADY_EXISTS
+    @Test
+    void signUpConcurrentDuplicateEmailTest() {
+        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest(
+                "Race@FITBACK.COM",
+                "password123"
+        );
+        ConstraintViolationException constraintViolation = mock(ConstraintViolationException.class);
+        when(constraintViolation.getConstraintName()).thenReturn("UK_MEMBER_EMAIL");
+
+        when(memberRepository.existsByEmail("race@fitback.com")).thenReturn(false);
+        when(rejoinBlockChecker.isRejoinBlocked("race@fitback.com")).thenReturn(false);
+        when(memberRepository.existsByNickname(anyString())).thenReturn(false);
+        when(passwordEncoder.encode(request.password())).thenReturn("encodedPw");
+        when(memberRepository.saveAndFlush(any(Member.class))).thenThrow(
+                new DataIntegrityViolationException("duplicate email", constraintViolation)
+        );
+
+        assertThatThrownBy(() -> authService.signUp(request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS));
+
+        verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
+        verify(jwtUtil, never()).createAccessToken(any());
+        verify(jwtUtil, never()).createRefreshToken(any());
+    }
+
+    //회원가입 실패 - 이메일 외 DB 제약 오류는 원인 보존
+    @Test
+    void signUpUnexpectedConstraintViolationTest() {
+        MemberRequest.SignUpRequest request = new MemberRequest.SignUpRequest(
+                "test@fitback.com",
+                "password123"
+        );
+        ConstraintViolationException constraintViolation = mock(ConstraintViolationException.class);
+        when(constraintViolation.getConstraintName()).thenReturn("UK_MEMBER_NICKNAME");
+        DataIntegrityViolationException unexpectedException =
+                new DataIntegrityViolationException("duplicate nickname", constraintViolation);
+
+        when(memberRepository.existsByEmail("test@fitback.com")).thenReturn(false);
+        when(rejoinBlockChecker.isRejoinBlocked("test@fitback.com")).thenReturn(false);
+        when(memberRepository.existsByNickname(anyString())).thenReturn(false);
+        when(passwordEncoder.encode(request.password())).thenReturn("encodedPw");
+        when(memberRepository.saveAndFlush(any(Member.class))).thenThrow(unexpectedException);
+
+        assertThatThrownBy(() -> authService.signUp(request)).isSameAs(unexpectedException);
+
+        verify(notificationSettingService, never()).createDefaultSetting(any(Member.class));
+        verify(jwtUtil, never()).createAccessToken(any());
+        verify(jwtUtil, never()).createRefreshToken(any());
     }
 
     @Test

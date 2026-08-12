@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' blob: data:; connect-src 'self' http://127.0.0.1:* http://localhost:* https://huggingface.co https://*.hf.co https://cdn.jsdelivr.net https:; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>Fashion-CLIP Browser PoC</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { max-width: 960px; margin: 0 auto; padding: 2rem; line-height: 1.45; }
+      h1 { margin-top: 0; }
+      .notice { border: 1px solid #8886; border-radius: 0.5rem; padding: 0.75rem 1rem; }
+      .inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+      label { display: grid; gap: 0.5rem; font-weight: 600; }
+      input, button { font: inherit; padding: 0.55rem; }
+      button { cursor: pointer; }
+      #status { min-height: 1.5rem; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+      table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+      th, td { border: 1px solid #8886; padding: 0.55rem; text-align: left; }
+      th { background: #8882; }
+      code { overflow-wrap: anywhere; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Fashion-CLIP browser-only PoC</h1>
+      <p class="notice">
+        Local files are decoded and embedded in this browser tab. No image bytes,
+        model output, or embeddings are sent to FIT-BACK backend or Modal. The
+        optional recommendation POST sends only the local bearer token and report ID;
+        candidate images are fetched directly by this browser tab.
+        The model binary is fetched directly by the browser from the configured model URL (pinned Hugging Face by default).
+      </p>
+
+      <section class="inputs" aria-label="Local image inputs">
+        <label>
+          Query image
+          <input id="query-file" type="file" accept="image/jpeg,image/png,image/webp" />
+        </label>
+        <label>
+          Candidate images (select at least 10 for benchmark)
+          <input id="candidate-file" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+        </label>
+      </section>
+
+      <section aria-label="Direct candidate URL input">
+        <label>
+          Shopify candidate image URLs (one HTTPS URL per line, maximum 10)
+          <textarea id="candidate-urls" rows="6" placeholder="https://merchant.example/image.jpg"></textarea>
+        </label>
+        <button id="url-run" type="button">Run direct URL fetch and Fashion-CLIP batch</button>
+      </section>
+
+      <section aria-label="Backend recommendation and browser reranking integration">
+        <h2>Backend recommendation → Browser reranking</h2>
+        <div class="inputs">
+          <label>
+            Backend API base URL
+            <input id="backend-url" type="url" value="http://localhost:8080" autocomplete="off" />
+          </label>
+          <label>
+            Analysis report ID
+            <input id="report-id" type="number" min="1" step="1" placeholder="4" autocomplete="off" />
+          </label>
+          <label>
+            Local access token (not stored)
+            <input id="access-token" type="password" autocomplete="off" />
+          </label>
+        </div>
+        <button id="backend-run" type="button">POST recommendation and rerank browser top-10</button>
+        <button id="backend-benchmark-run" type="button">POST once and benchmark full relevance vs price-ordered top-10 (1 warm-up + 3 measured runs)</button>
+        <p id="backend-summary">No backend recommendation request.</p>
+        <p id="handoff-summary">No browser reranking handoff run.</p>
+        <h3>Full relevance vs price-ordered top-10 latency benchmark</h3>
+        <pre id="handoff-benchmark-summary">No full relevance vs price-ordered top-10 benchmark measured.</pre>
+        <pre id="handoff-quality-summary">No final-ranking comparison measured.</pre>
+        <pre id="handoff-comparison-ordering">No final ordering measured.</pre>
+        <table id="handoff-results">
+          <thead>
+            <tr><th>Original input index</th><th>Name</th><th>Seller</th><th>Image URL</th><th>Price</th><th>Purchase</th><th>Image similarity</th><th>Tag similarity</th><th>Final score</th><th>Status</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <button id="run" type="button">Load model and compare first candidate</button>
+      <button id="benchmark-run" type="button">Run warm 1/3/5/10 benchmark</button>
+      <p id="status" role="status" aria-live="polite">Select one query image and one or more candidate images.</p>
+
+      <dl>
+        <dt>Runtime</dt><dd id="runtime">-</dd>
+        <dt>Model</dt><dd><code id="model">-</code></dd>
+        <dt>Model source</dt><dd id="model-source">-</dd>
+        <dt>Model load</dt><dd id="model-load">-</dd>
+        <dt>Inference (last run)</dt><dd id="inference">-</dd>
+      </dl>
+
+      <section aria-label="Model load diagnostics">
+        <h2>Model load diagnostics</h2>
+        <p id="model-artifact-summary">No model load measured.</p>
+        <button id="model-second-load" type="button" disabled>Measure second model load</button>
+        <table id="model-load-runs">
+          <thead>
+            <tr><th>Run</th><th>URL resolve (ms)</th><th>WebGPU init (ms)</th><th>Headers (ms)</th><th>Body download (ms)</th><th>Bytes / Content-Length</th><th>Session create/readiness (ms)</th><th>Total (ms)</th><th>Redirected</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <table>
+        <thead>
+          <tr><th>Embedding</th><th>Dimension</th><th>Finite</th><th>Raw L2 norm</th><th>Normalized L2 norm</th></tr>
+        </thead>
+        <tbody>
+          <tr><th>Query</th><td id="query-dimension">-</td><td id="query-finite">-</td><td id="query-raw-norm">-</td><td id="query-normalized-norm">-</td></tr>
+          <tr><th>Candidate</th><td id="candidate-dimension">-</td><td id="candidate-finite">-</td><td id="candidate-raw-norm">-</td><td id="candidate-normalized-norm">-</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Raw cosine:</strong> <span id="raw-cosine">-</span></p>
+      <p><strong>Normalized cosine:</strong> <span id="normalized-cosine">-</span></p>
+      <p><strong>Absolute cosine difference:</strong> <span id="cosine-difference">-</span></p>
+
+      <section aria-label="Direct candidate URL results">
+        <h2>Direct URL integration</h2>
+        <p id="url-summary">No URL integration run.</p>
+        <table id="url-results">
+          <thead>
+            <tr><th>Candidate</th><th>Host</th><th>Content type</th><th>Fetch (ms)</th><th>Decode (ms)</th><th>Preprocess (ms)</th><th>Normalized cosine</th><th>Status</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section aria-label="Candidate benchmark">
+        <h2>Warm candidate benchmark</h2>
+        <p>Each size is warmed once, then measured three times. Query inference uses batch 1; candidates use one tensor batch of the selected size. The per-image value divides total embedding inference by query plus candidate count.</p>
+        <table id="benchmark-results">
+          <thead>
+            <tr>
+              <th>Candidates</th><th>Provider</th><th>Fallback</th><th>Total inference median (ms)</th>
+              <th>Per image median (ms)</th><th>Query batch median (ms)</th><th>Candidate batch median (ms)</th>
+              <th>Cosine median (ms)</th><th>Mean normalized cosine</th><th>Max raw/normalized delta</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

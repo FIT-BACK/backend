@@ -18,6 +18,7 @@ public class MemberRequest {
             String email,
 
             @NotBlank(message = "비밀번호는 필수 입력값입니다.")
+            @Size(min = 8, max = 64, message = "비밀번호는 8~64자여야 합니다.")
             @BCryptPassword
             String password
     ) {}
