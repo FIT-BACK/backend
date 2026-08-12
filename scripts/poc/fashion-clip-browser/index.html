@@ -18,6 +18,7 @@
       input, button { font: inherit; padding: 0.55rem; }
       button { cursor: pointer; }
       #status { min-height: 1.5rem; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; }
       table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
       th, td { border: 1px solid #8886; padding: 0.55rem; text-align: left; }
       th { background: #8882; }
@@ -70,9 +71,14 @@
             <input id="access-token" type="password" autocomplete="off" />
           </label>
         </div>
-        <button id="backend-run" type="button">POST recommendation and rerank</button>
+        <button id="backend-run" type="button">POST recommendation and rerank browser top-10</button>
+        <button id="backend-benchmark-run" type="button">POST once and benchmark full-30 vs tag top-10 (1 warm-up + 3 measured runs)</button>
         <p id="backend-summary">No backend recommendation request.</p>
         <p id="handoff-summary">No browser reranking handoff run.</p>
+        <h3>30-vs-10 latency benchmark</h3>
+        <pre id="handoff-benchmark-summary">No 30-vs-10 benchmark measured.</pre>
+        <pre id="handoff-quality-summary">No final-ranking comparison measured.</pre>
+        <pre id="handoff-comparison-ordering">No final ordering measured.</pre>
         <table id="handoff-results">
           <thead>
             <tr><th>Candidate ID</th><th>Original input index</th><th>Image similarity</th><th>Tag similarity</th><th>Final score</th><th>Status</th></tr>

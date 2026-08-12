@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { extractBrowserReranking, fetchRecommendation } from '../src/backend.js';
 import {
   calculateFinalScore,
+  compareRerankingResults,
   cosineSimilarity,
   l2Norm,
   normalizeL2,
+  selectTagSimilarityTopCandidates,
   sortRerankingResults,
   validateBrowserRerankingHandoff,
 } from '../src/math.js';
@@ -88,6 +90,43 @@ test('calculates the demo final score with the positive 70/30 hypothesis', () =>
   assert.ok(Math.abs(calculateFinalScore(0.8, 0.3) - 0.65) < 1e-12);
   assert.ok(Math.abs(calculateFinalScore(0.9, 0) - 0.63) < 1e-12);
   assert.ok(Math.abs(calculateFinalScore(0.9, 1) - 0.93) < 1e-12);
+});
+
+test('selects tagSimilarity top candidates without mutating input and keeps original-index ties', () => {
+  const candidates = [
+    { candidateId: 'late', tagSimilarity: 0.9, originalIndex: 5 },
+    { candidateId: 'low', tagSimilarity: 0.2, originalIndex: 1 },
+    { candidateId: 'early', tagSimilarity: 0.9, originalIndex: 2 },
+  ];
+
+  const selected = selectTagSimilarityTopCandidates(candidates, 2);
+
+  assert.deepEqual(selected.map((candidate) => candidate.candidateId), ['early', 'late']);
+  assert.deepEqual(candidates.map((candidate) => candidate.candidateId), ['late', 'low', 'early']);
+});
+
+test('compares reduced ranking overlap, rank changes, and excluded full-ranking positions', () => {
+  const fullRanked = Array.from({ length: 10 }, (_, index) => ({
+    candidateId: `candidate-${index + 1}`,
+    originalIndex: index + 1,
+  }));
+  const reducedRanked = [2, 3, 1, 5, 12, 6, 4, 8, 10, 13].map((index) => ({
+    candidateId: `candidate-${index}`,
+    originalIndex: index,
+  }));
+
+  const comparison = compareRerankingResults(fullRanked, reducedRanked);
+
+  assert.equal(comparison.overlapCount, 8);
+  assert.deepEqual(comparison.topOverlap, { 3: 3, 5: 4, 10: 8 });
+  assert.equal(comparison.rankChangeCount, 6);
+  assert.deepEqual(comparison.excludedInFullTop, { 3: 0, 5: 0, 10: 2 });
+  assert.deepEqual(comparison.rankChanges.find((change) => change.originalIndex === 2), {
+    originalIndex: 2,
+    fullRank: 2,
+    reducedRank: 1,
+    delta: -1,
+  });
 });
 
 test('keeps cosine scale unchanged and accepts tag similarity endpoints', () => {

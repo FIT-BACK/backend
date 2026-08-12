@@ -2,9 +2,11 @@ import * as ort from 'onnxruntime-web/webgpu';
 import { extractBrowserReranking, fetchRecommendation } from './backend.js';
 import {
   calculateFinalScore,
+  compareRerankingResults,
   cosineSimilarity,
   l2Norm,
   normalizeL2,
+  selectTagSimilarityTopCandidates,
   sortRerankingResults,
   validateBrowserRerankingHandoff,
 } from './math.js';
@@ -35,6 +37,9 @@ const WASM_PATH = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/';
 const IMAGE_SIZE = 224;
 const BENCHMARK_SIZES = [1, 3, 5, 10];
 const BENCHMARK_REPETITIONS = 3;
+const HANDOFF_BENCHMARK_REPETITIONS = 3;
+const HANDOFF_TOP_CANDIDATE_LIMIT = 10;
+const DEFAULT_DEMO_CANDIDATE_LIMIT = 10;
 const NORMALIZED_NORM_TOLERANCE = 1e-5;
 const CHANNEL_MEAN = [0.48145466, 0.4578275, 0.40821073];
 const CHANNEL_STD = [0.26862954, 0.26130258, 0.27577711];
@@ -52,6 +57,7 @@ const elements = {
   benchmarkRun: document.querySelector('#benchmark-run'),
   urlRun: document.querySelector('#url-run'),
   backendRun: document.querySelector('#backend-run'),
+  backendBenchmarkRun: document.querySelector('#backend-benchmark-run'),
   status: document.querySelector('#status'),
   runtime: document.querySelector('#runtime'),
   model: document.querySelector('#model'),
@@ -69,6 +75,9 @@ const elements = {
   backendSummary: document.querySelector('#backend-summary'),
   handoffSummary: document.querySelector('#handoff-summary'),
   handoffResults: document.querySelector('#handoff-results tbody'),
+  handoffBenchmarkSummary: document.querySelector('#handoff-benchmark-summary'),
+  handoffQualitySummary: document.querySelector('#handoff-quality-summary'),
+  handoffComparisonOrdering: document.querySelector('#handoff-comparison-ordering'),
   benchmarkResults: document.querySelector('#benchmark-results tbody'),
   query: {
     dimension: document.querySelector('#query-dimension'),
@@ -293,7 +302,7 @@ function urlHost(url) {
   }
 }
 
-async function fetchUrlTensorData(url, index) {
+async function fetchUrlBlob(url, index) {
   const result = {
     index: index + 1,
     host: urlHost(url),
@@ -306,43 +315,67 @@ async function fetchUrlTensorData(url, index) {
   const fetchStarted = performance.now();
   let response;
   try {
-    response = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    response = await fetch(url, {
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-store',
+    });
   } catch (error) {
     result.fetchLatencyMs = performance.now() - fetchStarted;
     result.status = `CORS/network failure: ${errorMessage(error)}`;
     return result;
   }
-  result.fetchLatencyMs = performance.now() - fetchStarted;
   result.contentType = response.headers.get('content-type')?.split(';', 1)[0] ?? '-';
   if (!response.ok) {
+    result.fetchLatencyMs = performance.now() - fetchStarted;
     result.status = `HTTP ${response.status}`;
     return result;
   }
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(result.contentType)) {
+    result.fetchLatencyMs = performance.now() - fetchStarted;
     result.status = `unsupported content type: ${result.contentType}`;
     return result;
   }
 
-  let blob;
   try {
-    blob = await response.blob();
+    result.blob = await response.blob();
   } catch (error) {
+    result.fetchLatencyMs = performance.now() - fetchStarted;
     result.status = `body read failure: ${errorMessage(error)}`;
     return result;
   }
+  result.fetchLatencyMs = performance.now() - fetchStarted;
+  result.status = 'fetched';
+  return result;
+}
+
+async function decodeUrlImage(result) {
+  if (result.status !== 'fetched') {
+    return result;
+  }
+
   const decodeStarted = performance.now();
-  let image;
   try {
-    image = await createImage(blob, `candidate ${index + 1}`);
+    result.image = await createImage(result.blob, `candidate ${result.index}`);
   } catch (error) {
     result.decodeLatencyMs = performance.now() - decodeStarted;
     result.status = `decode failure: ${errorMessage(error)}`;
     return result;
   }
   result.decodeLatencyMs = performance.now() - decodeStarted;
+  result.blob = null;
+  result.status = 'decoded';
+  return result;
+}
+
+async function preprocessUrlImage(result) {
+  if (result.status !== 'decoded') {
+    return result;
+  }
+
   const preprocessStarted = performance.now();
   try {
-    result.tensorData = imageToTensorDataFromImage(image);
+    result.tensorData = imageToTensorDataFromImage(result.image);
   } catch (error) {
     result.preprocessLatencyMs = performance.now() - preprocessStarted;
     result.status = `preprocess failure: ${errorMessage(error)}`;
@@ -351,6 +384,34 @@ async function fetchUrlTensorData(url, index) {
   result.preprocessLatencyMs = performance.now() - preprocessStarted;
   result.status = 'ready';
   return result;
+}
+
+async function fetchCandidateTensorData(candidates) {
+  const fetchStarted = performance.now();
+  const fetched = await Promise.all(candidates.map((candidate) => (
+    fetchUrlBlob(candidate.imageUrl, candidate.originalIndex - 1)
+  )));
+  const fetchWallClockMs = performance.now() - fetchStarted;
+
+  const decodeStarted = performance.now();
+  const decoded = await Promise.all(fetched.map((result) => decodeUrlImage(result)));
+  const decodeWallClockMs = performance.now() - decodeStarted;
+
+  const preprocessStarted = performance.now();
+  const results = await Promise.all(decoded.map((result) => preprocessUrlImage(result)));
+  const preprocessWallClockMs = performance.now() - preprocessStarted;
+
+  return {
+    results: results.map((result, index) => ({ ...result, ...candidates[index] })),
+    metrics: {
+      fetchWallClockMs,
+      fetchCumulativeMs: sumMetric(fetched, 'fetchLatencyMs'),
+      decodeWallClockMs,
+      decodeCumulativeMs: sumMetric(decoded, 'decodeLatencyMs'),
+      preprocessWallClockMs,
+      preprocessCumulativeMs: sumMetric(results, 'preprocessLatencyMs'),
+    },
+  };
 }
 
 function readEmbedding(output, index, batchSize) {
@@ -522,11 +583,12 @@ async function runUrlIntegration(queryFile, urls) {
   const session = await loadSession();
   const started = performance.now();
   const queryData = await imageToTensorData(queryFile, queryFile.name);
-  setStatus(`Fetching and decoding ${urls.length} candidate image URL(s)…`);
-  const results = [];
-  for (const [index, url] of urls.entries()) {
-    results.push(await fetchUrlTensorData(url, index));
-  }
+  setStatus(`Fetching, decoding, and preprocessing ${urls.length} candidate image URL(s) in parallel…`);
+  const acquisition = await fetchCandidateTensorData(urls.map((imageUrl, index) => ({
+    imageUrl,
+    originalIndex: index + 1,
+  })));
+  const { results } = acquisition;
   const ready = results.filter((result) => result.status === 'ready');
   if (ready.length === 0) {
     renderUrlResults(results);
@@ -542,16 +604,13 @@ async function runUrlIntegration(queryFile, urls) {
   ready.forEach((result, index) => {
     result.cosine = cosines.normalized[index];
   });
-  const fetchTotalMs = results.reduce((sum, result) => sum + result.fetchLatencyMs, 0);
-  const decodeTotalMs = results.reduce((sum, result) => sum + result.decodeLatencyMs, 0);
-  const preprocessTotalMs = results.reduce((sum, result) => sum + result.preprocessLatencyMs, 0);
   const totalRerankingMs = performance.now() - started;
   elements.urlSummary.textContent = [
     `success ${ready.length}/${results.length}`,
     `CORS/network failures ${results.filter((result) => result.status.startsWith('CORS/network')).length}`,
-    `fetch ${formatMilliseconds(fetchTotalMs)} ms`,
-    `decode ${formatMilliseconds(decodeTotalMs)} ms`,
-    `preprocess ${formatMilliseconds(preprocessTotalMs)} ms`,
+    `fetch cumulative ${formatMilliseconds(acquisition.metrics.fetchCumulativeMs)} ms / wall ${formatMilliseconds(acquisition.metrics.fetchWallClockMs)} ms`,
+    `decode cumulative ${formatMilliseconds(acquisition.metrics.decodeCumulativeMs)} ms / wall ${formatMilliseconds(acquisition.metrics.decodeWallClockMs)} ms`,
+    `preprocess cumulative ${formatMilliseconds(acquisition.metrics.preprocessCumulativeMs)} ms / wall ${formatMilliseconds(acquisition.metrics.preprocessWallClockMs)} ms`,
     `query batch ${formatMilliseconds(queryRun.latencyMs)} ms`,
     `candidate batch [${ready.length},3,224,224] ${formatMilliseconds(candidateRun.latencyMs)} ms`,
     `cosine ${formatMilliseconds(cosines.latencyMs)} ms`,
@@ -564,74 +623,323 @@ async function runUrlIntegration(queryFile, urls) {
   elements.inference.textContent = `${formatMilliseconds(queryRun.latencyMs + candidateRun.latencyMs)} ms`;
 }
 
-async function runHandoffIntegration(queryFile, handoff, backendRequest) {
-  const session = await loadSession();
-  const started = performance.now();
+async function runHandoffRerankingPass(session, queryFile, handoff, candidateLimit, { render = false } = {}) {
+  const totalStarted = performance.now();
+  const selectionStarted = performance.now();
+  const selectedCandidates = candidateLimit >= handoff.candidates.length
+    ? [...handoff.candidates]
+    : selectTagSimilarityTopCandidates(handoff.candidates, candidateLimit);
+  const candidateSelectionWallClockMs = performance.now() - selectionStarted;
+
+  const queryPreprocessStarted = performance.now();
   const queryData = await imageToTensorData(queryFile, queryFile.name);
-  setStatus(`Fetching and decoding ${handoff.candidates.length} handoff candidate image URL(s)…`);
-  const results = await Promise.all(handoff.candidates.map(async (candidate) => {
-    const result = await fetchUrlTensorData(candidate.imageUrl, candidate.originalIndex - 1);
-    return {
-      ...result,
-      candidateId: candidate.candidateId,
-      tagSimilarity: candidate.tagSimilarity,
-      originalIndex: candidate.originalIndex,
-    };
-  }));
-  renderHandoffResults(results);
+  const queryPreprocessWallClockMs = performance.now() - queryPreprocessStarted;
+
+  setStatus(`Fetching ${selectedCandidates.length}/${handoff.candidates.length} handoff image URL(s) directly in parallel…`);
+  const acquisition = await fetchCandidateTensorData(selectedCandidates);
+  const { results } = acquisition;
   const failed = results.filter((result) => result.status !== 'ready');
   const readyCount = results.length - failed.length;
+  const baseMetrics = {
+    candidateSelectionWallClockMs,
+    queryPreprocessWallClockMs,
+    ...acquisition.metrics,
+    fetchSuccessCount: readyCount,
+    fetchFailureCount: failed.length,
+  };
+
   if (failed.length > 0) {
-    elements.handoffSummary.textContent = [
-      `backend HTTP ${backendRequest.status}`,
-      `handoff candidates ${results.length}`,
-      `image fetch ${readyCount} success / ${failed.length} failure`,
-      'browser-reranking unavailable; backend result kept',
-      'no partial reranking was calculated',
-    ].join(' · ');
-    throw new Error(`candidate image fetch/decode failed at input index ${failed.map((result) => result.originalIndex).join(', ')}`);
+    let renderUpdateWallClockMs = 0;
+    if (render) {
+      const renderStarted = performance.now();
+      renderHandoffResults(results);
+      renderUpdateWallClockMs = performance.now() - renderStarted;
+    }
+    const error = new Error(`candidate image fetch/decode failed at input index ${failed.map((result) => result.originalIndex).join(', ')}`);
+    error.reranking = {
+      selectedCandidates,
+      results,
+      runtime: runtimeState,
+      metrics: {
+        ...baseMetrics,
+        queryInferenceWallClockMs: 0,
+        candidateBatchInferenceWallClockMs: 0,
+        diagnosticsWallClockMs: 0,
+        cosineWallClockMs: 0,
+        finalScoreCalculationWallClockMs: 0,
+        sortingWallClockMs: 0,
+        renderUpdateWallClockMs,
+        totalRerankingWallClockMs: performance.now() - totalStarted,
+      },
+    };
+    throw error;
   }
 
-  setStatus(`Running Fashion-CLIP candidate batch [${results.length},3,224,224]…`);
+  setStatus(`Running Fashion-CLIP query and candidate batches [1] + [${results.length},3,224,224]…`);
   const queryRun = await runEmbeddingBatch(session, [queryData]);
   const candidateRun = await runEmbeddingBatch(session, results.map((result) => result.tensorData));
+  const diagnosticsStarted = performance.now();
   const queryDiagnostic = diagnoseEmbedding(queryRun.rawEmbeddings[0]);
   const candidateDiagnostics = candidateRun.rawEmbeddings.map(diagnoseEmbedding);
+  const diagnosticsWallClockMs = performance.now() - diagnosticsStarted;
+
+  const cosineStarted = performance.now();
   const cosines = calculateCosines(queryDiagnostic, candidateDiagnostics);
-  const ranked = sortRerankingResults(results.map((result, index) => ({
+  const cosineWallClockMs = performance.now() - cosineStarted;
+
+  const scoreStarted = performance.now();
+  const scored = results.map((result, index) => ({
     candidateId: result.candidateId,
     originalIndex: result.originalIndex,
     imageSimilarity: cosines.normalized[index],
     tagSimilarity: result.tagSimilarity,
     finalScore: calculateFinalScore(cosines.normalized[index], result.tagSimilarity),
-  })));
-  const totalRerankingMs = performance.now() - started;
-  const imageSimilarities = ranked.map((result) => result.imageSimilarity);
-  const tagSimilarities = ranked.map((result) => result.tagSimilarity);
-  const finalScores = ranked.map((result) => result.finalScore);
+  }));
+  const finalScoreCalculationWallClockMs = performance.now() - scoreStarted;
+
+  const sortingStarted = performance.now();
+  const ranked = sortRerankingResults(scored);
+  const sortingWallClockMs = performance.now() - sortingStarted;
+
+  let renderUpdateWallClockMs = 0;
+  if (render) {
+    const renderStarted = performance.now();
+    renderHandoffResults(results, ranked);
+    showDiagnostics(elements.query, queryDiagnostic);
+    showDiagnostics(elements.candidate, candidateDiagnostics[0]);
+    showCosines(cosines, 0);
+    elements.inference.textContent = `${formatMilliseconds(queryRun.latencyMs + candidateRun.latencyMs)} ms`;
+    renderUpdateWallClockMs = performance.now() - renderStarted;
+  }
+
+  const metrics = {
+    ...baseMetrics,
+    queryInferenceWallClockMs: queryRun.latencyMs,
+    candidateBatchInferenceWallClockMs: candidateRun.latencyMs,
+    diagnosticsWallClockMs,
+    cosineWallClockMs,
+    finalScoreCalculationWallClockMs,
+    sortingWallClockMs,
+    renderUpdateWallClockMs,
+    totalRerankingWallClockMs: performance.now() - totalStarted,
+  };
+  return {
+    selectedCandidates,
+    results,
+    ranked,
+    runtime: runtimeState,
+    metrics,
+    ranges: {
+      imageSimilarity: range(ranked.map((result) => result.imageSimilarity)),
+      tagSimilarity: range(ranked.map((result) => result.tagSimilarity)),
+      finalScore: range(ranked.map((result) => result.finalScore)),
+    },
+  };
+}
+
+async function runHandoffIntegration(queryFile, handoff, backendRequest) {
+  const session = await loadSession();
+  try {
+    const pass = await runHandoffRerankingPass(
+      session,
+      queryFile,
+      handoff,
+      DEFAULT_DEMO_CANDIDATE_LIMIT,
+      { render: true },
+    );
+    elements.handoffSummary.textContent = formatHandoffPassSummary(pass, handoff, backendRequest);
+    return pass;
+  } catch (error) {
+    if (error.reranking) {
+      elements.handoffSummary.textContent = formatHandoffFailureSummary(
+        error.reranking,
+        handoff,
+        backendRequest,
+      );
+    }
+    throw error;
+  }
+}
+
+async function runHandoffBenchmark(queryFile, handoff, backendRequest) {
+  const session = await loadSession();
+  const paths = [
+    { label: 'full-30', candidateLimit: handoff.candidates.length },
+    { label: 'tagSimilarity top-10', candidateLimit: Math.min(HANDOFF_TOP_CANDIDATE_LIMIT, handoff.candidates.length) },
+  ];
+  const summaries = [];
+
+  for (const path of paths) {
+    try {
+      setStatus(`Warming ${path.label} path once; model session remains warm…`);
+      await runHandoffRerankingPass(session, queryFile, handoff, path.candidateLimit);
+      const runs = [];
+      for (let repetition = 0; repetition < HANDOFF_BENCHMARK_REPETITIONS; repetition += 1) {
+        setStatus(`Measuring ${path.label} path (${repetition + 1}/${HANDOFF_BENCHMARK_REPETITIONS})…`);
+        runs.push(await runHandoffRerankingPass(
+          session,
+          queryFile,
+          handoff,
+          path.candidateLimit,
+          { render: true },
+        ));
+      }
+      summaries.push(summarizeHandoffRuns(path, runs));
+    } catch (error) {
+      if (error.reranking) {
+        error.reranking.pathLabel = path.label;
+      }
+      throw error;
+    }
+  }
+
+  const fullSummary = summaries[0];
+  const reducedSummary = summaries[1];
+  const comparison = compareRerankingResults(
+    fullSummary.representative.ranked,
+    reducedSummary.representative.ranked,
+  );
+  renderHandoffBenchmark(fullSummary, reducedSummary, comparison, handoff, backendRequest);
+  return { summaries, comparison };
+}
+
+function summarizeHandoffRuns(path, runs) {
+  const metricNames = [
+    'candidateSelectionWallClockMs',
+    'queryPreprocessWallClockMs',
+    'fetchWallClockMs',
+    'fetchCumulativeMs',
+    'decodeWallClockMs',
+    'decodeCumulativeMs',
+    'preprocessWallClockMs',
+    'preprocessCumulativeMs',
+    'queryInferenceWallClockMs',
+    'candidateBatchInferenceWallClockMs',
+    'diagnosticsWallClockMs',
+    'cosineWallClockMs',
+    'finalScoreCalculationWallClockMs',
+    'sortingWallClockMs',
+    'renderUpdateWallClockMs',
+    'totalRerankingWallClockMs',
+  ];
+  const medianMetrics = Object.fromEntries(metricNames.map((name) => [
+    name,
+    median(runs.map((run) => run.metrics[name])),
+  ]));
+  return {
+    label: path.label,
+    candidateCount: runs[0].selectedCandidates.length,
+    runtime: runs[0].runtime,
+    fetchSuccessCounts: runs.map((run) => run.metrics.fetchSuccessCount),
+    fetchFailureCounts: runs.map((run) => run.metrics.fetchFailureCount),
+    medianMetrics,
+    runs,
+    representative: runs.at(-1),
+  };
+}
+
+function formatHandoffPassSummary(pass, handoff, backendRequest) {
+  const metrics = pass.metrics;
   const modelLoad = modelLoadRuns.at(-1);
-  elements.handoffSummary.textContent = [
+  return [
     `backend HTTP ${backendRequest.status}`,
     `backend request ${formatMilliseconds(backendRequest.latencyMs)} ms`,
     `category ${handoff.category ?? '-'}`,
-    `handoff candidates ${ranked.length}`,
-    `image fetch ${readyCount} success / 0 failure`,
+    `handoff candidates ${handoff.candidates.length}`,
+    `selected ${pass.selectedCandidates.length}`,
+    `image fetch ${metrics.fetchSuccessCount} success / ${metrics.fetchFailureCount} failure`,
     `model readiness ${modelLoad ? formatMilliseconds(modelLoad.totalMs) + ' ms' : 'cached'} (${runtimeState})`,
-    `Fashion-CLIP batch ${formatMilliseconds(queryRun.latencyMs + candidateRun.latencyMs)} ms`,
-    `imageSimilarity ${range(imageSimilarities)}`,
-    `tagSimilarity ${range(tagSimilarities)}`,
-    `finalScore ${range(finalScores)}`,
-    `query batch ${formatMilliseconds(queryRun.latencyMs)} ms`,
-    `candidate batch ${formatMilliseconds(candidateRun.latencyMs)} ms`,
-    `total reranking ${formatMilliseconds(totalRerankingMs)} ms`,
-    `ordering ${ranked.map((result) => result.candidateId).join(' > ')}`,
+    `imageSimilarity ${pass.ranges.imageSimilarity}`,
+    `tagSimilarity ${pass.ranges.tagSimilarity}`,
+    `finalScore ${pass.ranges.finalScore}`,
+    formatRerankingMetrics(metrics),
+    `ordering input-index ${pass.ranked.map((result) => result.originalIndex).join(' > ')}`,
   ].join(' · ');
-  renderHandoffResults(results, ranked);
-  showDiagnostics(elements.query, queryDiagnostic);
-  showDiagnostics(elements.candidate, candidateDiagnostics[0]);
-  showCosines(cosines, 0);
-  elements.inference.textContent = `${formatMilliseconds(queryRun.latencyMs + candidateRun.latencyMs)} ms`;
-  return { ranked, totalRerankingMs, runtime: runtimeState };
+}
+
+function formatHandoffFailureSummary(failure, handoff, backendRequest) {
+  const metrics = failure.metrics;
+  return [
+    `backend HTTP ${backendRequest.status}`,
+    `handoff candidates ${handoff.candidates.length}`,
+    `selected ${failure.selectedCandidates.length}`,
+    `image fetch ${metrics.fetchSuccessCount} success / ${metrics.fetchFailureCount} failure`,
+    'browser-reranking unavailable; backend result kept',
+    'no partial reranking was calculated',
+    formatRerankingMetrics(metrics),
+  ].join(' · ');
+}
+
+function formatHandoffBenchmarkFailureSummary(failure, handoff, backendRequest) {
+  return [
+    `benchmark ${failure.pathLabel ?? 'path'} failed`,
+    formatHandoffFailureSummary(failure, handoff, backendRequest),
+    'remaining benchmark path not measured; backend result kept',
+  ].join('\n');
+}
+
+function formatRerankingMetrics(metrics) {
+  return [
+    `selection wall ${formatMilliseconds(metrics.candidateSelectionWallClockMs)} ms`,
+    `query preprocess wall ${formatMilliseconds(metrics.queryPreprocessWallClockMs)} ms`,
+    `image fetch cumulative ${formatMilliseconds(metrics.fetchCumulativeMs)} ms / wall ${formatMilliseconds(metrics.fetchWallClockMs)} ms`,
+    `decode cumulative ${formatMilliseconds(metrics.decodeCumulativeMs)} ms / wall ${formatMilliseconds(metrics.decodeWallClockMs)} ms`,
+    `preprocess cumulative ${formatMilliseconds(metrics.preprocessCumulativeMs)} ms / wall ${formatMilliseconds(metrics.preprocessWallClockMs)} ms`,
+    `query inference wall ${formatMilliseconds(metrics.queryInferenceWallClockMs)} ms`,
+    `candidate batch wall ${formatMilliseconds(metrics.candidateBatchInferenceWallClockMs)} ms`,
+    `cosine wall ${formatMilliseconds(metrics.cosineWallClockMs)} ms`,
+    `finalScore wall ${formatMilliseconds(metrics.finalScoreCalculationWallClockMs)} ms`,
+    `sort wall ${formatMilliseconds(metrics.sortingWallClockMs)} ms`,
+    `render/update wall ${formatMilliseconds(metrics.renderUpdateWallClockMs)} ms`,
+    `total reranking wall ${formatMilliseconds(metrics.totalRerankingWallClockMs)} ms`,
+  ].join(' · ');
+}
+
+function renderHandoffBenchmark(fullSummary, reducedSummary, comparison, handoff, backendRequest) {
+  const modelLoad = modelLoadRuns.at(-1);
+  elements.handoffBenchmarkSummary.textContent = [
+    `same backend HTTP ${backendRequest.status}; handoff pool ${handoff.candidates.length}; measured ${HANDOFF_BENCHMARK_REPETITIONS} runs/path after one warm-up/path`,
+    `model readiness ${modelLoad ? formatMilliseconds(modelLoad.totalMs) + ' ms' : 'cached'}; runtime ${runtimeState}; WebGPU fallback ${fallbackUsed ? 'used' : 'not used'}`,
+    formatHandoffBenchmarkPath(fullSummary),
+    formatHandoffBenchmarkPath(reducedSummary),
+  ].join('\n');
+  elements.handoffSummary.textContent = [
+    `benchmark complete · backend HTTP ${backendRequest.status} · handoff candidates ${handoff.candidates.length}`,
+    `full-30 finalScore ${fullSummary.representative.ranges.finalScore}`,
+    `tagSimilarity top-10 finalScore ${reducedSummary.representative.ranges.finalScore}`,
+    `runtime ${runtimeState} · WebGPU fallback ${fallbackUsed ? 'used' : 'not used'} · browser score persistence none`,
+  ].join(' · ');
+  elements.handoffQualitySummary.textContent = [
+    `final ranking overlap: top 3 ${comparison.topOverlap[3]}/3 · top 5 ${comparison.topOverlap[5]}/5 · top 10 ${comparison.topOverlap[10]}/10 · common ${comparison.overlapCount}`,
+    `common-candidate rank changes ${comparison.rankChangeCount}/${comparison.overlapCount}`,
+    `excluded from tag top-10 but present in full ranking top 3/top 5/top 10: ${comparison.excludedInFullTop[3]}/${comparison.excludedInFullTop[5]}/${comparison.excludedInFullTop[10]}`,
+  ].join('\n');
+  elements.handoffComparisonOrdering.textContent = [
+    `full-30 final top 10 (input-index:finalScore): ${formatTopOrdering(fullSummary.representative.ranked)}`,
+    `tagSimilarity top-10 final (input-index:finalScore): ${formatTopOrdering(reducedSummary.representative.ranked)}`,
+    `full-30 measured orders: ${fullSummary.runs.map((run) => run.ranked.map((result) => result.originalIndex).join(' > ')).join(' | ')}`,
+    `tag-top-10 measured orders: ${reducedSummary.runs.map((run) => run.ranked.map((result) => result.originalIndex).join(' > ')).join(' | ')}`,
+  ].join('\n');
+}
+
+function formatHandoffBenchmarkPath(summary) {
+  const metrics = summary.medianMetrics;
+  const runValues = (metricName) => summary.runs.map((run) => formatMilliseconds(run.metrics[metricName])).join('/');
+  return [
+    `${summary.label} selected ${summary.candidateCount}; fetch success/failure ${summary.fetchSuccessCounts.join('/')} / ${summary.fetchFailureCounts.join('/')}`,
+    `selection ${formatMilliseconds(metrics.candidateSelectionWallClockMs)} ms; fetch wall ${runValues('fetchWallClockMs')} ms (median ${formatMilliseconds(metrics.fetchWallClockMs)}); fetch cumulative ${formatMilliseconds(metrics.fetchCumulativeMs)} ms`,
+    `decode cumulative ${formatMilliseconds(metrics.decodeCumulativeMs)} ms / wall ${formatMilliseconds(metrics.decodeWallClockMs)} ms; preprocess cumulative ${formatMilliseconds(metrics.preprocessCumulativeMs)} ms / wall ${formatMilliseconds(metrics.preprocessWallClockMs)} ms; query preprocess wall ${formatMilliseconds(metrics.queryPreprocessWallClockMs)} ms`,
+    `query inference ${formatMilliseconds(metrics.queryInferenceWallClockMs)} ms; candidate batch ${formatMilliseconds(metrics.candidateBatchInferenceWallClockMs)} ms; cosine ${formatMilliseconds(metrics.cosineWallClockMs)} ms; finalScore ${formatMilliseconds(metrics.finalScoreCalculationWallClockMs)} ms`,
+    `sort ${formatMilliseconds(metrics.sortingWallClockMs)} ms; render/update ${formatMilliseconds(metrics.renderUpdateWallClockMs)} ms; total reranking median ${formatMilliseconds(metrics.totalRerankingWallClockMs)} ms`,
+    `ranges imageSimilarity ${summary.representative.ranges.imageSimilarity}; tagSimilarity ${summary.representative.ranges.tagSimilarity}; finalScore ${summary.representative.ranges.finalScore}`,
+  ].join('\n');
+}
+
+function formatTopOrdering(ranked) {
+  return ranked
+    .slice(0, 10)
+    .map((result) => `${result.originalIndex}:${result.finalScore.toFixed(8)}`)
+    .join(' > ');
 }
 
 function summarizeBackendResult(backendData) {
@@ -669,6 +977,7 @@ function setIntegrationButtonsDisabled(disabled) {
   elements.benchmarkRun.disabled = disabled;
   elements.urlRun.disabled = disabled;
   elements.backendRun.disabled = disabled;
+  elements.backendBenchmarkRun.disabled = disabled;
 }
 
 async function runBackendIntegration(queryFile) {
@@ -705,8 +1014,59 @@ async function runBackendIntegration(queryFile) {
     await runHandoffIntegration(queryFile, handoff, request);
     setStatus('Done. Recommendation response and browser reranking completed locally.');
   } catch (error) {
-    const preserveMetrics = elements.handoffSummary.textContent.includes('image fetch');
-    showBrowserUnavailable(errorMessage(error), extracted.backendData, preserveMetrics);
+    showBrowserUnavailable(errorMessage(error), extracted.backendData, Boolean(error.reranking));
+  }
+}
+
+async function runBackendBenchmarkIntegration(queryFile) {
+  const request = await fetchRecommendation({
+    baseUrl: elements.backendUrl.value.trim(),
+    reportId: elements.reportId.value.trim(),
+    accessToken: elements.accessToken.value,
+  });
+  const extracted = extractBrowserReranking(request.payload);
+  elements.backendSummary.textContent = [
+    `backend HTTP ${request.status}`,
+    `request ${formatMilliseconds(request.latencyMs)} ms`,
+    summarizeBackendResult(extracted.backendData),
+  ].join(' · ');
+
+  if (!request.ok) {
+    showBrowserUnavailable(`backend HTTP ${request.status}`, extracted.backendData);
+    return;
+  }
+  if (extracted.kind !== 'ready') {
+    showBrowserUnavailable(extracted.reason, extracted.backendData);
+    return;
+  }
+
+  let handoff;
+  try {
+    handoff = validateBrowserRerankingHandoff(extracted.handoff);
+  } catch (error) {
+    showBrowserUnavailable(`invalid backend handoff: ${errorMessage(error)}`, extracted.backendData);
+    return;
+  }
+
+  try {
+    await runHandoffBenchmark(queryFile, handoff, request);
+    setStatus('Done. Same recommendation handoff was measured for full-30 and tagSimilarity top-10.');
+  } catch (error) {
+    if (error.reranking) {
+      elements.handoffSummary.textContent = formatHandoffBenchmarkFailureSummary(
+        error.reranking,
+        handoff,
+        request,
+      );
+      elements.handoffBenchmarkSummary.textContent = [
+        `benchmark unavailable · ${error.reranking.pathLabel ?? 'path'} failed`,
+        formatRerankingMetrics(error.reranking.metrics),
+        'backend recommendation result kept; no browser score persisted',
+      ].join('\n');
+      elements.handoffQualitySummary.textContent = 'Final-ranking comparison unavailable; backend result kept.';
+      elements.handoffComparisonOrdering.textContent = 'Final ordering unavailable because browser reranking failed.';
+    }
+    showBrowserUnavailable(errorMessage(error), extracted.backendData, Boolean(error.reranking));
   }
 }
 
@@ -823,6 +1183,10 @@ function showCosines(cosines, index) {
   elements.rawCosine.textContent = rawCosine.toFixed(8);
   elements.normalizedCosine.textContent = normalizedCosine.toFixed(8);
   elements.cosineDifference.textContent = Math.abs(rawCosine - normalizedCosine).toExponential(2);
+}
+
+function sumMetric(items, metricName) {
+  return items.reduce((sum, item) => sum + item[metricName], 0);
 }
 
 function mean(values) {
@@ -942,6 +1306,29 @@ elements.backendRun.addEventListener('click', async () => {
     await runBackendIntegration(queryFile);
   } catch (error) {
     showBrowserUnavailable(`backend request failed: ${errorMessage(error)}`);
+  } finally {
+    setIntegrationButtonsDisabled(false);
+  }
+});
+
+elements.backendBenchmarkRun.addEventListener('click', async () => {
+  const queryFile = elements.queryFile.files[0];
+  if (!queryFile) {
+    setStatus('Select one local query crop image first.');
+    return;
+  }
+
+  setIntegrationButtonsDisabled(true);
+  elements.backendSummary.textContent = 'Requesting one recommendation handoff for the 30-vs-10 benchmark…';
+  elements.handoffSummary.textContent = 'Waiting for browser benchmark handoff.';
+  elements.handoffBenchmarkSummary.textContent = 'No 30-vs-10 benchmark measured.';
+  elements.handoffQualitySummary.textContent = 'No final-ranking comparison measured.';
+  elements.handoffComparisonOrdering.textContent = 'No final ordering measured.';
+  setStatus('Posting one recommendation request and preparing warm 30-vs-10 browser benchmark…');
+  try {
+    await runBackendBenchmarkIntegration(queryFile);
+  } catch (error) {
+    showBrowserUnavailable(`backend benchmark request failed: ${errorMessage(error)}`);
   } finally {
     setIntegrationButtonsDisabled(false);
   }

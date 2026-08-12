@@ -74,9 +74,11 @@ For the browser benchmark, select at least ten approved local candidate images a
 
 Select the existing local query/crop image, enter a local backend base URL, analysis report ID, and bearer token, then click **POST recommendation and rerank**. The browser calls `POST /api/v1/analyses/{reportId}/recommendations` directly and validates the returned `data.browserReranking` with 1–30 candidates, nonblank unique `candidateId` values, HTTP(S) `imageUrl` values, and finite `[0,1]` `tagSimilarity` values. The token is held only in the current page and is never persisted.
 
-Each Shopify candidate image URL is fetched, decoded, and preprocessed directly in this browser tab with CORS and no credentials. A fetch, decode, or preprocess failure blocks the whole handoff run, displays only the safe failure class, and preserves the backend recommendation result; no partial ranking is emitted. Successful candidates are sent through one Fashion-CLIP candidate tensor batch. The local query crop is embedded separately.
+Each Shopify candidate image URL is fetched directly in this browser tab with CORS, no credentials, and `cache: 'no-store'`; there is no browser-persistent image cache in this path. Candidate fetch, decode, and preprocess work is issued in parallel stages; the UI reports both stage wall-clock and the cumulative sum of per-candidate durations. The cumulative value is not CPU time. A fetch, decode, or preprocess failure blocks the whole handoff run, displays only the safe failure class, and preserves the backend recommendation result; no partial ranking is emitted. Successful candidates are sent through one Fashion-CLIP candidate tensor batch. The local query crop is embedded separately.
 
 If the backend returns a non-success response, malformed data, no handoff, an empty handoff, or the browser model/image path is unavailable, the UI reports `browser-reranking unavailable` and keeps a compact backend result summary. A missing handoff is therefore a tag-only/backend-result path, not a browser error that breaks the recommendation flow.
+
+The regular **POST recommendation and rerank browser top-10** action keeps the backend handoff pool unchanged and selects `tagSimilarity DESC` top 10 in the browser before direct image fetch. Equal tag similarities use original handoff input index order. The separate benchmark action still measures all handoff candidates versus this browser-only top-10 path on one recommendation response.
 
 The displayed score is the demo-only hypothesis:
 
@@ -86,6 +88,15 @@ finalScore = imageSimilarity * 0.70 + tagSimilarity * 0.30
 ```
 
 The cosine is not remapped to `[0,1]`; it remains the model cosine scale. Results are sorted by descending `finalScore`, with original handoff input index as the deterministic tie-breaker. The handoff summary reports backend HTTP status, candidate count, image fetch success/failure, model readiness/runtime, Fashion-CLIP batch latency, total browser reranking latency, score ranges, and final ordering. No threshold, score submission, persistence, price sort, candidate tag enrichment, server-side image fetch, or Modal call is performed.
+
+The local 30-vs-10 demo measurement used the existing local query image, existing local Shopify configuration, and the authorized local Fashion-CLIP artifact. After one warm-up per path, three measured runs produced these medians:
+
+| Path | Selected | Fetch wall | Decode cumulative / wall | Preprocess cumulative / wall | Query inference | Candidate batch | Total reranking | Fetch failures |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Full handoff | 30 | 401.9 ms | 2,446.1 / 277.6 ms | 56.8 / 56.8 ms | 33.7 ms | 221.4 ms | 1,084.2 ms | 0/30 |
+| Browser tag top 10 | 10 | 141.2 ms | 488.5 / 134.7 ms | 17.7 / 17.8 ms | 29.7 ms | 81.6 ms | 459.5 ms | 0/10 |
+
+The same final run also measured backend HTTP `200`, handoff pool `30`, model readiness `1,592.5 ms`, fetch cumulative `6,122.3 ms` / `855.8 ms`, query-crop preprocess wall `59.9 ms` / `55.3 ms`, cosine `0.2 ms` / `0.0 ms`, finalScore calculation `0.0 ms` / `0.0 ms`, sort `0.0 ms` / `0.0 ms`, and render/update `1.6 ms` / `0.5 ms` for full/top-10 respectively. The three full-path fetch wall samples were `495.8/401.9/375.9 ms`; top-10 samples were `152.1/141.2/138.6 ms`. The measured ranges were imageSimilarity `0.30117880..0.55265682` / `0.36216948..0.55064899`, tagSimilarity `0.00000000..0.67000000` / `0.67000000..0.67000000`, and finalScore `0.26928713..0.58645429` / `0.45451864..0.58645429` for full/top-10 respectively. The top-10 path retained 2/3 full top-3, 4/5 full top-5, and 7/10 full top-10 candidates; 9/10 common candidates changed rank. One excluded candidate appeared in the full top-3, one in the full top-5, and three in the full top-10. WebGPU was ready, no WASM fallback or OOM occurred, and the demo default is therefore 10 for this browser-visible path only. This is a demo comparison, not a production candidate or accuracy policy.
 
 `npm run build` creates only the static app bundle. It does not download the model or any image.
 
