@@ -222,7 +222,10 @@ class RecommendationServiceTest {
                         org.assertj.core.groups.Tuple.tuple(
                                 1L,
                                 2,
-                                new BigDecimal("64.00")
+                                // 매칭된 태그가 COLOR("Perfect")가 아니라 DETAIL 하나뿐이라
+                                // COLOR 가중치(6) 도입 이후엔 1/7 비율이 적용돼 64.00이 아닌
+                                // 53.29가 된다.
+                                new BigDecimal("53.29")
                         )
                 );
     }

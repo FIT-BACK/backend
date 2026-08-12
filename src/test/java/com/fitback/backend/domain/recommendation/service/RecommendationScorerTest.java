@@ -56,7 +56,11 @@ class RecommendationScorerTest {
                 candidate("Minimal Shirt", null, "linen", null)
         );
 
-        assertThat(halfMatched.similarityScore()).isEqualByComparingTo("64.00");
+        // 후보 텍스트("Minimal Shirt"+"linen")에 SILHOUETTE("minimal")와
+        // MATERIAL("linen")이 매칭되고 COLOR는 안 맞음 — 매칭된 두 개 모두 가중치 1이라
+        // 2/9 비율이 적용돼(COLOR 가중치 도입 전 2/4=50%였던 것과 달리) 64.00이 아닌
+        // 55.67이 되는 게 올바른 값이다.
+        assertThat(halfMatched.similarityScore()).isEqualByComparingTo("55.67");
         assertThat(halfMatched.reasonCodes()).containsExactly("PARTIAL_ATTRIBUTE_MATCH");
         assertThat(twoOfThreeMatched.similarityScore()).isEqualByComparingTo("69.00");
         assertThat(twoOfThreeMatched.reasonCodes())
@@ -77,9 +81,40 @@ class RecommendationScorerTest {
                 candidate("Minimal Shirt", "Navy Brand", "linen/button", null)
         );
 
-        assertThat(score.similarityScore()).isEqualByComparingTo("73.00");
+        // COLOR(navy)까지 매칭돼서 가중 합(9/10)이 예전 단순 개수 비율(4/5=80%)보다 더
+        // 높게 나옴 — 76.00이 COLOR 가중치 도입 이후의 올바른 값이다.
+        assertThat(score.similarityScore()).isEqualByComparingTo("76.00");
         assertThat(score.reasonCodes())
                 .containsExactly("HIGH_SIMILARITY", "PARTIAL_ATTRIBUTE_MATCH");
+    }
+
+    @Test
+    void colorMatchOutranksAllOtherAttributesMismatched() {
+        // 실사용 피드백: 색상이 안 맞으면 다른 속성이 다 맞아도 "안 맞는 옷"으로 느껴짐.
+        // COLOR 하나만 맞는 후보가, COLOR만 빼고 나머지 세 속성이 전부 맞는 후보보다
+        // 항상 더 높은 점수를 받아야 한다(Fashion-CLIP 연동 전까지는 이 tagMatchScore가
+        // 사실상 유일한 순위 결정 요인이므로, 이 성질이 곧 "색상 맞는 게 먼저 나온다"는
+        // 뜻이 된다).
+        List<TagInput> tags = List.of(
+                tag(10L, "minimal", TagType.SILHOUETTE),
+                tag(20L, "linen", TagType.MATERIAL),
+                tag(30L, "button", TagType.DETAIL),
+                tag(40L, "navy", TagType.COLOR)
+        );
+
+        RecommendationScorer.Score colorOnlyMatch = scorer.score(
+                tags,
+                new BigDecimal("70"),
+                candidate("Oversized Coat", "Other Brand", "outer/coat navy", null)
+        );
+        RecommendationScorer.Score everythingButColorMatch = scorer.score(
+                tags,
+                new BigDecimal("70"),
+                candidate("Minimal Shirt", "Other Brand", "linen/button", null)
+        );
+
+        assertThat(colorOnlyMatch.similarityScore())
+                .isGreaterThan(everythingButColorMatch.similarityScore());
     }
 
     @Test
