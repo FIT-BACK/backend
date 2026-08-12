@@ -69,8 +69,9 @@ token 차감 여부를 알 수 없으므로 token-aware 가변 대기는 사용�
 evaluator에만 적용되며 production `OpenAiTagModelClient` 호출 경로에는 적용되지 않는다.
 
 평가 runner는 동일한 prompt/request를 유지한 채 최대 2회 추가 시도한다. provider HTTP `500`,
-`502`, `503`, `504`는 기존과 동일하게 첫 retry `250–500ms`, 두 번째 retry `500–1000ms`의
-짧은 exponential backoff+jitter를 사용한다. HTTP `429`는 evaluator에서만 다음 조건으로 제한한다.
+`502`, `503`, `504`와 HTTP `200`의 정확한 response parsing category
+`INVALID_MODEL_OUTPUT_JSON`은 첫 retry `250–500ms`, 두 번째 retry `500–1000ms`의 짧은
+exponential backoff+jitter를 사용한다. HTTP `429`는 evaluator에서만 다음 조건으로 제한한다.
 
 - `Retry-After` 또는 소진된 request/token/project-token 차원의 `x-ratelimit-reset-*` 대기값이
   있으면 provider가 제시한 최소 대기시간을 줄이지 않고 `250–500ms` jitter를 더한다. 관측된
@@ -81,10 +82,11 @@ evaluator에만 적용되며 production `OpenAiTagModelClient` 호출 경로에�
   `insufficient_quota`는 대기로 해소되지 않으므로 retry하지 않는다. 알 수 없는 429도 유효한
   대기 header가 없으면 retry하지 않는다.
 
-모든 provider retry를 합쳐 총 시도는 최대 3회이고 retry sleep 예산은 최대 `121s`다. 그 밖의
-4xx, timeout·transport, response parsing·schema·canonical 실패는 자동 retry하지 않는다.
-production `OpenAiTagModelClient`의 P1 정책은 그대로이며 429를 retry하지 않는다. backoff 대기 중
-인터럽트되면 남은 시도를 중단하고 `EVALUATION_RETRY_INTERRUPTED`를 기록한다.
+429·5xx·`INVALID_MODEL_OUTPUT_JSON` retry를 모두 합쳐 총 provider 시도는 최대 3회이고 retry sleep
+예산은 최대 `121s`다. 그 밖의 4xx, timeout·transport, response parsing·schema·canonical 실패는
+자동 retry하지 않는다. production `OpenAiTagModelClient`의 P1 정책은 그대로이며 429 또는
+`INVALID_MODEL_OUTPUT_JSON`을 retry하지 않는다. backoff 대기 중 인터럽트되면 남은 시도를 중단하고
+`EVALUATION_RETRY_INTERRUPTED`를 기록한다.
 
 ## 결과 해석
 

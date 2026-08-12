@@ -270,6 +270,11 @@ public final class OpenAiTagEvaluationMain {
     }
 
     private static boolean isRetryable(EvaluationFailure failure) {
+        if (Integer.valueOf(200).equals(failure.providerHttpStatus())
+                && failure.providerErrorCategory() == null
+                && "INVALID_MODEL_OUTPUT_JSON".equals(failure.responseParsingCategory())) {
+            return true;
+        }
         if (failure.providerHttpStatus() != null
                 && RETRYABLE_PROVIDER_STATUSES.contains(failure.providerHttpStatus())
                 && "SERVER_ERROR".equals(failure.providerErrorCategory())
