@@ -22,6 +22,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.UUID;
 
 @Service
@@ -179,8 +181,8 @@ public class AuthService {
         Member member = memberRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
 
-        //요청 토큰을 같은 방식으로 해시해 DB에 저장된 값과 비교
-        if (!hashRefreshToken(refreshToken).equals(member.getRefreshTokenHash())) {
+        //요청 토큰을 같은 방식으로 해시해 DB에 저장된 값과 상수 시간으로 비교
+        if (!matchesRefreshTokenHash(refreshToken, member.getRefreshTokenHash())) {
             throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
 
@@ -228,6 +230,16 @@ public class AuthService {
     //다른 HMAC 사용처와 결과가 겹치지 않도록 Refresh Token 용도 문자열 포함
     private String hashRefreshToken(String refreshToken) {
         return hmacUtil.hashHex(REFRESH_TOKEN_HASH_CONTEXT + refreshToken);
+    }
+
+    private boolean matchesRefreshTokenHash(String refreshToken, String storedHash) {
+        if (storedHash == null) {
+            return false;
+        }
+
+        byte[] requestedHashBytes = hashRefreshToken(refreshToken).getBytes(StandardCharsets.US_ASCII);
+        byte[] storedHashBytes = storedHash.getBytes(StandardCharsets.US_ASCII);
+        return MessageDigest.isEqual(requestedHashBytes, storedHashBytes);
     }
 
 }

@@ -423,6 +423,27 @@ class AuthServiceTest {
         verify(jwtUtil, never()).createRefreshToken(any());
     }
 
+    //토큰 재발급 실패 테스트 - 저장된 해시가 없으면 INVALID_REFRESH_TOKEN
+    @Test
+    void refreshTokenHashMissingTest(){
+        String requestToken = "request-refresh";
+        MemberRequest.RefreshRequest request = new MemberRequest.RefreshRequest(requestToken);
+        Member member = createTestMember(1L, "test@fitback.com", "encodedPw");
+
+        when(jwtUtil.isValid(requestToken)).thenReturn(true);
+        when(jwtUtil.isRefreshToken(requestToken)).thenReturn(true);
+        when(jwtUtil.getEmailFromToken(requestToken)).thenReturn("Test@FITBACK.COM");
+        when(memberRepository.findByEmail("test@fitback.com")).thenReturn(Optional.of(member));
+
+        assertThatThrownBy(() -> authService.refresh(request))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode())
+                                .isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN));
+
+        verify(jwtUtil, never()).createAccessToken(any());
+        verify(jwtUtil, never()).createRefreshToken(any());
+    }
+
     //로그아웃 성공 테스트 - refresh 토큰 초기화
     @Test
     void logoutSuccessTest(){
