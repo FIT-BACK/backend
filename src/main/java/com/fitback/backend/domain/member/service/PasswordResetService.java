@@ -76,7 +76,7 @@ public class PasswordResetService {
 
         Member member = storedToken.getMember();
         member.changePassword(passwordEncoder.encode(dto.newPassword()));
-        member.clearRefreshToken();
+        member.clearRefreshTokenHash();
 
         //사용 완료된 일회용 토큰 삭제
         passwordResetTokenRepository.delete(storedToken);

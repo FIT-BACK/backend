@@ -1,6 +1,7 @@
 package com.fitback.backend.domain.member.entity;
 
 import com.fitback.backend.global.entity.BaseTimeEntity;
+import com.fitback.backend.global.util.HmacUtil;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -53,8 +54,9 @@ public class Member extends BaseTimeEntity {
     @Column(name = "role", nullable = false, length = 20)
     private MemberRole role = MemberRole.USER;
 
-    @Column(name = "refresh_token", length = 512)
-    private String refreshToken;
+    //Refresh Token 원문 대신 HMAC-SHA256 hex 저장
+    @Column(name = "refresh_token_hash", length = 64, columnDefinition = "CHAR(64)")
+    private String refreshTokenHash;
 
     @Column(name = "social_uid", length = 100)
     private String socialUid;
@@ -100,12 +102,12 @@ public class Member extends BaseTimeEntity {
         this.role = Objects.requireNonNull(role, "role must not be null");
     }
 
-    public void updateRefreshToken(String refreshToken) {
-        this.refreshToken = refreshToken;
+    public void updateRefreshTokenHash(String refreshTokenHash) {
+        this.refreshTokenHash = HmacUtil.validateHashHex(refreshTokenHash);
     }
 
-    public void clearRefreshToken() {
-        this.refreshToken = null;
+    public void clearRefreshTokenHash() {
+        this.refreshTokenHash = null;
     }
 
     public void changePassword(String encodedPassword){
