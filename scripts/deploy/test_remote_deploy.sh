@@ -229,6 +229,9 @@ create_release() {
   mkdir -p "$release_dir/deploy/nginx" "$release_dir/scripts/deploy"
   cp "$repo_root/compose.yaml" "$release_dir/compose.yaml"
   cp "$repo_root/deploy/nginx/default.conf" "$release_dir/deploy/nginx/default.conf"
+  mkdir -p "$release_dir/deploy/compatibility"
+  cp "$repo_root/deploy/compatibility/v31-refresh-token-hash" \
+    "$release_dir/deploy/compatibility/v31-refresh-token-hash"
   cp "$repo_root/scripts/deploy/remote_deploy.sh" "$release_dir/scripts/deploy/remote_deploy.sh"
 }
 
@@ -615,6 +618,35 @@ test "$(readlink "$deploy_root/current")" = "$release_one"
 grep -Fxq "BACKEND_IMAGE=$first_image" "$release_one/.env"
 grep -Fq -- "--project-directory $release_two" "$mock_log"
 grep -Fq -- "--project-directory $release_one" "$mock_log"
+
+v31_guard_root="$test_root/v31-guard"
+pre_v31_release="$v31_guard_root/releases/release-pre-v31"
+v31_candidate_release="$v31_guard_root/releases/release-v31-candidate"
+mkdir -p "$v31_guard_root/releases"
+create_release "$pre_v31_release"
+create_release "$v31_candidate_release"
+: > "$mock_log"
+: > "$curl_count_file"
+export MOCK_CURL_FAIL_COUNT=0
+run_deploy "$v31_guard_root" "$pre_v31_release" "$first_image"
+rm -f "$pre_v31_release/deploy/compatibility/v31-refresh-token-hash"
+
+: > "$mock_log"
+: > "$curl_count_file"
+export MOCK_CURL_FAIL_COUNT=1
+if v31_guard_output="$(run_deploy "$v31_guard_root" "$v31_candidate_release" "$failed_image" 2>&1)"; then
+  echo 'Expected rollback to a pre-V31 release to be refused.' >&2
+  exit 1
+fi
+
+grep -Fq 'Rollback refused: the previous release is not compatible with the V31 Refresh Token hash-only schema.' \
+  <<< "$v31_guard_output"
+test "$(readlink "$v31_guard_root/current")" = "$pre_v31_release"
+if grep -F -- "--project-directory $pre_v31_release" "$mock_log" | grep -Fq ' up -d --remove-orphans'; then
+  echo 'The pre-V31 release was restarted despite the rollback guard.' >&2
+  exit 1
+fi
+export MOCK_CURL_FAIL_COUNT=1
 
 create_release "$release_three"
 : > "$mock_log"
