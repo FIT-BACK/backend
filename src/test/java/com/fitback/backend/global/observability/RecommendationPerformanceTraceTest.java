@@ -67,4 +67,27 @@ class RecommendationPerformanceTraceTest {
             assertThat(scope.toStructuredJson()).isNull();
         }
     }
+
+    @Test
+    void recordsBatchLookupInputSizeWithoutChangingTheTraceSchema() throws Exception {
+        try (RecommendationPerformanceTrace.Scope scope =
+                     RecommendationPerformanceTrace.beginIfRequested(
+                             RecommendationPerformanceTrace.REQUEST_VALUE
+                     )) {
+            RecommendationPerformanceTrace.measureLookupCatalog(10, java.util.Map::of);
+            scope.complete(200);
+
+            RecommendationPerformanceTrace.Snapshot snapshot = scope.snapshot();
+
+            assertThat(snapshot.lookupCatalogCalls())
+                    .singleElement()
+                    .satisfies(call -> assertThat(call.inputSize()).isEqualTo(10));
+            assertThat(new ObjectMapper().readTree(scope.toStructuredJson())
+                    .path("lookupCatalog")
+                    .path("calls")
+                    .get(0)
+                    .path("inputSize")
+                    .asInt()).isEqualTo(10);
+        }
+    }
 }
