@@ -164,7 +164,8 @@ Fashion-CLIP으로 재평가한 결과를 기준으로 한다.
 - 상품 가격은 검색·상세·찜 화면 표시용이며 추천 점수나 가성비 문구에 사용하지 않는다.
 - 공급자 raw score를 그대로 내부 점수로 저장하지 않는다.
 - `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 타입 분석 태그 중 상품명·브랜드·카테고리에
-  포함된 태그의 비율을 0~100의 `tagMatchScore`로 계산한다.
+  포함된 태그로 0~100의 `tagMatchScore`를 계산한다. 백엔드 영속 점수에서 `COLOR`의 가중치는
+  6이고 나머지 세 속성의 가중치는 각각 1이다.
 - `STYLE` 타입과 직접 입력 태그는 점수 계산의 분자와 분모에서 제외한다.
 - 태그 점수 계산 대상이 없으면 `tagMatchScore`는 100점이다.
 - 백엔드 영속 점수의 `temporaryImageSimilarityScore`는 70점으로 고정하며 실제 Fashion-CLIP
@@ -595,6 +596,8 @@ Demo와 Prototype 분석기는 실제 AI 의류 분류 결과가 없는 흐름 �
 `ExternalProductCandidate`의 response-time snapshot이며 최대 30개다. `candidateId`는
 기존 member-bound opaque candidate token이고, `imageUrl`, `tagSimilarity`, `name`,
 `sellerName`, `price`(`ProductPriceResponse` 재사용), `purchaseUrl`만 표시용으로 전달한다.
+Browser `tagSimilarity`는 eligible tag의 단순 일치 개수/전체 개수로 계산한 비가중 `[0,1]`
+비율이다. 백엔드 영속 `tagMatchScore`에만 적용하는 `COLOR=6` 가중치를 사용하지 않는다.
 판매자·가격·구매 URL이 없으면 해당 값은 `null`이며 임의의 기본값이나 URL을 만들지 않는다.
 이 snapshot은 live Shopify 가격 보장이 아니며, browser는 candidate token resolve API나
 추가 Shopify metadata lookup을 호출하지 않는다. Shopify GID, merchant identity, provider

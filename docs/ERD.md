@@ -805,12 +805,13 @@ HMAC-SHA256 결과만 저장하며, 클라이언트에는 기존과 동일하게
 재발급 성공 시 새 Refresh Token 해시로 회전하고, 로그아웃과 비밀번호 재설정 시 해시를
 `NULL`로 제거한다.
 
-직전 애플리케이션 버전으로 롤백할 때 Hibernate 스키마 검증이 실패하지 않도록 기존
-`refresh_token VARCHAR(512)` 컬럼은 `NULL` 상태로 유지한다. 새 버전이 안정화된 후 별도
-마이그레이션에서 제거한다.
+기존 `refresh_token VARCHAR(512)` 컬럼은 schema 호환을 위해 `NULL` 상태로 유지한다. 이는
+pre-V31 애플리케이션으로 운영 롤백해도 된다는 의미가 아니다. Pre-V31 코드는 원문을 다시
+저장하므로 V31 적용 후 운영 rollback target으로 사용할 수 없다. 새 버전이 안정화된 후 별도
+마이그레이션에서 기존 컬럼을 제거한다.
 
 ```text
-member.refresh_token VARCHAR(512) NULL        -- 롤백 호환용, 새 코드에서 미사용
+member.refresh_token VARCHAR(512) NULL        -- schema 호환용, pre-V31 운영 rollback 금지
 member.refresh_token_hash CHAR(64) NULL
 ```
 
@@ -825,8 +826,9 @@ Fashion-CLIP으로 재평가한 결과를 기준으로 한다. Browser score는 
 
 - 공급자 raw score는 추천 점수에 사용하지 않는다.
 - 분석 태그 fallback과 normalization은 쇼핑 API Adapter contract test로 고정한다.
-- `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 태그 일치 비율을 0~100의
-  `tagMatchScore`로 계산하며, 대상 태그가 없으면 100점으로 처리한다.
+- `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 태그 일치 결과를 0~100의
+  `tagMatchScore`로 계산한다. 백엔드 영속 점수는 `COLOR=6`, 나머지 속성은 각각 1의 가중치를
+  사용하며, 대상 태그가 없으면 100점으로 처리한다.
 - `similarity_score = temporaryImageSimilarityScore * 0.7 + tagMatchScore * 0.3`이다.
 - 서버 영속 점수의 `temporaryImageSimilarityScore`는 70점으로 고정하며 실제 Fashion-CLIP
   이미지 유사도로 해석하지 않는다.
@@ -835,6 +837,8 @@ Fashion-CLIP으로 재평가한 결과를 기준으로 한다. Browser score는 
 - 정렬은 `similarity_score DESC -> source_api ASC -> external_product_id ASC ->
   candidateFingerprint ASC -> product_id ASC`다.
 - 가격은 점수 또는 reason code 생성에 사용하지 않는다.
+- Browser `tagSimilarity`는 같은 eligible tag 집합의 단순 일치 개수/전체 개수인 비가중
+  `[0,1]` 비율이며, 백엔드 영속 점수의 `COLOR=6` 가중치를 사용하지 않는다.
 
 ---
 
