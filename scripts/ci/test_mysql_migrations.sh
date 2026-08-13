@@ -96,6 +96,12 @@ for database in fitback fitback_existing_refresh_token; do
         "('rollback-window-legacy-write', 9001, 'prod/images/lookbook_matched/rollback-window-legacy.jpg', 'LOOKBOOK_MATCHED', 'image/jpeg', 1024, 'PENDING', 'PRIVATE', 0, NOW());" \
         | docker exec -i "$container_name" mysql -uroot "$database"
     fi
+    if [ "$(basename "$migration")" = 'V31__hash_member_refresh_token.sql' ] \
+      && [ "$database" = 'fitback_existing_refresh_token' ]; then
+      # 운영에 남아 있는 기존 평문 Refresh Token의 폐기 여부 검증용 데이터
+      docker exec "$container_name" mysql -uroot "$database" \
+        -e "UPDATE member SET refresh_token = 'legacy-refresh-token' WHERE member_id = 8001;"
+    fi
     docker exec -i "$container_name" mysql -uroot "$database" < "$migration"
   done < <(printf '%s\n' src/main/resources/db/migration/V*.sql | sort -V)
 done
@@ -985,7 +991,8 @@ done
 actual_contract="$(docker exec "$container_name" mysql -uroot \
   --batch --skip-column-names \
   -e "SELECT CASE
-          WHEN TABLE_NAME = 'member' AND COLUMN_NAME IN ('social_uid', 'profile_image_id')
+          WHEN TABLE_NAME = 'member'
+            AND COLUMN_NAME IN ('social_uid', 'profile_image_id', 'refresh_token_hash')
             THEN CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE, ':', COLUMN_TYPE)
           ELSE CONCAT(TABLE_NAME, '.', COLUMN_NAME, '=', IS_NULLABLE)
         END
@@ -995,7 +1002,7 @@ actual_contract="$(docker exec "$container_name" mysql -uroot \
           (TABLE_NAME = 'image' AND COLUMN_NAME = 'presigned_expires_at')
           OR (
             TABLE_NAME = 'member'
-            AND COLUMN_NAME IN ('refresh_token', 'social_uid', 'profile_image_id')
+            AND COLUMN_NAME IN ('refresh_token_hash', 'social_uid', 'profile_image_id')
           )
           OR (
             TABLE_NAME = 'analysis_report'
@@ -1033,7 +1040,7 @@ expected_contract="$(printf '%s\n' \
   'marketing_consent_history.marketing_consent_history_id=NO' \
   'marketing_consent_history.member_id=NO' \
   'member.profile_image_id=YES:varchar(36)' \
-  'member.refresh_token=YES' \
+  'member.refresh_token_hash=YES:char(64)' \
   'member.social_uid=YES:varchar(100)' \
   'member_notification_setting.analysis_complete_enabled=NO' \
   'member_notification_setting.lookbook_liked_enabled=NO' \
@@ -1204,16 +1211,41 @@ if docker exec "$container_name" mysql -uroot fitback -e \
 fi
 
 for database in fitback fitback_existing_refresh_token; do
-  refresh_token_contract="$(docker exec "$container_name" mysql -uroot \
+  refresh_token_hash_contract="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
-    -e "SELECT CONCAT(IS_NULLABLE, ':', CHARACTER_MAXIMUM_LENGTH)
+    -e "SELECT CONCAT(
+          IS_NULLABLE, ':', CHARACTER_MAXIMUM_LENGTH, ':',
+          CHARACTER_SET_NAME, ':', COLLATION_NAME
+        )
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = '$database'
+          AND TABLE_NAME = 'member'
+          AND COLUMN_NAME = 'refresh_token_hash';")"
+
+  if [ "$refresh_token_hash_contract" != 'YES:64:ascii:ascii_bin' ]; then
+    echo "Unexpected member.refresh_token_hash contract in $database: $refresh_token_hash_contract" >&2
+    exit 1
+  fi
+
+  legacy_refresh_token_column_count="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*)
         FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = '$database'
           AND TABLE_NAME = 'member'
           AND COLUMN_NAME = 'refresh_token';")"
 
-  if [ "$refresh_token_contract" != 'YES:512' ]; then
-    echo "Unexpected member.refresh_token contract in $database: $refresh_token_contract" >&2
+  if [ "$legacy_refresh_token_column_count" != '0' ]; then
+    echo "Legacy member.refresh_token column remains in $database." >&2
+    exit 1
+  fi
+
+  stored_refresh_token_hash_count="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*) FROM $database.member WHERE refresh_token_hash IS NOT NULL;")"
+
+  if [ "$stored_refresh_token_hash_count" != '0' ]; then
+    echo "Legacy plaintext refresh token was not cleared in $database." >&2
     exit 1
   fi
 done

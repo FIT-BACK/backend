@@ -198,7 +198,7 @@ class PasswordResetServiceTest {
     @Test
     void resetPasswordChangesPasswordClearsRefreshTokenAndDeletesToken() {
         Member member = createMember(1L, "member@fitback.com", LoginProvider.EMAIL);
-        member.updateRefreshToken("refresh-token");
+        member.updateRefreshTokenHash("a".repeat(64));
         PasswordResetToken storedToken = PasswordResetToken.create(
                 member,
                 "c".repeat(64),
@@ -218,7 +218,7 @@ class PasswordResetServiceTest {
         );
 
         assertThat(member.getPassword()).isEqualTo("encoded-new-password");
-        assertThat(member.getRefreshToken()).isNull();
+        assertThat(member.getRefreshTokenHash()).isNull();
         verify(passwordResetTokenRepository).delete(storedToken);
         verify(loginAttemptService).clear("member@fitback.com");
     }
