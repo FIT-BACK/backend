@@ -117,6 +117,32 @@ class CanonicalAiTagAnalyzerTest {
     }
 
     @Test
+    void rejectsSuggestedTagsOnlyBecauseAnalysisRequiresCanonicalMasterTag() {
+        AiTagModelClient client = (ignoredImage, request) -> new AiTagModelResult(
+                "test",
+                "test-model",
+                List.of(new AiTagGarment(
+                        GarmentPiece.DRESS,
+                        List.of(),
+                        List.of(new AiTagSuggestion(
+                                TagType.COLOR,
+                                "인디고 블루",
+                                0.93,
+                                "원피스의 짙은 청색 표면"
+                        ))
+                )),
+                null,
+                null,
+                1
+        );
+
+        assertThatThrownBy(() -> analyzer(client).analyze(image))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.ANALYSIS_NOT_READY);
+    }
+
+    @Test
     void requestSchemaContainsStyleAndMaterialCatalogValues() {
         AiTagModelRequest request = new AiTagRequestFactory().create(catalog);
 
