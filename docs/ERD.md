@@ -796,14 +796,19 @@ UK_MEMBER_EMAIL(email)
 
 ### 4.16 `member` Refresh Token 해시 저장
 
-V31은 DB 유출 시 Refresh Token 원문이 직접 사용되는 것을 방지하기 위해 기존
-`refresh_token VARCHAR(512)` 컬럼을 `refresh_token_hash CHAR(64)`로 변경한다.
+V31은 DB 유출 시 Refresh Token 원문이 직접 사용되는 것을 방지하기 위해
+`refresh_token_hash CHAR(64)` 컬럼을 추가한다.
 
 기존에 저장된 Refresh Token은 해시로 변환하지 않고 모두 폐기하므로, 배포 시 로그인 중인
 사용자는 한 번 재로그인해야 한다. 이후 회원가입·로그인·토큰 교환·재발급에서는
 HMAC-SHA256 결과만 저장하며, 클라이언트에는 기존과 동일하게 원본 Refresh Token을 반환한다.
 
+직전 애플리케이션 버전으로 롤백할 때 Hibernate 스키마 검증이 실패하지 않도록 기존
+`refresh_token VARCHAR(512)` 컬럼은 `NULL` 상태로 유지한다. 새 버전이 안정화된 후 별도
+마이그레이션에서 제거한다.
+
 ```text
+member.refresh_token VARCHAR(512) NULL        -- 롤백 호환용, 새 코드에서 미사용
 member.refresh_token_hash CHAR(64) NULL
 ```
 

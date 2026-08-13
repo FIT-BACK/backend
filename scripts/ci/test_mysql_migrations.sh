@@ -1002,7 +1002,7 @@ actual_contract="$(docker exec "$container_name" mysql -uroot \
           (TABLE_NAME = 'image' AND COLUMN_NAME = 'presigned_expires_at')
           OR (
             TABLE_NAME = 'member'
-            AND COLUMN_NAME IN ('refresh_token_hash', 'social_uid', 'profile_image_id')
+            AND COLUMN_NAME IN ('refresh_token', 'refresh_token_hash', 'social_uid', 'profile_image_id')
           )
           OR (
             TABLE_NAME = 'analysis_report'
@@ -1040,6 +1040,7 @@ expected_contract="$(printf '%s\n' \
   'marketing_consent_history.marketing_consent_history_id=NO' \
   'marketing_consent_history.member_id=NO' \
   'member.profile_image_id=YES:varchar(36)' \
+  'member.refresh_token=YES' \
   'member.refresh_token_hash=YES:char(64)' \
   'member.social_uid=YES:varchar(100)' \
   'member_notification_setting.analysis_complete_enabled=NO' \
@@ -1227,16 +1228,25 @@ for database in fitback fitback_existing_refresh_token; do
     exit 1
   fi
 
-  legacy_refresh_token_column_count="$(docker exec "$container_name" mysql -uroot \
+  legacy_refresh_token_contract="$(docker exec "$container_name" mysql -uroot \
     --batch --skip-column-names \
-    -e "SELECT COUNT(*)
+    -e "SELECT CONCAT(IS_NULLABLE, ':', CHARACTER_MAXIMUM_LENGTH)
         FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = '$database'
           AND TABLE_NAME = 'member'
           AND COLUMN_NAME = 'refresh_token';")"
 
-  if [ "$legacy_refresh_token_column_count" != '0' ]; then
-    echo "Legacy member.refresh_token column remains in $database." >&2
+  if [ "$legacy_refresh_token_contract" != 'YES:512' ]; then
+    echo "Unexpected rollback-compatible member.refresh_token contract in $database: $legacy_refresh_token_contract" >&2
+    exit 1
+  fi
+
+  legacy_refresh_token_value_count="$(docker exec "$container_name" mysql -uroot \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*) FROM $database.member WHERE refresh_token IS NOT NULL;")"
+
+  if [ "$legacy_refresh_token_value_count" != '0' ]; then
+    echo "Legacy plaintext refresh token was not cleared in $database." >&2
     exit 1
   fi
 
@@ -1245,7 +1255,7 @@ for database in fitback fitback_existing_refresh_token; do
     -e "SELECT COUNT(*) FROM $database.member WHERE refresh_token_hash IS NOT NULL;")"
 
   if [ "$stored_refresh_token_hash_count" != '0' ]; then
-    echo "Legacy plaintext refresh token was not cleared in $database." >&2
+    echo "Unexpected refresh token hash exists immediately after migration in $database." >&2
     exit 1
   fi
 done
