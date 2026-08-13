@@ -5,8 +5,8 @@
 | 항목 | 값 |
 | --- | --- |
 | 최초 작성일 | 2026-07-26 |
-| 최종 검증일 | 2026-08-05 |
-| 검증 기준 | `develop` `85ecbc381eb2e89de686f790535ad55b6f6de179` 기반 issue #224 변경 |
+| 최종 검증일 | 2026-08-13 |
+| 검증 기준 | `develop` `00c433076262e2b884b91d03170d933cf1501bf0` 기반 issue #368 변경 |
 | 적용 범위 | 현재 Controller가 제공하는 Auth, Member, Image, Analysis, Recommendation, Product, Lookbook, Trend, Tag, Content Search, Closet, Notification API |
 | API prefix | `/api/v1` |
 | 기준 응답 | `ApiResponse<T>`의 `success`, `code`, `message`, `data` |
@@ -35,7 +35,8 @@
 
 ### 1.1 인증과 소유권
 
-- 기본 정책은 JWT 인증 필수이며, `SecurityConfig`에 명시된 공개 경로만 예외다.
+- 기본 정책은 JWT 인증과 `ROLE_USER` 또는 `ROLE_ADMIN` 권한 필수이며,
+  `SecurityConfig`에 명시된 공개 경로만 예외다.
 - 인증 없이 허용되는 API는 회원가입·로그인·비밀번호 재설정·토큰 refresh/exchange,
   Kakao OAuth2 진입/콜백, health, 그리고 `GET /api/v1/trends/**`, `GET /api/v1/tags/**`,
   `GET /api/v1/content-search`, `GET /api/v1/lookbooks`, `GET /api/v1/lookbooks/{id}`다.
@@ -43,7 +44,9 @@
 - `Authorization: Bearer {accessToken}`을 사용한다.
 - Request body, path, query에서 `memberId`를 받지 않는다.
 - 회원 ID는 현재 인증 principal인 `AuthMember`에서 얻는다.
+- 권한이 없는 인증 객체의 비공개 API 접근은 `403 COMMON403_1`로 거부한다.
 - 리포트 기반 API는 인증 회원이 소유한 `AnalysisReport`에만 접근한다.
+- 이미지·알림·저장 상품 등 회원 리소스도 서비스 계층에서 소유권을 검사한다.
 - 타인 소유 리포트와 존재하지 않는 리포트는 모두 404로 처리해 리소스 존재 여부를 숨긴다.
 - 임시 회원 헤더나 임의의 `memberId` DTO를 만들지 않는다.
 - 공개 조회 응답의 `isSaved`, `isLiked`, `isOwner`는 필드가 항상 직렬화되며 익명 요청에서는

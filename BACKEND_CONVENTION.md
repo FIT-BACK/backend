@@ -408,7 +408,9 @@ throw new BusinessException(ErrorCode.NOT_FOUND);
 
 - Swagger/OpenAPI, Actuator health, 아래 공개 인증 경로를 인증 없이 허용한다.
 - 공개 조회 경로는 `GET` 요청만 인증 없이 허용한다.
-- 그 밖의 요청은 모두 인증이 필요하다.
+- 그 밖의 요청은 모두 인증과 `ROLE_USER` 또는 `ROLE_ADMIN` 권한이 필요하다.
+- 리포트·이미지·알림·저장 상품 등 회원 리소스는 서비스 계층에서 소유권을 추가로 검사한다.
+- 룩북 수정은 작성자만 가능하며, 삭제는 작성자 또는 `ADMIN`만 가능하다.
 - ERROR dispatcher는 에러 응답 렌더링을 위해 허용한다.
 - REST API 기준으로 CSRF, Form Login, HTTP Basic은 비활성화하고 세션은 `STATELESS`로 사용한다.
 - 허용된 Origin만 CORS 요청을 받을 수 있으며 credential cookie는 허용하지 않는다.
@@ -431,7 +433,7 @@ throw new BusinessException(ErrorCode.NOT_FOUND);
 - `GET /api/v1/content-search`
 - `GET /api/v1/lookbooks`, `GET /api/v1/lookbooks/{lookbookId}`
 
-인증 필요 API:
+인증·인가 필요 API:
 
 - `POST /api/v1/auth/logout`
 - `/api/v1/members/me/**`
@@ -439,6 +441,10 @@ throw new BusinessException(ErrorCode.NOT_FOUND);
 - `/api/v1/lookbooks/**` 중 작성, 삭제, 좋아요 등 사용자 상태 변경 API
 - `/api/v1/closet-saves/**`
 - 명시적으로 공개되지 않은 나머지 API
+
+비공개 API에서 인증 정보가 없거나 유효하지 않으면 `401 COMMON401_1`, 인증 정보는 있지만
+허용 역할이 없으면 `403 COMMON403_1`을 반환한다. 리소스 소유권 실패는 API의 존재 숨김
+계약에 따라 404를 반환할 수 있으며, 룩북 수정·삭제처럼 명시된 경우에는 403을 반환한다.
 
 공개 경로를 변경하면 `SecurityConfig`, 통합 테스트, `docs/API_SPEC.md`를 함께 갱신한다.
 

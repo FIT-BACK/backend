@@ -205,7 +205,9 @@ JWT 기반 인증을 사용합니다. `SecurityConfig`에서 다음 경로를 �
 - 카카오 로그인 경로(`/api/v1/auth/oauth2/**`, `/api/v1/auth/callback/**`)
 - 읽기 전용 공개 API의 `GET`: `/api/v1/trends/**`, `/api/v1/tags/**`, `/api/v1/content-search`, `/api/v1/lookbooks`, `/api/v1/lookbooks/*`
 
-명시되지 않은 요청은 인증이 필요합니다. 룩북의 생성·수정·삭제·좋아요처럼 상태를 변경하는 요청도 인증 대상입니다.
+명시되지 않은 요청은 인증과 `ROLE_USER` 또는 `ROLE_ADMIN` 권한이 필요합니다. 룩북의
+생성·수정·삭제·좋아요처럼 상태를 변경하는 요청도 인가 대상이며, 리포트·이미지·알림·저장
+상품 등 회원 리소스는 서비스 계층에서 소유권을 추가로 검사합니다.
 요청의 `Authorization: Bearer {accessToken}` 헤더는 `JwtAuthFilter`가 검증하여 인증 정보를 설정합니다.
 REST API 기준으로 CSRF, Form Login, HTTP Basic은 비활성화되어 있으며, 세션은 `STATELESS`로 사용합니다.
 
