@@ -1,6 +1,6 @@
 # 프론트엔드 최소 프로토타입 API 전달서
 
-> **문서 상태 (2026-08-01):** `develop` 구현 기준 프런트 연동 계약이다. 외부 운영 설정값은
+> **문서 상태 (2026-08-13):** `develop` 구현 기준 프런트 연동 계약이다. 외부 운영 설정값은
 > 별도 확인 시점의 스냅샷이며, 배포 전 AWS의 현재 값을 다시 확인한다.
 
 ## 1. 목적과 범위
@@ -15,7 +15,7 @@
   → 분석 생성
   → 태그 확인
   → 추천 생성
-  → 상품 상세
+  → 브라우저 Fashion-CLIP reranking
   → 구매 URL 이동
 ```
 
@@ -96,6 +96,10 @@ Content-Type: application/json
 
 응답의 `data.accessToken`, `data.refreshToken`, `data.isNewMember`를 사용한다. 실제 JWT는
 리다이렉트 URL에 포함되지 않는다.
+
+Refresh Token 원문은 프론트에만 반환되며 서버에는 HMAC-SHA256 해시만 저장된다. 재발급이
+성공하면 access/refresh token을 모두 새 값으로 교체한다. V31 배포 전에 발급된 Refresh Token은
+폐기되므로 재발급 API가 `AUTH401_2`를 반환하면 저장된 token을 제거하고 로그인 화면으로 보낸다.
 
 ### 3.2 비밀번호 재설정 화면
 
@@ -306,24 +310,45 @@ Content-Type: application/json
 - 응답은 8개 고정 카테고리 그룹을 반환하며 결과가 없는 그룹의 `items`는 빈 배열이다.
 - `partial=true`이면 `warnings`를 사용자에게 비차단 안내로 표시한다.
 
-추천 카드의 실제 데이터 바인딩:
+실제 사용자에게 노출하는 추천 카드는 `data.browserReranking.candidates` 전체를 브라우저에서
+Fashion-CLIP으로 재평가한 결과를 사용한다. 브라우저는 사용자 분석 이미지를 query로 사용하고,
+각 후보 이미지의 normalized cosine을 `imageSimilarity`로 계산한 뒤 다음 점수로 전체 후보의
+relevance 순서를 만든다.
+
+```text
+finalScore = imageSimilarity * 0.70 + tagSimilarity * 0.30
+```
+
+`finalScore DESC` 상위 `min(10, candidateCount)`를 선택하고, 선택 후보 모두의 가격이 유한하고
+동일 통화일 때만 가격 오름차순으로 표시한다. 이외에는 relevance 순서를 유지한다. 후보 이미지는
+브라우저가 직접 가져오며, 후속 candidate resolve나 Shopify metadata API를 호출하지 않는다.
+Browser score는 서버로 제출하거나 저장하지 않는다.
+
+사용자 노출 추천 카드의 데이터 바인딩:
 
 | UI | API 필드 |
 | --- | --- |
-| 내부 식별자 | `data.recommendationGroups[].items[].productId` |
-| 순위 | `rank` |
-| 상품 이미지 | `imageUrl` |
-| 상품명 | `name` |
-| 판매처 | `sellerName` |
-| 가격 | `price.amount`, `price.currency` |
-| 구매 URL | `purchaseUrl` |
-| 재고 상태 | `availability` |
-| 저장 상태 | `isSaved` |
+| 불투명 후보 식별자 | `data.browserReranking.candidates[].candidateId` |
+| 상품 이미지 | `data.browserReranking.candidates[].imageUrl` |
+| 태그 점수 | `data.browserReranking.candidates[].tagSimilarity` |
+| 상품명 | `data.browserReranking.candidates[].name` |
+| 판매처 | `data.browserReranking.candidates[].sellerName` |
+| 가격 | `data.browserReranking.candidates[].price.amount`, `.currency` |
+| 구매 URL | `data.browserReranking.candidates[].purchaseUrl` |
+
+`candidateId`는 member-bound opaque token이며 persisted `productId`나 Shopify 내부 ID로 해석하지
+않는다. `data.recommendationGroups[].items[].similarityScore`와 해당 순위는 백엔드 호환성·추천
+이력 저장용 임시 내부 결과다. 고정 이미지 점수 70을 사용하므로 실제 사용자 노출 추천 순위를
+결정하지 않는다.
 
 `picsum.photos`나 고정 상품 배열을 fallback으로 사용하지 않는다. 결과가 없으면 빈 상태 UI를
 표시하고, `imageUrl`만 없으면 이미지 없음 UI를 표시한다.
 
-### 5.7 상품 상세와 구매 이동
+### 5.7 백엔드 영속 추천 항목 상세와 구매 이동
+
+이 절은 `recommendationGroups[].items[].productId`를 사용하는 기존 저장·상세 흐름이다.
+사용자 노출 browser reranking 후보의 `candidateId`는 `productId`가 아니므로 이 상세 API에
+전달하지 않는다. Browser 추천 카드는 handoff snapshot의 `purchaseUrl`로 직접 이동한다.
 
 ```http
 GET /api/v1/products/{productId}
@@ -436,6 +461,7 @@ IDLE
 | `COMMON401_1` | access token 재발급 후 한 번 재시도, 실패하면 로그인 |
 | `COMMON400_2` | 입력 필드 오류 표시 |
 | `AUTH401_1` | 이메일 또는 비밀번호 오류 |
+| `AUTH401_2` | Refresh Token이 만료·폐기·불일치함. 저장된 token을 제거하고 재로그인 |
 | `IMAGE400_1` | 지원 형식 안내 |
 | `IMAGE409_1` | 현재 이미지 상태를 다시 확인 |
 | `IMAGE410_1` | Presigned POST 재발급 후 재업로드 |
@@ -454,8 +480,9 @@ IDLE
 - [ ] JWT는 FIT-BACK API에만 보내고 S3에는 보내지 않는다.
 - [ ] JPEG와 PNG 각각 한 건의 `204 → READY → 분석 → 추천` 흐름을 확인했다.
 - [ ] 업로드 원본은 분석 응답의 `imageUrl`을 표시한다.
-- [ ] 추천 카드는 `recommendationGroups[].items[]`의 실제 필드를 표시한다.
-- [ ] 상품 상세을 다시 조회한 뒤 구매 URL로 이동한다.
+- [ ] 추천 카드는 `browserReranking.candidates[]`를 Fashion-CLIP으로 재평가한 top-10을 표시한다.
+- [ ] Browser 추천 카드의 handoff `purchaseUrl`로 이동하며 `candidateId`를 상품 ID로 사용하지 않는다.
+- [ ] 백엔드 영속 추천 항목을 별도 표시하는 화면만 `productId`로 상품 상세를 다시 조회한다.
 - [ ] `picsum.photos` 및 고정 상품 데이터가 API 연결 화면에서 제거됐다.
 - [ ] 토큰과 Presigned 값을 브라우저 로그·분석 도구에 남기지 않는다.
 - [ ] 프로필 이미지는 `purpose=PROFILE`로 업로드하고 `profileImageId`로 연결한다.

@@ -208,7 +208,7 @@ IDX_{TABLE_NAME}_{COLUMN1}_{COLUMN2}
 
 ### 5.4 마이그레이션
 
-운영 스키마는 Flyway로 관리하며 현재 `V1`~`V21` 마이그레이션을 적용한다.
+운영 스키마는 Flyway로 관리하며 현재 `V1`~`V31` 마이그레이션을 적용한다.
 운영 프로필은 `ddl-auto: validate`와 Flyway를 사용하고, 로컬·테스트 프로필은 Flyway를
 비활성화한다. 마이그레이션 파일은 다음 경로와 이름 규칙을 따른다.
 
@@ -451,7 +451,11 @@ throw new BusinessException(ErrorCode.NOT_FOUND);
 - Refresh token은 `POST /api/v1/auth/token/refresh`의 JSON body로 전달하며 Bearer 인증에 사용하지 않는다.
 - `JwtAuthFilter`가 access token을 검증하고 `SecurityContext`에 회원 정보를 설정한다.
 - 토큰 만료·위변조·용도 오류는 공통 또는 인증 도메인 오류 응답으로 반환한다.
-- 로그아웃은 저장된 Refresh token을 무효화한다.
+- 서버는 Refresh token 원문을 저장하지 않고 `refresh-token:` 용도 문자열을 포함한
+  HMAC-SHA256 소문자 64자리 hex만 저장한다.
+- 재발급은 요청 Refresh token의 HMAC과 저장값을 비교하고 access/refresh token을 함께 회전한다.
+- 로그아웃과 비밀번호 재설정은 저장된 Refresh token 해시를 제거한다.
+- V31은 기존 원문 Refresh token을 모두 폐기하므로 해당 배포 직후 기존 사용자는 재로그인해야 한다.
 
 ---
 
@@ -571,7 +575,7 @@ bash scripts/ci/test_mysql_migrations.sh
 ```
 
 Gradle 테스트는 H2 기반 `application-test.yml`을 사용한다. MySQL 검증은 service 선언 대신
-`test_mysql_migrations.sh`가 임시 MySQL 8.4 컨테이너를 실행하여 Flyway `V1`~`V21`과
+`test_mysql_migrations.sh`가 임시 MySQL 8.4 컨테이너를 실행하여 Flyway `V1`~`V31`과
 주요 제약조건 계약을 검사한다.
 
 GitHub Actions 외부 액션은 full commit SHA로 고정한다.
