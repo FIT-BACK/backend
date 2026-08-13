@@ -453,7 +453,7 @@ class MemberServiceTest {
         Tag tag = createTag(10L, "미니멀", TagType.SILHOUETTE);
         MemberTag memberTag = MemberTag.create(member, tag);
 
-        when(closetSaveRepository.countByMemberId(1L)).thenReturn(3L);
+        when(closetSaveRepository.countDisplayableByMemberId(1L)).thenReturn(3L);
         when(analysisReportRepository
                 .countByMemberIdAndDeletedAtIsNullAndRecommendationGeneratedAtIsNotNull(1L))
                 .thenReturn(5L);

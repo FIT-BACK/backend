@@ -387,6 +387,7 @@ jobs:
           bundle="$(tar -czf - \
             compose.yaml \
             deploy/nginx/default.conf \
+            deploy/compatibility/v31-refresh-token-hash \
             scripts/deploy/remote_deploy.sh | base64 | tr -d '\n')"
 
           jq --null-input \
