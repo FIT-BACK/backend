@@ -14,12 +14,14 @@ import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.security.token.TempTokenPayload;
 import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
+import com.fitback.backend.global.util.HmacUtil;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -36,12 +38,16 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
+    private static final String REFRESH_TOKEN_HASH_CONTEXT = "refresh-token:";
+
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
     private MemberRepository memberRepository;
     @Mock
     private JwtUtil jwtUtil;
+    @Spy
+    private HmacUtil hmacUtil = new HmacUtil("test-hmac-secret-key");
     @Mock
     private RejoinBlockChecker rejoinBlockChecker;
     @Mock
@@ -63,6 +69,10 @@ class AuthServiceTest {
         //id 강제 세팅
         ReflectionTestUtils.setField(member, "id", id);
         return member;
+    }
+
+    private String hashRefreshToken(String refreshToken) {
+        return hmacUtil.hashHex(REFRESH_TOKEN_HASH_CONTEXT + refreshToken);
     }
 
     //회원가입 성공 테스트
@@ -102,6 +112,8 @@ class AuthServiceTest {
         assertThat(savedMember.getPassword()).isEqualTo("encodedPw");
         assertThat(savedMember.getLoginProvider()).isEqualTo(LoginProvider.EMAIL);
         assertThat(savedMember.getRole()).isEqualTo(MemberRole.USER);
+        assertThat(savedMember.getRefreshTokenHash())
+                .isEqualTo(hashRefreshToken("refresh-token"));
         verify(notificationSettingService).createDefaultSetting(savedMember);
         verify(loginAttemptService).clear("test@fitback.com");
     }
@@ -239,8 +251,8 @@ class AuthServiceTest {
         assertThat(response.accessToken()).isEqualTo("access-token");
         assertThat(response.memberId()).isEqualTo(1L);
         assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/profile");
-        //발급한 refresh 토큰이 회원에 저장되었는지 검증
-        assertThat(member.getRefreshToken()).isEqualTo("refresh-token");
+        //발급한 refresh 토큰 원문이 아닌 HMAC 해시 저장 검증
+        assertThat(member.getRefreshTokenHash()).isEqualTo(hashRefreshToken("refresh-token"));
         verify(loginAttemptService).assertLoginAllowed("test@fitback.com");
         verify(loginAttemptService).clear("test@fitback.com");
     }
@@ -342,8 +354,8 @@ class AuthServiceTest {
         String oldRefresh = "old-refresh";
         MemberRequest.RefreshRequest request = new MemberRequest.RefreshRequest(oldRefresh);
         Member member = createTestMember(1L, "test@fitback.com", "encodedPw");
-        //회원에 기존 refresh 토큰 저장
-        member.updateRefreshToken(oldRefresh);
+        //회원에 기존 refresh 토큰의 HMAC 해시 저장
+        member.updateRefreshTokenHash(hashRefreshToken(oldRefresh));
 
         //토큰 유효성, refresh 타입 검증을 통과하도록 설정
         when(jwtUtil.isValid(oldRefresh)).thenReturn(true);
@@ -361,8 +373,8 @@ class AuthServiceTest {
         //then
         assertThat(response.accessToken()).isEqualTo("new-access");
         assertThat(response.refreshToken()).isEqualTo("new-refresh");
-        //회원의 refresh 토큰이 새 토큰으로 회전되었는지 검증
-        assertThat(member.getRefreshToken()).isEqualTo("new-refresh");
+        //회원의 refresh 토큰 해시가 새 토큰 기준으로 회전되었는지 검증
+        assertThat(member.getRefreshTokenHash()).isEqualTo(hashRefreshToken("new-refresh"));
     }
 
     //토큰 재발급 실패 테스트 - 유효하지 않은 토큰이면 INVALID_REFRESH_TOKEN
@@ -391,8 +403,8 @@ class AuthServiceTest {
         String requestToken = "request-refresh";
         MemberRequest.RefreshRequest request = new MemberRequest.RefreshRequest(requestToken);
         Member member = createTestMember(1L, "test@fitback.com", "encodedPw");
-        //회원에 저장된 refresh 토큰은 요청 토큰과 다르게 설정
-        member.updateRefreshToken("stored-different-refresh");
+        //회원에 저장된 refresh 토큰 해시는 요청 토큰과 다르게 설정
+        member.updateRefreshTokenHash(hashRefreshToken("stored-different-refresh"));
 
         //given
         when(jwtUtil.isValid(requestToken)).thenReturn(true);
@@ -415,8 +427,8 @@ class AuthServiceTest {
     @Test
     void logoutSuccessTest(){
         Member member = createTestMember(1L, "test@fitback.com", "encodedPw");
-        //초기화 대상인 refresh 토큰 저장
-        member.updateRefreshToken("some-refresh");
+        //초기화 대상인 refresh 토큰 해시 저장
+        member.updateRefreshTokenHash(hashRefreshToken("some-refresh"));
         //@AuthenticationPrincipal로 주입될 AuthMember 생성
         AuthMember authMember = new AuthMember(member);
 
@@ -427,8 +439,8 @@ class AuthServiceTest {
         authService.logout(authMember);
 
         //then
-        //refresh 토큰이 null로 초기화되었는지 검증
-        assertThat(member.getRefreshToken()).isNull();
+        //refresh 토큰 해시가 null로 초기화되었는지 검증
+        assertThat(member.getRefreshTokenHash()).isNull();
     }
 
     //로그아웃 실패 테스트 - 회원이 없으면 NOT_FOUND
@@ -468,8 +480,8 @@ class AuthServiceTest {
         assertThat(response.refreshToken()).isEqualTo("refresh-token");
         //payload의 신규 가입 여부가 그대로 전달
         assertThat(response.isNewMember()).isTrue();
-        //발급한 refresh 토큰이 회원에 저장되었는지 검증
-        assertThat(member.getRefreshToken()).isEqualTo("refresh-token");
+        //발급한 refresh 토큰 원문이 아닌 HMAC 해시 저장 검증
+        assertThat(member.getRefreshTokenHash()).isEqualTo(hashRefreshToken("refresh-token"));
     }
 
     //임시 토큰 교환 실패 테스트 - 없거나 만료된 임시 토큰이면 INVALID_TEMP_TOKEN

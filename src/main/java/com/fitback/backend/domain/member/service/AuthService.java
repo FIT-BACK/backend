@@ -12,6 +12,7 @@ import com.fitback.backend.global.security.entity.AuthMember;
 import com.fitback.backend.global.security.token.TempTokenPayload;
 import com.fitback.backend.global.security.token.TempTokenStore;
 import com.fitback.backend.global.security.util.JwtUtil;
+import com.fitback.backend.global.util.HmacUtil;
 import com.fitback.backend.global.util.LowercaseNormalizer;
 import com.fitback.backend.global.validation.BCryptPasswordPolicy;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ import java.util.UUID;
 public class AuthService {
 
     private static final String EMAIL_UNIQUE_CONSTRAINT = "UK_MEMBER_EMAIL";
+    private static final String REFRESH_TOKEN_HASH_CONTEXT = "refresh-token:";
 
     // 미가입·소셜 이메일도 실제 회원과 동일한 BCrypt 비용으로 검증하기 위한 고정 해시
     private static final String DUMMY_PASSWORD_HASH =
@@ -36,6 +38,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final MemberRepository memberRepository;
     private final JwtUtil jwtUtil;
+    private final HmacUtil hmacUtil;
     private final TempTokenStore tempTokenStore;
     private final MemberProfileImageService memberProfileImageService;
 
@@ -91,9 +94,9 @@ public class AuthService {
         //AccessToken 발급
         String accessToken = jwtUtil.createAccessToken(authMember);
 
-        //RefreshToken 발급 / 저장
+        //RefreshToken 원문은 응답으로 전달하고 HMAC 해시만 저장
         String refreshToken = jwtUtil.createRefreshToken(authMember);
-        savedMember.updateRefreshToken(refreshToken);
+        savedMember.updateRefreshTokenHash(hashRefreshToken(refreshToken));
 
         // 미가입 상태에서 누적된 동일 이메일의 실패 기록 제거
         loginAttemptService.clear(email);
@@ -148,8 +151,8 @@ public class AuthService {
         //RefreshToken 발급
         String refreshToken = jwtUtil.createRefreshToken(authMember);
 
-        //발급한 RefreshToken 저장
-        member.updateRefreshToken(refreshToken);
+        //발급한 RefreshToken 원문 대신 HMAC 해시 저장
+        member.updateRefreshTokenHash(hashRefreshToken(refreshToken));
         // 로그인 성공 시 이전 실패 횟수와 잠금 기록 제거
         loginAttemptService.clear(email);
 
@@ -176,8 +179,8 @@ public class AuthService {
         Member member = memberRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
 
-        //저장된 refresh token과 요청 토큰 일치 확인 (요청 토큰을 앞에 두어 null 안전)
-        if (!refreshToken.equals(member.getRefreshToken())) {
+        //요청 토큰을 같은 방식으로 해시해 DB에 저장된 값과 비교
+        if (!hashRefreshToken(refreshToken).equals(member.getRefreshTokenHash())) {
             throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
 
@@ -185,7 +188,7 @@ public class AuthService {
         AuthMember authMember = new AuthMember(member);
         String newAccessToken = jwtUtil.createAccessToken(authMember);
         String newRefreshToken = jwtUtil.createRefreshToken(authMember);
-        member.updateRefreshToken(newRefreshToken);
+        member.updateRefreshTokenHash(hashRefreshToken(newRefreshToken));
 
         return MemberResponse.toTokenResponse(newAccessToken, newRefreshToken);
     }
@@ -199,8 +202,8 @@ public class AuthService {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
 
-        //refresh token 초기화
-        member.clearRefreshToken();
+        //저장된 refresh token 해시 초기화
+        member.clearRefreshTokenHash();
     }
 
     //카카오 임시 토큰을 실제 access/refresh 토큰으로 교환 (일회용)
@@ -216,9 +219,15 @@ public class AuthService {
         String accessToken = jwtUtil.createAccessToken(authMember);
         String refreshToken = jwtUtil.createRefreshToken(authMember);
 
-        member.updateRefreshToken(refreshToken);
+        //RefreshToken 원문 대신 HMAC 해시 저장
+        member.updateRefreshTokenHash(hashRefreshToken(refreshToken));
 
         return MemberResponse.toTokenExchangeResponse(accessToken, refreshToken, payload.isNewMember());
+    }
+
+    //다른 HMAC 사용처와 결과가 겹치지 않도록 Refresh Token 용도 문자열 포함
+    private String hashRefreshToken(String refreshToken) {
+        return hmacUtil.hashHex(REFRESH_TOKEN_HASH_CONTEXT + refreshToken);
     }
 
 }

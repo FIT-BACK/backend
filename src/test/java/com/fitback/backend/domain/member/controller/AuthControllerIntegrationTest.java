@@ -12,6 +12,7 @@ import com.fitback.backend.domain.notification.entity.MemberNotificationSetting;
 import com.fitback.backend.domain.notification.repository.MemberNotificationSettingRepository;
 import com.fitback.backend.global.security.token.TempTokenPayload;
 import com.fitback.backend.global.security.token.TempTokenStore;
+import com.fitback.backend.global.util.HmacUtil;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +45,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class AuthControllerIntegrationTest {
 
+    private static final String REFRESH_TOKEN_HASH_CONTEXT = "refresh-token:";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -64,6 +67,9 @@ class AuthControllerIntegrationTest {
 
     @Autowired
     private TempTokenStore tempTokenStore;
+
+    @Autowired
+    private HmacUtil hmacUtil;
 
     @MockitoBean
     private PasswordResetMailSender passwordResetMailSender;
@@ -91,6 +97,10 @@ class AuthControllerIntegrationTest {
         return objectMapper.readTree(responseBody).get("data");
     }
 
+    private String hashRefreshToken(String refreshToken) {
+        return hmacUtil.hashHex(REFRESH_TOKEN_HASH_CONTEXT + refreshToken);
+    }
+
     //이메일/비밀번호 요청 JSON 생성
     private String jsonBody(String email, String password) throws Exception {
         return objectMapper.writeValueAsString(Map.of("email", email, "password", password));
@@ -99,20 +109,23 @@ class AuthControllerIntegrationTest {
     //회원가입 성공 테스트 - 200, 생성 코드, USER 권한, DB 저장
     @Test
     void signUpSuccessTest() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/sign")
+        String responseBody = mockMvc.perform(post("/api/v1/auth/sign")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonBody("Test@FITBACK.COM", "password123")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.code").value("COMMON201_1"))
                 .andExpect(jsonPath("$.data.email").value("test@fitback.com"))
-                .andExpect(jsonPath("$.data.role").value("USER"));
+                .andExpect(jsonPath("$.data.role").value("USER"))
+                .andReturn().getResponse().getContentAsString();
 
         //DB에 회원 저장 확인
         assertThat(memberRepository.existsByEmail("test@fitback.com")).isTrue();
 
         //회원가입 시 기본 알림 설정 저장 확인
         Member member = memberRepository.findByEmail("test@fitback.com").orElseThrow();
+        String refreshToken = objectMapper.readTree(responseBody).get("data").get("refreshToken").asText();
+        assertThat(member.getRefreshTokenHash()).isEqualTo(hashRefreshToken(refreshToken));
         MemberNotificationSetting setting = notificationSettingRepository.findById(member.getId()).orElseThrow();
         assertThat(setting.getAnalysisCompleteEnabled()).isTrue();
         assertThat(setting.getLookbookLikedEnabled()).isTrue();
@@ -331,7 +344,7 @@ class AuthControllerIntegrationTest {
                 "newPassword123",
                 member.getPassword()
         )).isTrue();
-        assertThat(member.getRefreshToken()).isNull();
+        assertThat(member.getRefreshTokenHash()).isNull();
         assertThat(passwordResetTokenRepository.findById(member.getId())).isEmpty();
     }
 
@@ -407,9 +420,9 @@ class AuthControllerIntegrationTest {
         //회전으로 새 토큰은 기존 토큰과 달라야 함
         assertThat(newRefreshToken).isNotEqualTo(oldRefreshToken);
 
-        //새 토큰이 DB에 저장되었는지 확인
+        //새 토큰 원문이 아닌 HMAC 해시가 DB에 저장되었는지 확인
         Member member = memberRepository.findByEmail("rotation@fitback.com").orElseThrow();
-        assertThat(member.getRefreshToken()).isEqualTo(newRefreshToken);
+        assertThat(member.getRefreshTokenHash()).isEqualTo(hashRefreshToken(newRefreshToken));
 
         //기존 토큰으로 다시 재발급 시 401 (재사용 차단)
         mockMvc.perform(post("/api/v1/auth/token/refresh")
@@ -430,9 +443,9 @@ class AuthControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("COMMON200_1"));
 
-        //DB refresh 토큰 null 초기화 확인
+        //DB refresh 토큰 해시 null 초기화 확인
         Member member = memberRepository.findByEmail("logout@fitback.com").orElseThrow();
-        assertThat(member.getRefreshToken()).isNull();
+        assertThat(member.getRefreshTokenHash()).isNull();
     }
 
     //로그아웃 실패 테스트 - 토큰 없으면 401
@@ -474,10 +487,10 @@ class AuthControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.isNewMember").value(true))
                 .andReturn().getResponse().getContentAsString();
 
-        //교환으로 발급된 refresh 토큰이 DB에 갱신되었는지 검증
+        //교환으로 발급된 refresh 토큰 원문이 아닌 HMAC 해시 저장 검증
         String newRefreshToken = objectMapper.readTree(responseBody).get("data").get("refreshToken").asText();
         Member member = memberRepository.findByEmail("exchange@fitback.com").orElseThrow();
-        assertThat(member.getRefreshToken()).isEqualTo(newRefreshToken);
+        assertThat(member.getRefreshTokenHash()).isEqualTo(hashRefreshToken(newRefreshToken));
     }
 
     //임시 토큰 교환 실패 테스트 - 유효하지 않은 임시 토큰은 401 + AUTH401_3 (보안이 아닌 비즈니스 계층 도달 = permitAll 확인)
