@@ -344,8 +344,12 @@ public class LookbookService {
     @Transactional(readOnly = true)
     public LookbookResponse.LookbookDetail getLookbookDetail(Long lookbookId, Member member) {
 
-        // lookbookId 유효성 검사 및 조회
-        Lookbook lookbook = lookbookRepository.findByIdAndDeletedAtIsNull(lookbookId)
+        //삭제되거나 신고로 숨김 처리된 룩북은 공개 상세 조회에서 제외
+        Lookbook lookbook = lookbookRepository
+                .findByIdAndDeletedAtIsNullAndModerationStatus(
+                        lookbookId,
+                        LookbookModerationStatus.VISIBLE
+                )
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.NOT_FOUND,
                         "룩북을 찾을 수 없습니다."
