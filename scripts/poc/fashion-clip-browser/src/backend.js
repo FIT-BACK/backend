@@ -3,6 +3,7 @@ export async function fetchRecommendation({
   reportId,
   accessToken = '',
   benchmarkTrace = false,
+  requestBody = null,
   fetchImpl = fetch,
 }) {
   const url = recommendationUrl(baseUrl, reportId);
@@ -16,10 +17,10 @@ export async function fetchRecommendation({
   }
 
   const started = performance.now();
-  const response = await fetchImpl(url, {
+  const response = await fetchImpl(url, withBenchmarkJsonBody({
     method: 'POST',
     headers,
-  });
+  }, requestBody));
   let payload = null;
   try {
     payload = await response.json();
@@ -34,6 +35,22 @@ export async function fetchRecommendation({
     payload,
   };
 }
+
+export function withBenchmarkJsonBody(requestOptions, requestBody) {
+  if (requestOptions.method !== 'POST' || requestOptions.body != null || requestBody == null) {
+    return requestOptions;
+  }
+
+  return {
+    ...requestOptions,
+    headers: {
+      ...requestOptions.headers,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  };
+}
+
 export function extractBrowserReranking(payload) {
   const backendData = payload?.data;
   if (!backendData || typeof backendData !== 'object' || Array.isArray(backendData)) {

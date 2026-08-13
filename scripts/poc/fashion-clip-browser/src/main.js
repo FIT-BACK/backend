@@ -38,6 +38,23 @@ function resolveModelConfig() {
 
 const MODEL_CONFIG = resolveModelConfig();
 const MODEL_URL = MODEL_CONFIG.url;
+const BENCHMARK_CUSTOM_TAG_PARAM = 'benchmarkCustomTag';
+
+function resolveBenchmarkRecommendationRequest() {
+  const customTagName = new URLSearchParams(window.location.search)
+    .get(BENCHMARK_CUSTOM_TAG_PARAM)
+    ?.trim();
+  if (!customTagName || customTagName.length > 50) {
+    return null;
+  }
+  return {
+    confirmedTagIds: [],
+    customTagNames: [customTagName],
+    matchPercentage: 50,
+  };
+}
+
+const BENCHMARK_RECOMMENDATION_REQUEST = resolveBenchmarkRecommendationRequest();
 const WASM_PATH = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/';
 const IMAGE_SIZE = 224;
 const BENCHMARK_SIZES = [1, 3, 5, 10];
@@ -1129,6 +1146,7 @@ async function runBackendIntegration(queryFile) {
     reportId: elements.reportId.value.trim(),
     accessToken: elements.accessToken.value,
     benchmarkTrace: true,
+    requestBody: BENCHMARK_RECOMMENDATION_REQUEST,
   });
   const extracted = extractBrowserReranking(request.payload);
   elements.backendSummary.textContent = [
@@ -1195,6 +1213,7 @@ async function runBackendBenchmarkIntegration(queryFile) {
     baseUrl: elements.backendUrl.value.trim(),
     reportId: elements.reportId.value.trim(),
     accessToken: elements.accessToken.value,
+    requestBody: BENCHMARK_RECOMMENDATION_REQUEST,
   });
   const extracted = extractBrowserReranking(request.payload);
   elements.backendSummary.textContent = [

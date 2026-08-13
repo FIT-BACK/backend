@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractBrowserReranking, fetchRecommendation } from '../src/backend.js';
+import {
+  extractBrowserReranking,
+  fetchRecommendation,
+  withBenchmarkJsonBody,
+} from '../src/backend.js';
 import { buildBrowserPerformanceTrace } from '../src/baseline-trace.js';
 import {
   calculateFinalScore,
@@ -247,6 +251,54 @@ test('fetches the recommendation POST with an optional bearer token and preserve
   });
   assert.equal(result.status, 200);
   assert.equal(result.ok, true);
+});
+
+test('keeps a JSON POST body and headers when the recommendation URL is an object', async () => {
+  const calls = [];
+  const requestBody = {
+    confirmedTagIds: [],
+    customTagNames: ['black hoodie'],
+    matchPercentage: 50,
+  };
+
+  await fetchRecommendation({
+    baseUrl: 'http://localhost:8080',
+    reportId: 4,
+    accessToken: 'local-token',
+    benchmarkTrace: true,
+    requestBody,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({ data: {} }),
+      };
+    },
+  });
+
+  assert.ok(calls[0].url instanceof URL);
+  assert.equal(calls[0].url.href, 'http://localhost:8080/api/v1/analyses/4/recommendations');
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.headers.Accept, 'application/json');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer local-token');
+  assert.equal(calls[0].options.headers['X-Fitback-Benchmark-Trace'], 'baseline-v1');
+  assert.equal(calls[0].options.headers['Content-Type'], 'application/json');
+  assert.equal(calls[0].options.body, JSON.stringify(requestBody));
+  assert.ok(new TextEncoder().encode(calls[0].options.body).byteLength > 0);
+});
+
+test('does not attach a benchmark body to GET or an existing request body', () => {
+  const requestBody = { customTagNames: ['black hoodie'] };
+  const getOptions = { method: 'GET', headers: { Accept: 'application/json' } };
+  const existingPost = {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+    body: '{"existing":true}',
+  };
+
+  assert.equal(withBenchmarkJsonBody(getOptions, requestBody), getOptions);
+  assert.equal(withBenchmarkJsonBody(existingPost, requestBody), existingPost);
 });
 
 test('requests the opt-in backend trace without exposing the access token in its result', async () => {
