@@ -512,16 +512,11 @@ target으로 사용하지 않는다. Pre-V31 코드는 남아 있는 `refresh_to
 저장하므로 hash-only 계약을 깨고, V31 migration은 이미 성공 처리되어 재배포해도 해당 원문을
 자동으로 다시 지우지 않는다.
 
-현재 `remote_deploy.sh`는 새 release가 health 검증에 실패하면 직전 release를 자동으로 다시
-기동한다. 따라서 직전 운영 release가 pre-V31인 최초 V31 배포는 이 제한을 script가 자동으로
-보장하지 못한다. 최초 V31 운영 배포 전에 다음 중 하나를 별도 승인·구현해야 한다.
-
-1. rollback 대상이 V31-compatible release인지 검증하고 pre-V31 복원을 거부하는 배포 guard
-2. pre-V31 긴급 복원 동안 인증 traffic을 차단하고, V31 재배포 후 `refresh_token` 원문을 다시
-   `NULL` 처리한 다음 전체 재로그인을 강제하는 운영 절차
-
-둘 중 하나가 준비되지 않은 상태는 V31 운영 배포의 `USER_INPUT_REQUIRED` gate다. 단순히 기존
-컬럼을 유지했다는 이유로 pre-V31 rollback을 안전하다고 판정하지 않는다.
+CD 배포 묶음은 `deploy/compatibility/v31-refresh-token-hash` 표식을 포함한다.
+`remote_deploy.sh`는 rollback 전에 직전 release의 표식을 확인하고, 표식이 없는 pre-V31
+release의 pull·재기동·활성화를 거부한다. 최초 V31 배포가 migration 이후 실패하면 자동 복구보다
+hash-only 저장 계약을 우선하므로 배포가 rollback 실패 상태로 종료되고 운영자가 V31 호환 release를
+복구해야 한다. 단순히 기존 컬럼을 유지했다는 이유로 pre-V31 rollback을 안전하다고 판정하지 않는다.
 
 ### V23 실패 migration 복구
 
@@ -575,7 +570,7 @@ WHERE TABLE_SCHEMA = DATABASE()
 6. 새 release의 `docker compose up -d --remove-orphans`를 실행한다.
 7. `/nginx-health`와 backend container health가 모두 정상인지 확인한다.
 8. 성공하면 `/opt/fitback/current` symlink를 새 release로 원자적으로 교체한다.
-9. 실패하면 직전 release의 Compose asset, Nginx 설정, `.env`, image digest를 함께 다시 시작하고 health를 재검증한 뒤 `current` symlink도 직전 release로 복원한다.
+9. 실패하면 V31 호환 표식이 있는 직전 release만 Compose asset, Nginx 설정, `.env`, image digest를 함께 다시 시작하고 health를 재검증한 뒤 `current` symlink도 직전 release로 복원한다. 표식이 없으면 자동 rollback을 거부한다.
 
 첫 배포가 실패해 이전 release가 없으면 실패한 stack을 내리고 `.env`를 제거한다. 배포 중 예기치 않은 오류, `INT`/`TERM`, 활성 symlink 교체 실패도 같은 rollback 경로를 사용한다. rollback 중 pull, 시작 또는 health 검증이 실패하면 별도의 rollback 실패 코드로 종료한다.
 
@@ -602,6 +597,7 @@ Run Command의 실제 shell 실행 제한은 `executionTimeout=900`초이다. Gi
 | 잘못된 digest | remote deploy 입력 검증 및 mock test | 배포 전 거절 |
 | 중복 배포 | `flock` mock test | 두 번째 실행 거절 |
 | rollback 자체 실패 | mock test | 비정상 종료 코드 반환 |
+| V31에서 pre-V31 release로 rollback | `scripts/deploy/test_remote_deploy.sh` | 호환 표식 부재를 감지해 pull·재기동 거부 |
 | 활성화 실패 및 INT/TERM | mock test | 직전 release 복원 |
 | DB/JWT/HMAC/Kakao/메일 비밀값 특수문자 | mock test | `.env`와 로그에 남지 않음 |
 | Flyway V1~V31 MySQL 적용 | `scripts/ci/test_mysql_migrations.sh` | MySQL 8.4의 신규·기존 Refresh Token schema에 모든 migration 적용, V31 원문 폐기·해시 컬럼과 태그 47개·복종 매핑 74개 및 기존 주요 제약조건 확인 |
