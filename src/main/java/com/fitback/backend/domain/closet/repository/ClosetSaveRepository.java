@@ -16,7 +16,42 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ClosetSaveRepository extends JpaRepository<ClosetSave, Long> {
 
-    long countByMemberId(Long memberId);
+    //마이 클로젯 목록에 표시 가능한 저장 대상만 집계
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM closet_save closet_save
+            WHERE closet_save.member_id = :memberId
+              AND (
+                  (
+                      closet_save.target_type = 'TREND'
+                      AND EXISTS (
+                          SELECT 1
+                          FROM trend_content trend
+                          WHERE trend.trend_id = closet_save.target_id
+                      )
+                  )
+                  OR (
+                      closet_save.target_type = 'LOOKBOOK'
+                      AND EXISTS (
+                          SELECT 1
+                          FROM lookbook lookbook
+                          WHERE lookbook.lookbook_id = closet_save.target_id
+                            AND lookbook.deleted_at IS NULL
+                      )
+                  )
+                  OR (
+                      closet_save.target_type = 'ANALYSIS_REPORT'
+                      AND EXISTS (
+                          SELECT 1
+                          FROM analysis_report report
+                          WHERE report.report_id = closet_save.target_id
+                            AND report.member_id = closet_save.member_id
+                            AND report.deleted_at IS NULL
+                      )
+                  )
+              )
+            """, nativeQuery = true)
+    long countDisplayableByMemberId(@Param("memberId") Long memberId);
 
     Optional<ClosetSave> findByMemberIdAndTargetTypeAndTargetId(
             Long memberId,

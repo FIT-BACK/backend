@@ -113,7 +113,8 @@ public class MemberService {
         //member entity에 대해 수정은 없으므로 UserDetails 객체에서 바로 얻어와 사용(쿼리 x)
         Member member = authMember.getMember();
 
-        Long savedCount = closetSaveRepository.countByMemberId(member.getId());
+        //삭제된 저장 대상은 마이 클로젯 목록과 동일하게 집계에서 제외
+        Long savedCount = closetSaveRepository.countDisplayableByMemberId(member.getId());
         // "분석 완료" 카운트 — 업로드 직후 생성만 되고 아직 태그 확인/추천이 안 끝난 리포트까지
         // 세면 안 되므로, 실제로 추천 결과까지 생성된(recommendationGeneratedAt != null) 것만 센다.
         Long analysisCount = analysisReportRepository
