@@ -87,7 +87,10 @@ Shopify 상품은 provider/product/variant/merchant ID만 저장하며 상품명
 `imageSimilarity * 0.70 + tagSimilarity * 0.30`을 계산하고 relevance top-10을 선택한 뒤,
 선택된 후보가 모두 유한하고 비교 가능한 가격을 가지며 동일 currency일 때만 price ASC로
 표시하고, 그 외에는 전체 relevance 순서를 유지합니다. browser score는 backend에 저장하지
-않습니다.
+않습니다. 이 browser reranking 결과가 실제 사용자에게 노출하는 추천 순서의 기준입니다.
+`recommendationGroups[].items[].similarityScore`는 서버 호환성과 추천 이력 저장을 위한
+임시·내부 점수이며, 고정 이미지 점수 70을 사용하므로 사용자 노출 순위를 결정하는 실제
+Fashion-CLIP 점수로 해석하지 않습니다.
 
 배포형 최소 프로토타입에서는 다음 비민감 runtime 설정을 함께 전달합니다.
 
@@ -149,7 +152,7 @@ CREATE DATABASE fitback;
 쇼핑 공급자 contract test도 외부 네트워크 없이 fixture Adapter를 기준으로 실행합니다.
 GitHub Actions의 Backend CI는 이 Gradle 빌드와 함께
 `bash scripts/ci/test_mysql_migrations.sh`를 실행하여 MySQL 8.4 컨테이너에서
-현재 Flyway `V1`~`V28` 마이그레이션과 주요 제약조건을 검증합니다.
+현재 Flyway `V1`~`V31` 마이그레이션과 주요 제약조건을 검증합니다.
 ECR 이미지 발행, Nginx 공개 진입점, 원격 배포 payload 계약까지 포함한 전체 CI 명령은
 [AGENTS.md의 CI 규칙](AGENTS.md#15-ci-규칙)과
 [workflow 정의](.github/workflows/backend-ci.yml)를 기준으로 합니다.
@@ -218,7 +221,10 @@ http://127.0.0.1:5173
 회원가입·로그인·토큰 재발급·카카오 임시 토큰 교환에서 access/refresh JWT는 응답 본문의
 `data`에 발급합니다. 이후 인증 요청은 access token을 `Authorization: Bearer {accessToken}`
 헤더로 보내며, refresh token은 재발급 API의 JSON body로 전달합니다. credential cookie는
-허용하지 않습니다.
+허용하지 않습니다. 서버는 Refresh Token 원문을 저장하지 않고 용도 문자열을 포함한
+HMAC-SHA256 해시만 저장·검증합니다. 재발급에 성공하면 access/refresh token을 함께 회전하고,
+로그아웃과 비밀번호 재설정은 저장된 Refresh Token 해시를 제거합니다. V31 배포 시 기존 원문
+Refresh Token은 모두 폐기되므로 기존 로그인 사용자는 한 번 재로그인해야 합니다.
 운영 프로필의 Spring CORS allowlist는 comma-separated `APP_CORS_ALLOWED_ORIGINS` 환경변수로
 주입합니다. GitHub Repository Variable을 변경한 경우 새 production 배포가 필요합니다.
 배포 후에는 allowlist에 포함된 로컬 프론트엔드 Origin으로 로그인 OPTIONS preflight와 POST 응답의

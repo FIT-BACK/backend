@@ -153,18 +153,23 @@ OTHER
 - body를 생략한 요청은 표시 가능한 기존 분석 태그가 없으면 추천을 생성하지 않는다.
 - 원상품 후보 탐색, 원상품 선택, 기준 가격 확정은 이번 Recommendation/Product 범위가 아니다.
 
-### 2.3 유사도 점수
+### 2.3 백엔드 영속 임시 유사도 점수
+
+이 절의 `similarityScore`와 `finalScore`는 서버 호환성과 추천 이력 저장을 위한 임시·내부
+계약이다. 실제 사용자에게 노출하는 추천 순서는 7절의 `browserReranking` 후보를 브라우저가
+Fashion-CLIP으로 재평가한 결과를 기준으로 한다.
 
 - 모든 `similarityScore`는 0~100으로 정규화한다.
 - `finalScore`는 이번 범위에서 `similarityScore`와 같다.
 - 상품 가격은 검색·상세·찜 화면 표시용이며 추천 점수나 가성비 문구에 사용하지 않는다.
 - 공급자 raw score를 그대로 내부 점수로 저장하지 않는다.
 - `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 타입 분석 태그 중 상품명·브랜드·카테고리에
-  포함된 태그의 비율을 0~100의 `tagMatchScore`로 계산한다.
+  포함된 태그로 0~100의 `tagMatchScore`를 계산한다. 백엔드 영속 점수에서 `COLOR`의 가중치는
+  6이고 나머지 세 속성의 가중치는 각각 1이다.
 - `STYLE` 타입과 직접 입력 태그는 점수 계산의 분자와 분모에서 제외한다.
 - 태그 점수 계산 대상이 없으면 `tagMatchScore`는 100점이다.
-- 실제 이미지 유사도 연동 전까지 `temporaryImageSimilarityScore`는 70점으로 고정한다. 향후 이미지
-  유사도 계산이 구현되면 이 임시값을 실제 계산 결과로 교체한다.
+- 백엔드 영속 점수의 `temporaryImageSimilarityScore`는 70점으로 고정하며 실제 Fashion-CLIP
+  이미지 유사도나 사용자 노출 순위로 해석하지 않는다.
 - 최종 `similarityScore`는 `temporaryImageSimilarityScore * 0.7 + tagMatchScore * 0.3`이며,
   소수 둘째 자리에서 `HALF_UP`으로 저장한다.
 - 계산 대상 태그가 모두 일치하면 `FULL_ATTRIBUTE_MATCH`, 일부만 일치하면
@@ -591,12 +596,15 @@ Demo와 Prototype 분석기는 실제 AI 의류 분류 결과가 없는 흐름 �
 `ExternalProductCandidate`의 response-time snapshot이며 최대 30개다. `candidateId`는
 기존 member-bound opaque candidate token이고, `imageUrl`, `tagSimilarity`, `name`,
 `sellerName`, `price`(`ProductPriceResponse` 재사용), `purchaseUrl`만 표시용으로 전달한다.
+Browser `tagSimilarity`는 eligible tag의 단순 일치 개수/전체 개수로 계산한 비가중 `[0,1]`
+비율이다. 백엔드 영속 `tagMatchScore`에만 적용하는 `COLOR=6` 가중치를 사용하지 않는다.
 판매자·가격·구매 URL이 없으면 해당 값은 `null`이며 임의의 기본값이나 URL을 만들지 않는다.
 이 snapshot은 live Shopify 가격 보장이 아니며, browser는 candidate token resolve API나
 추가 Shopify metadata lookup을 호출하지 않는다. Shopify GID, merchant identity, provider
 internal ID, persisted productId는 이 contract에 노출하지 않는다.
 
-Browser는 이 응답의 후보 전체에 대해 현재 normalized Fashion-CLIP cosine과
+실제 사용자에게 노출하는 추천 순서는 이 browser reranking 결과를 기준으로 한다. Browser는
+이 응답의 후보 전체에 대해 현재 normalized Fashion-CLIP cosine과
 `finalScore = imageSimilarity * 0.70 + tagSimilarity * 0.30`을 계산하고, threshold 없이
 `finalScore DESC`로 `min(10, candidateCount)` relevance shortlist를 선택한다. 선택된
 shortlist의 모든 후보가 유한하고 비교 가능한 `price.amount`를 가지며 동일 currency일 때만
@@ -1429,6 +1437,12 @@ URL이고, 트렌드 이미지와 룩북의 매칭 상품 이미지는 외부 UR
 token은 가입·로그인·교환·refresh 응답 body로 발급한다. 이후 보호 API 요청은
 `Authorization: Bearer {accessToken}` 헤더를 사용한다. 비밀번호는 가입 시 필수이고, 변경·재설정
 비밀번호는 8~64자 validation을 적용한다.
+
+서버는 Refresh Token 원문을 저장하지 않는다. 회원가입·로그인·Kakao token 교환·재발급 시
+`refresh-token:` 용도 문자열을 포함한 HMAC-SHA256 소문자 64자리 hex만 저장하고, 원문은
+응답 body로만 전달한다. 재발급은 요청 원문의 HMAC을 저장값과 비교한 뒤 access/refresh token을
+함께 회전한다. 로그아웃과 비밀번호 재설정은 저장된 해시를 제거한다. V31은 기존 DB의 원문
+Refresh Token을 폐기하므로 배포 전에 로그인한 사용자는 `AUTH401_2` 응답 후 재로그인해야 한다.
 
 ### 19.2 Member와 프로필 이미지
 

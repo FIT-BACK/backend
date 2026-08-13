@@ -447,7 +447,7 @@ bash scripts/ci/test_mysql_migrations.sh
 
 앞의 세 스크립트는 ECR 이미지 발행, CloudFront를 통한 Nginx 공개 진입점, 원격 배포 payload
 계약을 각각 검사한다. Gradle 테스트는 H2 기반 `application-test.yml`을 사용한다. MySQL
-migration 스크립트는 임시 MySQL 8.4 컨테이너에 Flyway `V1`~`V21` SQL을 순서대로 적용하고
+migration 스크립트는 임시 MySQL 8.4 컨테이너에 Flyway `V1`~`V31` SQL을 순서대로 적용하고
 주요 스키마·제약조건 계약을 검증한다.
 운영 프로필은 Flyway를 비활성화하지 않으며 `src/main/resources/application-prod.yml`의
 baseline 설정과 `ddl-auto: validate` 정책으로 마이그레이션을 수행한다.

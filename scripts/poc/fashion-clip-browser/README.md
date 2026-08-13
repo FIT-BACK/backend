@@ -122,6 +122,6 @@ This run did not obtain a meaningful browser HTTP-cache hit: the second request 
 
 ## Scope limits
 
-- This is not production frontend code; it calls the existing backend recommendation endpoint but does not add a browser score endpoint.
-- It performs one query comparison, a backend handoff run, or a bounded `1/3/5/10` candidate benchmark. Browser final scores remain visible-only.
+- This is not production frontend code, but its handoff validation and 70/30 reranking behavior are the reference contract for the user-visible recommendation order. It calls the existing backend recommendation endpoint and does not add a browser score endpoint.
+- It performs one query comparison, a backend handoff run, or a bounded `1/3/5/10` candidate benchmark. Browser final scores remain visible-only and are never persisted or submitted to the backend.
 - A real same-image/model measurement requires a user-provided local image and a browser with model access. No image is downloaded or fabricated by this repository.
