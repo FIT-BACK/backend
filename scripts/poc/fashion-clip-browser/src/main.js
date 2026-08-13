@@ -2,6 +2,11 @@ import * as ort from 'onnxruntime-web/webgpu';
 import { extractBrowserReranking, fetchRecommendation } from './backend.js';
 import { buildBrowserPerformanceTrace, logBrowserPerformanceTrace } from './baseline-trace.js';
 import {
+  CANDIDATE_IMAGE_FETCH_DEADLINE_MS,
+  decodeCandidateBlob,
+  fetchCandidateBlob,
+} from './candidate-fetch.js';
+import {
   calculateFinalScore,
   compareRerankingResults,
   cosineSimilarity,
@@ -378,69 +383,42 @@ function urlHost(url) {
 }
 
 async function fetchUrlBlob(url, index) {
-  const result = {
+  const fetched = await fetchCandidateBlob({
+    url,
+    originalIndex: index + 1,
+    deadlineMs: CANDIDATE_IMAGE_FETCH_DEADLINE_MS,
+  });
+  return {
     index: index + 1,
     host: urlHost(url),
-    contentType: '-',
-    fetchLatencyMs: 0,
+    contentType: fetched.contentType,
+    fetchLatencyMs: fetched.fetchLatencyMs,
     decodeLatencyMs: 0,
     preprocessLatencyMs: 0,
-    fetchSucceeded: false,
+    fetchSucceeded: fetched.fetchSucceeded,
     decodeSucceeded: false,
     preprocessSucceeded: false,
-    status: 'blocked',
+    terminationReason: fetched.terminationReason,
+    abortIssued: fetched.abortIssued,
+    blob: fetched.blob,
+    fetchStartedAt: fetched.fetchStartedAt,
+    fetchCompletedAt: fetched.fetchCompletedAt,
+    status: fetchStatus(fetched),
   };
-  const fetchStarted = performance.now();
-  result.fetchStartedAt = fetchStarted;
-  let response;
-  try {
-    response = await fetch(url, {
-      mode: 'cors',
-      credentials: 'omit',
-      cache: 'no-store',
-    });
-  } catch (error) {
-    result.status = `CORS/network failure: ${errorMessage(error)}`;
-    return completeStage(result, 'fetch', fetchStarted);
-  }
-  result.contentType = response.headers.get('content-type')?.split(';', 1)[0] ?? '-';
-  if (!response.ok) {
-    result.status = `HTTP ${response.status}`;
-    return completeStage(result, 'fetch', fetchStarted);
-  }
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(result.contentType)) {
-    result.status = `unsupported content type: ${result.contentType}`;
-    return completeStage(result, 'fetch', fetchStarted);
-  }
-
-  try {
-    result.blob = await response.blob();
-  } catch (error) {
-    result.status = `body read failure: ${errorMessage(error)}`;
-    return completeStage(result, 'fetch', fetchStarted);
-  }
-  result.status = 'fetched';
-  result.fetchSucceeded = true;
-  return completeStage(result, 'fetch', fetchStarted);
 }
 
 async function decodeUrlImage(result) {
-  if (result.status !== 'fetched') {
+  if (!result.fetchSucceeded) {
     return result;
   }
 
-  const decodeStarted = performance.now();
-  result.decodeStartedAt = decodeStarted;
-  try {
-    result.image = await createImage(result.blob, `candidate ${result.index}`);
-  } catch (error) {
-    result.status = `decode failure: ${errorMessage(error)}`;
-    return completeStage(result, 'decode', decodeStarted);
-  }
-  result.blob = null;
-  result.status = 'decoded';
-  result.decodeSucceeded = true;
-  return completeStage(result, 'decode', decodeStarted);
+  const decoded = await decodeCandidateBlob(result, {
+    decodeImage: (blob) => createImage(blob, `candidate ${result.index}`),
+  });
+  return {
+    ...decoded,
+    status: decoded.decodeSucceeded ? 'decoded' : 'decode failure',
+  };
 }
 
 async function preprocessUrlImage(result) {
@@ -463,12 +441,18 @@ async function preprocessUrlImage(result) {
 
 async function fetchCandidateTensorData(candidates) {
   const acquisitionStarted = performance.now();
-  const results = await Promise.all(candidates.map(async (candidate) => {
+  const settled = await Promise.allSettled(candidates.map(async (candidate) => {
     const fetched = await fetchUrlBlob(candidate.imageUrl, candidate.originalIndex - 1);
     const decoded = await decodeUrlImage(fetched);
     const ready = await preprocessUrlImage(decoded);
     return { ...ready, ...candidate };
   }));
+  const results = settled.map((result, index) => (
+    result.status === 'fulfilled'
+      ? result.value
+      : unexpectedCandidatePipelineFailure(candidates[index])
+  ));
+  const terminationCounts = countCandidateTerminationReasons(results);
 
   return {
     results,
@@ -477,6 +461,19 @@ async function fetchCandidateTensorData(candidates) {
       candidateFetchRequestCount: results.length,
       candidateImageFetchSuccessCount: results.filter((result) => result.fetchSucceeded).length,
       candidateImageFetchFailureCount: results.filter((result) => !result.fetchSucceeded).length,
+      candidateFetchDeadlineMs: CANDIDATE_IMAGE_FETCH_DEADLINE_MS,
+      candidateFetchMaxLatencyMs: maxMetric(results, 'fetchLatencyMs'),
+      candidateTerminationSuccessCount: terminationCounts.success,
+      candidateFetchHttpErrorCount: terminationCounts.http_error,
+      candidateFetchTimeoutCount: terminationCounts.timeout,
+      candidateFetchNetworkErrorCount: terminationCounts.network_error,
+      candidateFetchAbortedCount: terminationCounts.aborted,
+      candidateDecodeErrorCount: terminationCounts.decode_error,
+      candidateFetchTerminations: results.map((result) => ({
+        originalIndex: result.originalIndex,
+        reason: result.terminationReason,
+        fetchLatencyMs: result.fetchLatencyMs,
+      })),
       candidateDecodeRequestCount: results.filter((result) => result.fetchSucceeded).length,
       candidateDecodeSuccessCount: results.filter((result) => result.decodeSucceeded).length,
       candidateDecodeFailureCount: results.filter(
@@ -495,6 +492,68 @@ async function fetchCandidateTensorData(candidates) {
       preprocessCumulativeMs: sumMetric(results, 'preprocessLatencyMs'),
     },
   };
+}
+
+function fetchStatus(fetched) {
+  switch (fetched.terminationReason) {
+    case 'success':
+      return 'fetched';
+    case 'http_error':
+      return Number.isInteger(fetched.httpStatus) && (fetched.httpStatus < 200 || fetched.httpStatus >= 300)
+        ? `HTTP ${fetched.httpStatus}`
+        : 'unsupported content type';
+    case 'timeout':
+      return 'fetch timeout';
+    case 'aborted':
+      return 'fetch aborted';
+    default:
+      return 'CORS/network failure';
+  }
+}
+
+function unexpectedCandidatePipelineFailure(candidate) {
+  const completedAt = performance.now();
+  return {
+    index: candidate.originalIndex,
+    host: urlHost(candidate.imageUrl),
+    contentType: '-',
+    fetchLatencyMs: 0,
+    decodeLatencyMs: 0,
+    preprocessLatencyMs: 0,
+    fetchSucceeded: false,
+    decodeSucceeded: false,
+    preprocessSucceeded: false,
+    terminationReason: 'network_error',
+    abortIssued: false,
+    fetchStartedAt: completedAt,
+    fetchCompletedAt: completedAt,
+    status: 'CORS/network failure',
+    ...candidate,
+  };
+}
+
+function countCandidateTerminationReasons(results) {
+  const counts = {
+    success: 0,
+    http_error: 0,
+    timeout: 0,
+    network_error: 0,
+    aborted: 0,
+    decode_error: 0,
+  };
+  for (const result of results) {
+    if (result.terminationReason in counts) {
+      counts[result.terminationReason] += 1;
+    }
+  }
+  return counts;
+}
+
+function maxMetric(items, property) {
+  const values = items
+    .map((item) => item[property])
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  return values.length > 0 ? Math.max(...values) : 0;
 }
 
 function readEmbedding(output, index, batchSize) {
@@ -1311,7 +1370,8 @@ function safeHandoffFailure(status) {
   if (status.startsWith('CORS/network')) return 'CORS/network failure';
   if (status.startsWith('HTTP ')) return status.split(':', 1)[0];
   if (status.startsWith('unsupported content type')) return 'unsupported content type';
-  if (status.startsWith('body read failure')) return 'body read failure';
+  if (status.startsWith('fetch timeout')) return 'fetch timeout';
+  if (status.startsWith('fetch aborted')) return 'fetch aborted';
   if (status.startsWith('decode failure')) return 'decode failure';
   if (status.startsWith('preprocess failure')) return 'preprocess failure';
   return 'candidate image failure';

@@ -1,3 +1,5 @@
+import { CANDIDATE_TERMINATION_REASONS } from './candidate-fetch.js';
+
 const TRACE_EVENT = 'browser_fashion_clip_performance_trace';
 const TRACE_SCHEMA_VERSION = 'baseline-v1';
 
@@ -58,13 +60,7 @@ export function buildBrowserPerformanceTrace({
     },
     candidates: {
       count: candidateCount,
-      imageFetch: timing(
-        metrics.candidateFetchRequestCount ?? candidateCount,
-        metrics.candidateImageFetchSuccessCount,
-        metrics.candidateImageFetchFailureCount,
-        metrics.fetchWallClockMs,
-        metrics.fetchCumulativeMs,
-      ),
+      imageFetch: imageFetchTiming(metrics, candidateCount),
       decode: timing(
         metrics.candidateDecodeRequestCount,
         metrics.candidateDecodeSuccessCount,
@@ -97,6 +93,29 @@ export function buildBrowserPerformanceTrace({
   };
 }
 
+function imageFetchTiming(metrics, candidateCount) {
+  return {
+    ...timing(
+      metrics.candidateFetchRequestCount ?? candidateCount,
+      metrics.candidateImageFetchSuccessCount,
+      metrics.candidateImageFetchFailureCount,
+      metrics.fetchWallClockMs,
+      metrics.fetchCumulativeMs,
+    ),
+    deadlineMs: safeLatency(metrics.candidateFetchDeadlineMs),
+    slowestRequestLatencyMs: safeLatency(metrics.candidateFetchMaxLatencyMs),
+    outcomes: {
+      successCount: safeCount(metrics.candidateTerminationSuccessCount),
+      httpErrorCount: safeCount(metrics.candidateFetchHttpErrorCount),
+      timeoutCount: safeCount(metrics.candidateFetchTimeoutCount),
+      networkErrorCount: safeCount(metrics.candidateFetchNetworkErrorCount),
+      abortedCount: safeCount(metrics.candidateFetchAbortedCount),
+      decodeErrorCount: safeCount(metrics.candidateDecodeErrorCount),
+    },
+    terminations: safeCandidateTerminations(metrics.candidateFetchTerminations),
+  };
+}
+
 export function logBrowserPerformanceTrace(trace, logger = console) {
   logger.info(TRACE_EVENT, JSON.stringify(trace));
   return trace;
@@ -112,6 +131,25 @@ function timing(requestCount, successCount, failureCount, wallClockMs, cumulativ
   };
 }
 
+function safeCandidateTerminations(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const allowedReasons = new Set(CANDIDATE_TERMINATION_REASONS);
+  return value.flatMap((candidate) => {
+    const originalIndex = safeOriginalIndex(candidate?.originalIndex);
+    const reason = candidate?.reason;
+    if (originalIndex === null || !allowedReasons.has(reason)) {
+      return [];
+    }
+    return [{
+      originalIndex,
+      reason,
+      fetchLatencyMs: safeLatency(candidate.fetchLatencyMs),
+    }];
+  });
+}
+
 function safeLatency(value) {
   if (!Number.isFinite(value) || value < 0) {
     return null;
@@ -125,6 +163,11 @@ function safeCount(value) {
     return null;
   }
   return Math.trunc(number);
+}
+
+function safeOriginalIndex(value) {
+  const index = safeCount(value);
+  return index !== null && index > 0 ? index : null;
 }
 
 function safeTraceId(value) {

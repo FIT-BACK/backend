@@ -7,6 +7,11 @@ import {
 } from '../src/backend.js';
 import { buildBrowserPerformanceTrace } from '../src/baseline-trace.js';
 import {
+  CANDIDATE_IMAGE_FETCH_DEADLINE_MS,
+  decodeCandidateBlob,
+  fetchCandidateBlob,
+} from '../src/candidate-fetch.js';
+import {
   calculateFinalScore,
   compareRerankingResults,
   cosineSimilarity,
@@ -76,6 +81,191 @@ function candidate(candidateId, tagSimilarity = 0.5, imageUrl = 'https://example
     purchaseUrl: null,
   };
 }
+
+function imageResponse({
+  ok = true,
+  status = 200,
+  contentType = 'image/jpeg',
+  blob = new Blob(['image'], { type: contentType }),
+} = {}) {
+  return {
+    ok,
+    status,
+    headers: {
+      get(name) {
+        return name.toLowerCase() === 'content-type' ? contentType : null;
+      },
+    },
+    blob: async () => blob,
+  };
+}
+
+test('candidate fetch keeps the direct no-store request and records a successful terminal reason', async () => {
+  let receivedUrl;
+  let receivedOptions;
+  const result = await fetchCandidateBlob({
+    url: 'https://cdn.example/image.jpg',
+    originalIndex: 2,
+    deadlineMs: 50,
+    fetchImpl: async (url, options) => {
+      receivedUrl = url;
+      receivedOptions = options;
+      return imageResponse();
+    },
+  });
+
+  assert.equal(receivedUrl, 'https://cdn.example/image.jpg');
+  assert.equal(receivedOptions.mode, 'cors');
+  assert.equal(receivedOptions.credentials, 'omit');
+  assert.equal(receivedOptions.cache, 'no-store');
+  assert.ok(receivedOptions.signal instanceof AbortSignal);
+  assert.equal(result.originalIndex, 2);
+  assert.equal(result.terminationReason, 'success');
+  assert.equal(result.fetchSucceeded, true);
+  assert.equal(result.abortIssued, false);
+  assert.equal(result.contentType, 'image/jpeg');
+  assert.ok(result.blob instanceof Blob);
+});
+
+test('candidate fetch aborts a never-resolving request at the explicit deadline', async () => {
+  let abortObserved = false;
+  const started = performance.now();
+  const result = await fetchCandidateBlob({
+    url: 'https://cdn.example/never.jpg',
+    originalIndex: 3,
+    deadlineMs: 10,
+    fetchImpl: (_url, options) => new Promise(() => {
+      options.signal.addEventListener('abort', () => {
+        abortObserved = options.signal.aborted;
+      }, { once: true });
+    }),
+  });
+
+  assert.equal(result.terminationReason, 'timeout');
+  assert.equal(result.fetchSucceeded, false);
+  assert.equal(result.abortIssued, true);
+  assert.equal(abortObserved, true);
+  assert.ok(performance.now() - started < 250);
+});
+
+test('candidate fetch also bounds a never-resolving image body transfer', async () => {
+  let abortObserved = false;
+  const result = await fetchCandidateBlob({
+    url: 'https://cdn.example/never-body.jpg',
+    originalIndex: 4,
+    deadlineMs: 10,
+    fetchImpl: async (_url, options) => {
+      options.signal.addEventListener('abort', () => {
+        abortObserved = options.signal.aborted;
+      }, { once: true });
+      return {
+        ...imageResponse(),
+        blob: () => new Promise(() => {}),
+      };
+    },
+  });
+
+  assert.equal(result.terminationReason, 'timeout');
+  assert.equal(result.fetchSucceeded, false);
+  assert.equal(result.abortIssued, true);
+  assert.equal(abortObserved, true);
+});
+
+test('candidate fetch classifies explicit abort, HTTP, and network failures without payloads', async () => {
+  const abortError = new Error('request cancelled');
+  abortError.name = 'AbortError';
+  const [aborted, httpError, networkError] = await Promise.all([
+    fetchCandidateBlob({
+      url: 'https://cdn.example/aborted.jpg',
+      originalIndex: 1,
+      deadlineMs: 50,
+      fetchImpl: async () => { throw abortError; },
+    }),
+    fetchCandidateBlob({
+      url: 'https://cdn.example/error.jpg',
+      originalIndex: 2,
+      deadlineMs: 50,
+      fetchImpl: async () => imageResponse({ ok: false, status: 503 }),
+    }),
+    fetchCandidateBlob({
+      url: 'https://cdn.example/network.jpg',
+      originalIndex: 3,
+      deadlineMs: 50,
+      fetchImpl: async () => { throw new Error('network down'); },
+    }),
+  ]);
+
+  assert.equal(aborted.terminationReason, 'aborted');
+  assert.equal(httpError.terminationReason, 'http_error');
+  assert.equal(httpError.httpStatus, 503);
+  assert.equal(networkError.terminationReason, 'network_error');
+  assert.doesNotMatch(JSON.stringify([aborted, httpError, networkError]), /cdn\.example/);
+});
+
+test('candidate decode error clears its blob and becomes a terminal decode_error', async () => {
+  const fetched = await fetchCandidateBlob({
+    url: 'https://cdn.example/invalid-image.jpg',
+    originalIndex: 5,
+    deadlineMs: 50,
+    fetchImpl: async () => imageResponse(),
+  });
+  const decoded = await decodeCandidateBlob(fetched, {
+    decodeImage: async () => { throw new Error('decode failed'); },
+  });
+
+  assert.equal(decoded.terminationReason, 'decode_error');
+  assert.equal(decoded.decodeSucceeded, false);
+  assert.equal(decoded.blob, null);
+  assert.equal(decoded.image, null);
+});
+
+test('mixed candidate fetches all settle within the slowest configured deadline', async () => {
+  let timeoutAbortObserved = false;
+  const started = performance.now();
+  const results = await Promise.all([
+    fetchCandidateBlob({
+      url: 'https://cdn.example/ok.jpg',
+      originalIndex: 1,
+      deadlineMs: 15,
+      fetchImpl: async () => imageResponse(),
+    }),
+    fetchCandidateBlob({
+      url: 'https://cdn.example/http.jpg',
+      originalIndex: 2,
+      deadlineMs: 15,
+      fetchImpl: async () => imageResponse({ ok: false, status: 404 }),
+    }),
+    fetchCandidateBlob({
+      url: 'https://cdn.example/never.jpg',
+      originalIndex: 3,
+      deadlineMs: 15,
+      fetchImpl: (_url, options) => new Promise(() => {
+        options.signal.addEventListener('abort', () => {
+          timeoutAbortObserved = options.signal.aborted;
+        }, { once: true });
+      }),
+    }),
+    fetchCandidateBlob({
+      url: 'https://cdn.example/network.jpg',
+      originalIndex: 4,
+      deadlineMs: 15,
+      fetchImpl: async () => { throw new Error('offline'); },
+    }),
+  ]);
+
+  assert.deepEqual(results.map((result) => result.terminationReason), [
+    'success',
+    'http_error',
+    'timeout',
+    'network_error',
+  ]);
+  assert.equal(timeoutAbortObserved, true);
+  assert.ok(performance.now() - started < 250);
+});
+
+test('uses a conservative explicit direct Shopify image deadline for the PoC', () => {
+  assert.equal(CANDIDATE_IMAGE_FETCH_DEADLINE_MS, 30_000);
+});
 
 test('validates a one-to-thirty candidate handoff and preserves original input indexes', () => {
   const validated = handoff([candidate('a'), candidate('b', 1)]);
@@ -435,6 +625,21 @@ test('builds one safe structured browser performance trace without candidate pay
         candidateFetchRequestCount: 1,
         candidateImageFetchSuccessCount: 1,
         candidateImageFetchFailureCount: 0,
+        candidateFetchDeadlineMs: 30000,
+        candidateFetchMaxLatencyMs: 100,
+        candidateTerminationSuccessCount: 1,
+        candidateFetchHttpErrorCount: 0,
+        candidateFetchTimeoutCount: 0,
+        candidateFetchNetworkErrorCount: 0,
+        candidateFetchAbortedCount: 0,
+        candidateDecodeErrorCount: 0,
+        candidateFetchTerminations: [{
+          originalIndex: 1,
+          reason: 'success',
+          fetchLatencyMs: 100,
+          candidateId: 'opaque-candidate-token',
+          imageUrl: 'https://cdn.example/private-image.jpg',
+        }],
         decodeWallClockMs: 12,
         decodeCumulativeMs: 12,
         preprocessWallClockMs: 16,
@@ -463,9 +668,67 @@ test('builds one safe structured browser performance trace without candidate pay
     failureCount: 0,
     wallClockMs: 100,
     cumulativeMs: 160,
+    deadlineMs: 30000,
+    slowestRequestLatencyMs: 100,
+    outcomes: {
+      successCount: 1,
+      httpErrorCount: 0,
+      timeoutCount: 0,
+      networkErrorCount: 0,
+      abortedCount: 0,
+      decodeErrorCount: 0,
+    },
+    terminations: [{
+      originalIndex: 1,
+      reason: 'success',
+      fetchLatencyMs: 100,
+    }],
   });
   assert.equal(trace.total.browserRerankingWallClockMs, 320);
   assert.equal(trace.total.browserE2EWallClockMs, 1800.25);
   const serialized = JSON.stringify(trace);
   assert.doesNotMatch(serialized, /opaque-candidate-token|private-image|embedding|signature|secret/);
+});
+
+test('keeps timeout terminal reasons safe on the fail-closed browser reranking trace', () => {
+  const trace = buildBrowserPerformanceTrace({
+    outcome: 'BROWSER_RERANKING_FAILED',
+    browserE2EWallClockMs: 30010,
+    backendRequest: { status: 200, latencyMs: 100 },
+    reranking: {
+      selectedCandidates: [{
+        candidateId: 'opaque-candidate-token',
+        imageUrl: 'https://cdn.example/private-image.jpg',
+      }],
+      metrics: {
+        candidateFetchRequestCount: 1,
+        candidateImageFetchSuccessCount: 0,
+        candidateImageFetchFailureCount: 1,
+        candidateFetchDeadlineMs: 30000,
+        candidateFetchMaxLatencyMs: 30000,
+        candidateTerminationSuccessCount: 0,
+        candidateFetchHttpErrorCount: 0,
+        candidateFetchTimeoutCount: 1,
+        candidateFetchNetworkErrorCount: 0,
+        candidateFetchAbortedCount: 0,
+        candidateDecodeErrorCount: 0,
+        candidateFetchTerminations: [{
+          originalIndex: 1,
+          reason: 'timeout',
+          fetchLatencyMs: 30000,
+          candidateId: 'opaque-candidate-token',
+          imageUrl: 'https://cdn.example/private-image.jpg',
+        }],
+      },
+    },
+  });
+
+  assert.equal(trace.outcome, 'BROWSER_RERANKING_FAILED');
+  assert.equal(trace.candidates.imageFetch.outcomes.timeoutCount, 1);
+  assert.deepEqual(trace.candidates.imageFetch.terminations, [{
+    originalIndex: 1,
+    reason: 'timeout',
+    fetchLatencyMs: 30000,
+  }]);
+  assert.doesNotMatch(JSON.stringify(trace), /opaque-candidate-token|private-image/);
 });
