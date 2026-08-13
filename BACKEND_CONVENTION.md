@@ -459,7 +459,8 @@ throw new BusinessException(ErrorCode.NOT_FOUND);
 - 토큰 만료·위변조·용도 오류는 공통 또는 인증 도메인 오류 응답으로 반환한다.
 - 서버는 Refresh token 원문을 저장하지 않고 `refresh-token:` 용도 문자열을 포함한
   HMAC-SHA256 소문자 64자리 hex만 저장한다.
-- 재발급은 요청 Refresh token의 HMAC과 저장값을 비교하고 access/refresh token을 함께 회전한다.
+- 재발급은 요청 Refresh token의 HMAC과 저장값을 `MessageDigest.isEqual`로 상수 시간 비교하고
+  access/refresh token을 함께 회전한다.
 - 로그아웃과 비밀번호 재설정은 저장된 Refresh token 해시를 제거한다.
 - V31은 기존 원문 Refresh token을 모두 폐기하므로 해당 배포 직후 기존 사용자는 재로그인해야 한다.
 
