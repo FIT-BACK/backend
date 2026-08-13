@@ -150,7 +150,7 @@ class SecurityLookbookAccessIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"0", "-1", "2147483647"})
+    @ValueSource(strings = {"0", "-1", "21", "2147483647"})
     void rejectsLookbookPageSizeOutsideAllowedRange(String pageSize) throws Exception {
         mockMvc.perform(get("/api/v1/lookbooks").param("pageSize", pageSize))
                 .andExpect(status().isBadRequest())
