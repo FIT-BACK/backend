@@ -45,6 +45,37 @@ class LookbookRepositoryTest {
     @Autowired
     private LookbookImageRepository lookbookImageRepository;
 
+    //공개 상세 조회에서는 신고로 숨김 처리된 룩북 제외
+    @Test
+    void findsOnlyVisibleLookbookForPublicDetail() {
+        Member member = Member.create(
+                "detail-owner@fitback.com",
+                "detail-owner",
+                "password",
+                LoginProvider.EMAIL
+        );
+        entityManager.persist(member);
+        Lookbook visible = persistLookbook(member, "detail-visible");
+        Lookbook hidden = createLookbook(member, "detail-hidden");
+        ReflectionTestUtils.setField(
+                hidden,
+                "moderationStatus",
+                LookbookModerationStatus.AUTO_HIDDEN
+        );
+        entityManager.persist(hidden);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(lookbookRepository.findByIdAndDeletedAtIsNullAndModerationStatus(
+                visible.getId(),
+                LookbookModerationStatus.VISIBLE
+        )).isPresent();
+        assertThat(lookbookRepository.findByIdAndDeletedAtIsNullAndModerationStatus(
+                hidden.getId(),
+                LookbookModerationStatus.VISIBLE
+        )).isEmpty();
+    }
+
     @Test
     void findsOwnedImagesAndActivatesOnlyReadyImages() {
         Member member = Member.create(
