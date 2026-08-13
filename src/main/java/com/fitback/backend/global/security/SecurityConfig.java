@@ -1,5 +1,6 @@
 package com.fitback.backend.global.security;
 
+import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
 import com.fitback.backend.global.security.exception.CustomAccessDenied;
 import com.fitback.backend.global.security.exception.CustomEntryPoint;
 import com.fitback.backend.global.security.filter.JwtAuthFilter;
@@ -130,7 +131,11 @@ public class SecurityConfig {
         ));
         configuration.setAllowedHeaders(List.of(
                 HttpHeaders.AUTHORIZATION,
-                HttpHeaders.CONTENT_TYPE
+                HttpHeaders.CONTENT_TYPE,
+                RecommendationPerformanceTrace.REQUEST_HEADER
+        ));
+        configuration.setExposedHeaders(List.of(
+                RecommendationPerformanceTrace.RESPONSE_HEADER
         ));
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(3600L);

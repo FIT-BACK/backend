@@ -25,6 +25,7 @@ import com.fitback.backend.domain.product.service.model.ProviderProductRef;
 import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
+import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -63,7 +64,14 @@ class ProductDetailServiceTest {
                 ProductDataStatus.LIVE
         )).thenReturn(expected);
 
-        assertThat(dependencies.service().getDetail(1L)).isEqualTo(expected);
+        RecommendationPerformanceTrace.Snapshot trace;
+        try (RecommendationPerformanceTrace.Scope scope =
+                     RecommendationPerformanceTrace.beginIfRequested(
+                             RecommendationPerformanceTrace.REQUEST_VALUE
+                     )) {
+            assertThat(dependencies.service().getDetail(1L)).isEqualTo(expected);
+            trace = scope.snapshot();
+        }
         verify(dependencies.productCatalogPort()).lookup(providerRef);
         verify(dependencies.candidateMapper()).snapshot(
                 providerRef,
@@ -71,6 +79,10 @@ class ProductDetailServiceTest {
                 NOW.plus(Duration.ofHours(1))
         );
         verify(dependencies.persistenceService()).refresh(1L, snapshot);
+        assertThat(trace.lookupCatalogCalls())
+                .singleElement()
+                .satisfies(call -> assertThat(call.inputSize()).isEqualTo(1));
+        assertThat(trace.lookupCatalogTiming().invocationCount()).isEqualTo(1);
     }
 
     @Test

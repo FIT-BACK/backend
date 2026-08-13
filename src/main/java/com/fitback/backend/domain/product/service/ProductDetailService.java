@@ -15,6 +15,7 @@ import com.fitback.backend.domain.product.service.model.ProviderProductRef;
 import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
+import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -66,8 +67,10 @@ public class ProductDetailService {
                 product.getMerchantId()
         );
         try {
-            ExternalProductCandidate candidate = productCatalogPort.lookup(providerRef)
-                    .orElse(null);
+            ExternalProductCandidate candidate = RecommendationPerformanceTrace.measureLookupCatalog(
+                    1,
+                    () -> productCatalogPort.lookup(providerRef)
+            ).orElse(null);
             if (candidate == null) {
                 if (product.getStorageMode() == ProductStorageMode.IDENTITY_ONLY) {
                     throw new BusinessException(ErrorCode.PRODUCT_PROVIDER_UNAVAILABLE);

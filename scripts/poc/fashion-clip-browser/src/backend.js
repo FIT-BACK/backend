@@ -2,6 +2,7 @@ export async function fetchRecommendation({
   baseUrl,
   reportId,
   accessToken = '',
+  benchmarkTrace = false,
   fetchImpl = fetch,
 }) {
   const url = recommendationUrl(baseUrl, reportId);
@@ -9,6 +10,9 @@ export async function fetchRecommendation({
   const trimmedToken = accessToken.trim();
   if (trimmedToken) {
     headers.Authorization = `Bearer ${trimmedToken}`;
+  }
+  if (benchmarkTrace) {
+    headers['X-Fitback-Benchmark-Trace'] = 'baseline-v1';
   }
 
   const started = performance.now();
@@ -26,6 +30,7 @@ export async function fetchRecommendation({
     status: response.status,
     ok: response.ok,
     latencyMs: performance.now() - started,
+    benchmarkTraceId: response.headers?.get('X-Fitback-Benchmark-Trace-Id') ?? null,
     payload,
   };
 }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractBrowserReranking, fetchRecommendation } from '../src/backend.js';
+import { buildBrowserPerformanceTrace } from '../src/baseline-trace.js';
 import {
   calculateFinalScore,
   compareRerankingResults,
@@ -248,6 +249,29 @@ test('fetches the recommendation POST with an optional bearer token and preserve
   assert.equal(result.ok, true);
 });
 
+test('requests the opt-in backend trace without exposing the access token in its result', async () => {
+  const calls = [];
+  const result = await fetchRecommendation({
+    baseUrl: 'http://localhost:8080',
+    reportId: 4,
+    accessToken: 'local-token',
+    benchmarkTrace: true,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return {
+        status: 200,
+        ok: true,
+        headers: new Headers({ 'X-Fitback-Benchmark-Trace-Id': 'trace-123' }),
+        json: async () => ({ data: {} }),
+      };
+    },
+  });
+
+  assert.equal(calls[0].options.headers['X-Fitback-Benchmark-Trace'], 'baseline-v1');
+  assert.equal(result.benchmarkTraceId, 'trace-123');
+  assert.doesNotMatch(JSON.stringify(result), /local-token/);
+});
+
 test('normalizes integer-like report IDs before building the recommendation URL', async () => {
   const calls = [];
   await fetchRecommendation({
@@ -312,4 +336,84 @@ test('forwards a valid handoff without interpreting its opaque candidate ID', ()
     extracted.handoff.browserReranking.candidates[0].candidateId,
     opaqueId
   );
+});
+
+test('builds one safe structured browser performance trace without candidate payloads', () => {
+  const trace = buildBrowserPerformanceTrace({
+    outcome: 'SUCCESS',
+    browserE2EWallClockMs: 1800.25,
+    backendRequest: {
+      status: 200,
+      latencyMs: 450.5,
+      benchmarkTraceId: '1c468b6b-d72c-4c75-a48c-8c4916a5f8ee',
+    },
+    modelConfig: {
+      source: 'pinned remote default',
+      url: 'https://huggingface.co/Frapic/fashion-clip-onnx/resolve/pinned/vision_model.onnx?signature=secret',
+    },
+    modelReadiness: {
+      cacheState: 'cold',
+      waitWallClockMs: 900.4,
+      loadRun: {
+        headersMs: 12.5,
+        downloadMs: 400.25,
+        bytes: 123456,
+        contentLength: '123456',
+        contentType: 'application/octet-stream; charset=binary',
+        cacheControl: 'public, max-age=3600, x-token=secret',
+        sessionCreationMs: 480.75,
+        totalMs: 900.4,
+        requestedProviders: ['webgpu', 'wasm'],
+        providerResolution: 'unexposed-by-onnxruntime-web',
+        fallbackUsed: false,
+      },
+    },
+    reranking: {
+      selectedCandidates: [{
+        candidateId: 'opaque-candidate-token',
+        imageUrl: 'https://cdn.example/private-image.jpg',
+        embedding: [0.1, 0.2],
+      }],
+      metrics: {
+        queryDecodeWallClockMs: 10,
+        queryPreprocessWallClockMs: 20,
+        queryAcquisitionWallClockMs: 30,
+        fetchWallClockMs: 100,
+        fetchCumulativeMs: 160,
+        candidateFetchRequestCount: 1,
+        candidateImageFetchSuccessCount: 1,
+        candidateImageFetchFailureCount: 0,
+        decodeWallClockMs: 12,
+        decodeCumulativeMs: 12,
+        preprocessWallClockMs: 16,
+        preprocessCumulativeMs: 16,
+        queryInferenceWallClockMs: 44,
+        candidateBatchInferenceWallClockMs: 55,
+        cosineWallClockMs: 2,
+        finalScoreCalculationWallClockMs: 1,
+        sortingWallClockMs: 3,
+        renderUpdateWallClockMs: 4,
+        totalRerankingWallClockMs: 320,
+      },
+    },
+  });
+
+  assert.equal(trace.backend.requestCount, 1);
+  assert.equal(trace.backend.requestWallClockMs, 450.5);
+  assert.equal(trace.model.url, 'https://huggingface.co/Frapic/fashion-clip-onnx/resolve/pinned/vision_model.onnx');
+  assert.equal(trace.model.transferredBytes, 123456);
+  assert.equal(trace.model.contentType, 'application/octet-stream');
+  assert.equal(trace.model.cacheControl, 'public, max-age=3600');
+  assert.equal(trace.model.provider.resolution, 'unexposed-by-onnxruntime-web');
+  assert.deepEqual(trace.candidates.imageFetch, {
+    requestCount: 1,
+    successCount: 1,
+    failureCount: 0,
+    wallClockMs: 100,
+    cumulativeMs: 160,
+  });
+  assert.equal(trace.total.browserRerankingWallClockMs, 320);
+  assert.equal(trace.total.browserE2EWallClockMs, 1800.25);
+  const serialized = JSON.stringify(trace);
+  assert.doesNotMatch(serialized, /opaque-candidate-token|private-image|embedding|signature|secret/);
 });

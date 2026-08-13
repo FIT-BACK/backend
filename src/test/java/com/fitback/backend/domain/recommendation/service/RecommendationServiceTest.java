@@ -30,6 +30,7 @@ import com.fitback.backend.domain.recommendation.service.model.RecommendationSel
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
+import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
@@ -187,7 +188,14 @@ class RecommendationServiceTest {
                 .thenReturn(new RecommendationMaterializationResult(1L, true));
         when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
 
-        recommendationService.generate(1L, 501L);
+        RecommendationPerformanceTrace.Snapshot trace;
+        try (RecommendationPerformanceTrace.Scope scope =
+                     RecommendationPerformanceTrace.beginIfRequested(
+                             RecommendationPerformanceTrace.REQUEST_VALUE
+                     )) {
+            recommendationService.generate(1L, 501L);
+            trace = scope.snapshot();
+        }
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<ExternalProductCandidate>> candidatesCaptor =
@@ -199,6 +207,19 @@ class RecommendationServiceTest {
                 candidatesCaptor.capture()
         );
         assertThat(candidatesCaptor.getValue()).hasSize(30);
+        assertThat(trace.searchCatalogCalls()).hasSize(1);
+        assertThat(trace.searchCatalogTiming().invocationCount()).isEqualTo(1);
+        assertThat(trace.stages()).containsKeys(
+                "categoryFiltering",
+                "candidateMergeDedup",
+                "scoring",
+                "persistence",
+                "responseHydrate"
+        );
+        assertThat(trace.candidateCounts()).isEqualTo(
+                new RecommendationPerformanceTrace.CandidateCounts(35, 35, 30)
+        );
+        assertThat(trace.browserRerankingCandidateCount()).isZero();
     }
 
     @Test
