@@ -1,8 +1,11 @@
 package com.fitback.backend.external.shopping.shopify;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fitback.backend.domain.product.service.ProductCandidateMapper;
+import com.fitback.backend.domain.product.service.exception.ProductProviderException;
+import com.fitback.backend.domain.product.service.exception.ProductProviderFailure;
 import com.fitback.backend.domain.product.service.model.ProductAvailability;
 import com.fitback.backend.domain.product.service.model.ProductCategory;
 import com.fitback.backend.domain.product.service.model.ProductSearchQuery;
@@ -12,7 +15,9 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -126,6 +131,62 @@ class ShopifyGlobalCatalogAdapterTest {
     }
 
     @Test
+    void batchLookupDeduplicatesReferencesAndLeavesPartialResultsAbsent() {
+        AtomicReference<List<ShopifyCatalogLookup>> requestedLookups = new AtomicReference<>();
+        ProviderProductRef first = providerRef();
+        ProviderProductRef second = ProviderProductRef.stable(
+                ShopifyGlobalCatalogAdapter.PROVIDER,
+                "gid://shopify/p/product-2",
+                "gid://shopify/ProductVariant/variant-2",
+                "gid://shopify/Shop/shop-2"
+        );
+        ShopifyGlobalCatalogAdapter adapter = adapter(new StubClient() {
+            @Override
+            public Map<ShopifyCatalogLookup, ShopifyCatalogItem> lookupBatch(
+                    List<ShopifyCatalogLookup> lookups
+            ) {
+                requestedLookups.set(List.copyOf(lookups));
+                return Map.of(lookups.getFirst(), ITEM);
+            }
+        });
+
+        var result = adapter.lookupBatch(List.of(first, second, first));
+
+        assertThat(requestedLookups.get()).containsExactly(
+                new ShopifyCatalogLookup(first.externalProductId(), first.externalVariantId()),
+                new ShopifyCatalogLookup(second.externalProductId(), second.externalVariantId())
+        );
+        assertThat(result).containsOnlyKeys(first);
+        assertThat(result.get(first).providerRef()).isEqualTo(first);
+        assertThat(result.get(first).offer().seller()).isEqualTo("Example Shop");
+        assertThat(result.get(first).offer().currentPrice().amount())
+                .isEqualByComparingTo("73.00");
+        assertThat(result.get(first).offer().purchaseUrl())
+                .hasToString("https://merchant.example/products/hoodie");
+        assertThat(result.get(first).imageUrl())
+                .hasToString("https://cdn.example/hoodie.jpg");
+    }
+
+    @Test
+    void batchLookupPropagatesProviderFailureUnchanged() {
+        ProductProviderException failure = new ProductProviderException(
+                "shopify",
+                ProductProviderFailure.RATE_LIMITED
+        );
+        ShopifyGlobalCatalogAdapter adapter = adapter(new StubClient() {
+            @Override
+            public Map<ShopifyCatalogLookup, ShopifyCatalogItem> lookupBatch(
+                    List<ShopifyCatalogLookup> lookups
+            ) {
+                throw failure;
+            }
+        });
+
+        assertThatThrownBy(() -> adapter.lookupBatch(List.of(providerRef())))
+                .isSameAs(failure);
+    }
+
+    @Test
     void exposesIdentityOnlyPersistenceCapabilities() {
         ShopifyGlobalCatalogAdapter adapter = adapter(new StubClient());
 
@@ -180,6 +241,17 @@ class ShopifyGlobalCatalogAdapterTest {
         @Override
         public Optional<ShopifyCatalogItem> lookup(String productId, String variantId) {
             return Optional.of(ITEM);
+        }
+
+        @Override
+        public Map<ShopifyCatalogLookup, ShopifyCatalogItem> lookupBatch(
+                List<ShopifyCatalogLookup> lookups
+        ) {
+            Map<ShopifyCatalogLookup, ShopifyCatalogItem> items = new LinkedHashMap<>();
+            for (ShopifyCatalogLookup lookup : lookups) {
+                items.put(lookup, ITEM);
+            }
+            return items;
         }
     }
 }

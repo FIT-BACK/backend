@@ -26,6 +26,7 @@ import tools.jackson.databind.ObjectMapper;
 public final class ShopifyGlobalCatalogHttpClient implements ShopifyGlobalCatalogClient {
 
     static final String PROVIDER = "shopify";
+    static final int MAX_LOOKUP_BATCH_SIZE = 50;
 
     private final ShoppingProviderProperties.Shopify properties;
     private final ObjectMapper objectMapper;
@@ -85,6 +86,40 @@ public final class ShopifyGlobalCatalogHttpClient implements ShopifyGlobalCatalo
                 .filter(item -> productId.equals(item.productId()))
                 .filter(item -> variantId == null || variantId.equals(item.variantId()))
                 .findFirst();
+    }
+
+    @Override
+    public Map<ShopifyCatalogLookup, ShopifyCatalogItem> lookupBatch(
+            List<ShopifyCatalogLookup> lookups
+    ) {
+        if (lookups.isEmpty()) {
+            return Map.of();
+        }
+        if (lookups.size() > MAX_LOOKUP_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "lookup_catalog accepts at most " + MAX_LOOKUP_BATCH_SIZE + " IDs"
+            );
+        }
+
+        List<ShopifyCatalogLookup> requestedLookups = List.copyOf(lookups);
+        Map<String, Object> catalog = new LinkedHashMap<>();
+        catalog.put(
+                "ids",
+                requestedLookups.stream().map(ShopifyCatalogLookup::requestId).toList()
+        );
+        catalog.put("context", context());
+
+        Map<String, ShopifyCatalogItem> itemsByInput = lookupItemsByInput(
+                call("lookup_catalog", catalog)
+        );
+        Map<ShopifyCatalogLookup, ShopifyCatalogItem> matchedItems = new LinkedHashMap<>();
+        for (ShopifyCatalogLookup lookup : requestedLookups) {
+            ShopifyCatalogItem item = itemsByInput.get(lookup.requestId());
+            if (item != null && matches(lookup, item)) {
+                matchedItems.putIfAbsent(lookup, item);
+            }
+        }
+        return Map.copyOf(matchedItems);
     }
 
     private JsonNode call(String toolName, Map<String, Object> catalog) {
@@ -180,17 +215,69 @@ public final class ShopifyGlobalCatalogHttpClient implements ShopifyGlobalCatalo
         throw ProductProviderHttpFailureTranslator.malformedResponse(PROVIDER);
     }
 
+    private Map<String, ShopifyCatalogItem> lookupItemsByInput(JsonNode structuredContent) {
+        Map<String, ShopifyCatalogItem> itemsByInput = new LinkedHashMap<>();
+        JsonNode productArray = structuredContent.path("products");
+        if (productArray.isArray()) {
+            for (JsonNode product : productArray) {
+                appendLookupItemsByInput(product, itemsByInput);
+            }
+            return itemsByInput;
+        }
+
+        JsonNode product = structuredContent.path("product");
+        if (product.isObject()) {
+            appendLookupItemsByInput(product, itemsByInput);
+            return itemsByInput;
+        }
+        throw ProductProviderHttpFailureTranslator.malformedResponse(PROVIDER);
+    }
+
+    private void appendLookupItemsByInput(
+            JsonNode product,
+            Map<String, ShopifyCatalogItem> itemsByInput
+    ) {
+        String productId = nullableText(product.path("id"));
+        Optional<ShopifyCatalogItem> defaultProductItem = parseProduct(product, (String) null);
+        JsonNode variants = product.path("variants");
+        if (!variants.isArray()) {
+            return;
+        }
+        for (JsonNode variant : variants) {
+            Optional<ShopifyCatalogItem> item = parseProduct(product, variant);
+            if (item.isEmpty()) {
+                continue;
+            }
+            JsonNode inputs = variant.path("inputs");
+            if (!inputs.isArray()) {
+                continue;
+            }
+            for (JsonNode input : inputs) {
+                String inputId = nullableText(input.path("id"));
+                if (inputId != null) {
+                    ShopifyCatalogItem inputItem = inputId.equals(productId)
+                            ? defaultProductItem.orElse(item.get())
+                            : item.get();
+                    itemsByInput.putIfAbsent(inputId, inputItem);
+                }
+            }
+        }
+    }
+
     private Optional<ShopifyCatalogItem> parseProduct(
             JsonNode product,
             String requestedVariantId
     ) {
+        return parseProduct(product, selectVariant(product.path("variants"), requestedVariantId));
+    }
+
+    private Optional<ShopifyCatalogItem> parseProduct(JsonNode product, JsonNode variant) {
         String productId = nullableText(product.path("id"));
         String title = nullableText(product.path("title"));
         if (productId == null || title == null) {
             return Optional.empty();
         }
 
-        JsonNode variant = selectVariant(product.path("variants"), requestedVariantId);
         String variantId = nullableText(variant.path("id"));
         JsonNode seller = variant.path("seller");
         JsonNode price = variant.path("price");
@@ -225,6 +312,12 @@ public final class ShopifyGlobalCatalogHttpClient implements ShopifyGlobalCatalo
                         nullableText(variant.path("url"))
                 )
         ));
+    }
+
+    private static boolean matches(ShopifyCatalogLookup expected, ShopifyCatalogItem actual) {
+        return expected.productId().equals(actual.productId())
+                && (expected.variantId() == null
+                || expected.variantId().equals(actual.variantId()));
     }
 
     private static JsonNode selectVariant(JsonNode variants, String requestedVariantId) {
