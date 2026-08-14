@@ -34,6 +34,9 @@ public class ImageComparisonCandidateSelector {
     public SelectionResult select(
             List<List<ExternalProductCandidate>> candidateBatches
     ) {
+        int inputCandidateCount = candidateBatches.stream()
+                .mapToInt(List::size)
+                .sum();
         List<ExternalProductCandidate> orderedCandidates = orderingPolicy.order(
                 candidateBatches,
                 candidateLimit
@@ -45,22 +48,30 @@ public class ImageComparisonCandidateSelector {
 
         // 선별 단계에서 제외된 불안정 식별자의 기존 경고 계약 전달
         boolean unsupportedReferenceSkipped = false;
+        int invalidProviderReferenceDropCount = 0;
+        int missingImageUrlDropCount = 0;
+        int duplicateDropCount = 0;
+        int limitOverflowDropCount = 0;
 
         // 순서 정책과 무관하게 동일한 이미지 비교 가능 조건 적용
-        for (ExternalProductCandidate candidate : orderedCandidates) {
+        for (int index = 0; index < orderedCandidates.size(); index++) {
+            ExternalProductCandidate candidate = orderedCandidates.get(index);
             // 추천 상품 저장 단계에서 사용할 수 없는 불안정 공급자 식별자 제외
             if (!candidate.providerRef().stable()) {
                 unsupportedReferenceSkipped = true;
+                invalidProviderReferenceDropCount++;
                 continue;
             }
 
             // 검색 응답의 이미지 URL만 사용하는 후보 선별 단계의 원격 이미지 접근 방지
             if (candidate.imageUrl() == null) {
+                missingImageUrlDropCount++;
                 continue;
             }
 
             // 여러 태그 검색 결과에 포함된 동일 상품의 중복 이미지 비교 방지
             if (!selectedProductRefs.add(candidate.providerRef())) {
+                duplicateDropCount++;
                 continue;
             }
 
@@ -69,19 +80,32 @@ public class ImageComparisonCandidateSelector {
 
             // 최대 후보 수 초과와 불필요한 추가 순회 방지를 위한 즉시 종료
             if (selectedCandidates.size() == candidateLimit) {
+                // 현재 계약상 이후 후보는 다른 drop 조건을 평가하지 않고 limit 도달로만 건너뜀
+                limitOverflowDropCount = orderedCandidates.size() - index - 1;
                 break;
             }
         }
 
         return new SelectionResult(
                 selectedCandidates,
-                unsupportedReferenceSkipped
+                unsupportedReferenceSkipped,
+                new SelectionMetrics(
+                        inputCandidateCount,
+                        orderedCandidates.size(),
+                        selectedCandidates.size(),
+                        invalidProviderReferenceDropCount,
+                        missingImageUrlDropCount,
+                        duplicateDropCount,
+                        limitOverflowDropCount,
+                        0
+                )
         );
     }
 
     public record SelectionResult(
             List<ExternalProductCandidate> candidates,
-            boolean unsupportedReferenceSkipped
+            boolean unsupportedReferenceSkipped,
+            SelectionMetrics metrics
     ) {
 
         public SelectionResult {
@@ -91,6 +115,43 @@ public class ImageComparisonCandidateSelector {
                             candidates,
                             "candidates must not be null"
                     )
+            );
+            metrics = Objects.requireNonNull(metrics, "metrics must not be null");
+        }
+
+        public SelectionResult(
+                List<ExternalProductCandidate> candidates,
+                boolean unsupportedReferenceSkipped
+        ) {
+            this(
+                    candidates,
+                    unsupportedReferenceSkipped,
+                    SelectionMetrics.empty(candidates.size())
+            );
+        }
+    }
+
+    public record SelectionMetrics(
+            int inputCandidateCount,
+            int orderedCandidateCount,
+            int outputCandidateCount,
+            int invalidProviderReferenceDropCount,
+            int missingImageUrlDropCount,
+            int duplicateDropCount,
+            int limitOverflowDropCount,
+            int otherDropCount
+    ) {
+
+        private static SelectionMetrics empty(int outputCandidateCount) {
+            return new SelectionMetrics(
+                    0,
+                    0,
+                    outputCandidateCount,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
             );
         }
     }

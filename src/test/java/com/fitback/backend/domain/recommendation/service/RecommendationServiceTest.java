@@ -219,6 +219,17 @@ class RecommendationServiceTest {
         assertThat(trace.candidateCounts()).isEqualTo(
                 new RecommendationPerformanceTrace.CandidateCounts(35, 35, 30)
         );
+        assertThat(trace.searchCatalogCalls())
+                .singleElement()
+                .satisfies(call -> {
+                    assertThat(call.queryIndex()).isEqualTo(1);
+                    assertThat(call.rawResultCount()).isEqualTo(35);
+                    assertThat(call.categoryFilteredResultCount()).isEqualTo(35);
+                    assertThat(call.providerSucceeded()).isTrue();
+                });
+        assertThat(trace.selectorCounts()).isEqualTo(
+                new RecommendationPerformanceTrace.SelectorCounts(35, 35, 30, 0, 0, 0, 5, 0)
+        );
         assertThat(trace.browserRerankingCandidateCount()).isZero();
     }
 
@@ -378,6 +389,67 @@ class RecommendationServiceTest {
 
         verify(setWriter).replaceCurrentSet(input, "IMAGE_TAG_WEIGHTED_V1", List.of());
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
+    }
+
+    @Test
+    void tracesRawSearchZeroBeforeCategoryFilteringAndSelection() {
+        RecommendationInputSnapshot input = input();
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenReturn(new ProductSearchResult(List.of(), null));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        RecommendationPerformanceTrace.Snapshot trace;
+        try (RecommendationPerformanceTrace.Scope scope =
+                     RecommendationPerformanceTrace.beginIfRequested(
+                             RecommendationPerformanceTrace.REQUEST_VALUE
+                     )) {
+            recommendationService.generate(1L, 501L);
+            trace = scope.snapshot();
+        }
+
+        assertThat(trace.searchCatalogCalls())
+                .singleElement()
+                .satisfies(call -> {
+                    assertThat(call.rawResultCount()).isZero();
+                    assertThat(call.categoryFilteredResultCount()).isZero();
+                    assertThat(call.providerSucceeded()).isTrue();
+                });
+        assertThat(trace.selectorCounts()).isEqualTo(
+                new RecommendationPerformanceTrace.SelectorCounts(0, 0, 0, 0, 0, 0, 0, 0)
+        );
+        assertThat(trace.browserRerankingCandidateCount()).isZero();
+    }
+
+    @Test
+    void tracesCategoryFilterZeroAfterNonEmptyProviderSearch() {
+        RecommendationInputSnapshot input = input();
+        ExternalProductCandidate candidate = candidate(1, null, true);
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenReturn(new ProductSearchResult(List.of(candidate), null));
+        when(candidateMapper.category(candidate)).thenReturn(ProductCategory.BOTTOM);
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        RecommendationPerformanceTrace.Snapshot trace;
+        try (RecommendationPerformanceTrace.Scope scope =
+                     RecommendationPerformanceTrace.beginIfRequested(
+                             RecommendationPerformanceTrace.REQUEST_VALUE
+                     )) {
+            recommendationService.generate(1L, 501L);
+            trace = scope.snapshot();
+        }
+
+        assertThat(trace.searchCatalogCalls())
+                .singleElement()
+                .satisfies(call -> {
+                    assertThat(call.rawResultCount()).isEqualTo(1);
+                    assertThat(call.categoryFilteredResultCount()).isZero();
+                    assertThat(call.providerSucceeded()).isTrue();
+                });
+        assertThat(trace.selectorCounts()).isEqualTo(
+                new RecommendationPerformanceTrace.SelectorCounts(0, 0, 0, 0, 0, 0, 0, 0)
+        );
     }
 
     @Test

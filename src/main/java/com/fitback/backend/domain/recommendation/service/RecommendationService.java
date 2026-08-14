@@ -184,10 +184,16 @@ public class RecommendationService {
             String tagKind = searchTagKinds.get(index);
             try {
                 ProductSearchResult searchResult = RecommendationPerformanceTrace.measureSearchCatalog(
-                        tagKind,
+                        new RecommendationPerformanceTrace.SearchCatalogCallInput(
+                                index + 1,
+                                tagName,
+                                tagKind,
+                                category.name()
+                        ),
                         () -> productCatalogPort.search(
                                 new ProductSearchQuery(tagName, category, null, SEARCH_PAGE_SIZE)
-                        )
+                        ),
+                        result -> result.items().size()
                 );
                 successfulSearches++;
                 searchedCandidateCount += searchResult.items().size();
@@ -200,6 +206,10 @@ public class RecommendationService {
                                         .filter(candidate -> candidateMapper.category(candidate) == category)
                                         .toList()
                         );
+                RecommendationPerformanceTrace.recordCategoryFilteredResultCount(
+                        index + 1,
+                        categoryFiltered.size()
+                );
                 categoryFilteredCandidateCount += categoryFiltered.size();
                 candidateBatches.add(categoryFiltered);
             } catch (ProductProviderException exception) {
@@ -223,6 +233,17 @@ public class RecommendationService {
                 searchedCandidateCount,
                 categoryFilteredCandidateCount,
                 selection.candidates().size()
+        );
+        ImageComparisonCandidateSelector.SelectionMetrics selectionMetrics = selection.metrics();
+        RecommendationPerformanceTrace.recordSelectorCounts(
+                selectionMetrics.inputCandidateCount(),
+                selectionMetrics.orderedCandidateCount(),
+                selectionMetrics.outputCandidateCount(),
+                selectionMetrics.invalidProviderReferenceDropCount(),
+                selectionMetrics.missingImageUrlDropCount(),
+                selectionMetrics.duplicateDropCount(),
+                selectionMetrics.limitOverflowDropCount(),
+                selectionMetrics.otherDropCount()
         );
         List<String> warnings = new ArrayList<>();
 
