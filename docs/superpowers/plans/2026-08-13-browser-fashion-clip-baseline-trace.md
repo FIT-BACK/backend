@@ -12,7 +12,8 @@
 
 - 기준 commit은 `705c01c752ccd4eded81cd9e07b6d1f0f4462dc0`의 `develop`이다.
 - score, candidate limit, candidate ordering, direct browser image fetch, fallback, persistence 정책을 변경하지 않는다.
-- static model, preload, lookup batching, concurrency, K, alias/tag matcher, FP16/INT8, cache, Worker를 추가하지 않는다.
+- static model, preload, concurrency, K, alias/tag matcher, FP16/INT8, cache, Worker를 추가하지 않는다.
+- 후속 범위의 Shopify `lookup_catalog` batch hydrate는 stable identity를 최대 50개씩 요청하고, provider response 순서 대신 요청 identity mapping으로만 결합한다. 이 경로는 response-time display snapshot만 반환하며 score·rank·browserReranking·저장 정책을 변경하지 않는다.
 - trace는 request wall-clock과 stage/call cumulative time을 별도 key로 기록한다.
 - trace에는 token, 원문 candidateId, image bytes, embedding vector, Shopify raw response body, access token, 전체 model URL query/hash를 기록하지 않는다.
 - Browser UI는 변경하지 않고 `console.info` structured JSON과 기존 summary만 사용한다.
@@ -225,7 +226,7 @@ Expected: all Node tests pass, Vite build exits 0, and audit reports no high-sev
 
 Run the existing local Browser PoC against the local backend using a local fixture/authorized input. Capture only the two structured trace lines and aggregate duration/count fields. If auth, local input, model, or image CORS prerequisites are absent, record exact `NOT_RUN` or the single observed blocker; do not replay historical values or call production Shopify.
 
-Result: `NOT_RUN` on 2026-08-13. The current worktree has no local model or query image input; port 8080 belongs to a different temporary checkout and its readiness endpoint returned HTTP 503; no authorized local bearer token was available. No Shopify or production request was made, and no historical timing was reused.
+Result: baseline trace는 batch 적용 전 실측으로 보존한다. `lookup_catalog`은 input 1 기준 10회, cumulative `3094 ms`, response/hydrate `3172 ms`, backend total `4504 ms`, browser E2E `8828.2 ms`였다. 이 값은 batch 적용 후 결과가 아니다. batch hydrate E2E latency 감소폭은 Chrome file upload 문제로 `NOT_VERIFIED`이며, 코드와 regression test만으로 검증했다. Shopify 또는 production 요청으로 이를 재측정하지 않았다.
 
 - [x] **Step 2: Run required full checks**
 
@@ -240,3 +241,42 @@ Expected: each command exits 0; the only tracked changes are trace implementatio
 - [ ] **Step 3: Review and publish**
 
 Inspect `git diff origin/develop...HEAD` after tests. Commit only the listed files with `feat: Browser Fashion-CLIP baseline trace 계측 추가`, push `chore/#353-browser-fashion-clip-baseline-trace`, and create a Korean Draft PR to `develop` with `Related to #353`. Report test evidence and any `NOT_RUN` E2E blocker exactly.
+
+### Task 5: Shopify `lookup_catalog` batch hydrate 후속 범위
+
+**Files:**
+
+- Create: `src/main/java/com/fitback/backend/domain/product/service/ProductDetailBatchResult.java`
+- Create: `src/main/java/com/fitback/backend/domain/product/service/port/BatchProductCatalogPort.java`
+- Create: `src/main/java/com/fitback/backend/external/shopping/shopify/ShopifyCatalogLookup.java`
+- Modify: `src/main/java/com/fitback/backend/domain/product/service/ProductDetailService.java`
+- Modify: `src/main/java/com/fitback/backend/domain/recommendation/service/RecommendationQueryService.java`
+- Modify: `src/main/java/com/fitback/backend/external/shopping/shopify/ShopifyGlobalCatalogAdapter.java`
+- Modify: `src/main/java/com/fitback/backend/external/shopping/shopify/ShopifyGlobalCatalogClient.java`
+- Modify: `src/main/java/com/fitback/backend/external/shopping/shopify/ShopifyGlobalCatalogHttpClient.java`
+- Test: `src/test/java/com/fitback/backend/domain/product/service/ProductDetailServiceTest.java`
+- Test: `src/test/java/com/fitback/backend/domain/recommendation/service/RecommendationQueryServiceTest.java`
+- Test: `src/test/java/com/fitback/backend/external/shopping/shopify/ShopifyGlobalCatalogAdapterTest.java`
+- Test: `src/test/java/com/fitback/backend/external/shopping/shopify/ShopifyGlobalCatalogHttpClientTest.java`
+
+**Interfaces:**
+
+- Consumes: identity-only Shopify products with stable provider/product/variant/merchant identity.
+- Produces: at most 50 distinct `lookup_catalog` IDs per provider request and a `ProviderProductRef`-keyed result; never uses catalog response order as identity.
+- Keeps: absent or partial catalog results as `PRODUCT_PROVIDER_UNAVAILABLE`, provider errors as existing mapped per-item errors, live seller/price/purchaseUrl/imageUrl as response-time snapshots, and existing recommendation category/rank/score/browserReranking/persistence behavior.
+
+- [x] **Step 1: Add contract tests for batch boundaries and mapping**
+
+Verify one request for ten identity-only products, `50 + 1` chunking, reordered provider results, missing results, duplicate identities, provider failure mapping, and the original category/rank response order.
+
+- [x] **Step 2: Add the optional batch capability without changing single lookup behavior**
+
+`ProductDetailService` detects `BatchProductCatalogPort`, deduplicates stable identity references, chunks by the provider maximum, fans each mapped candidate back to its product IDs, and leaves non-batch providers on the existing single-lookup path. `ShopifyGlobalCatalogHttpClient` sends `lookup_catalog.ids` once per chunk and maps the returned products through `ShopifyCatalogLookup` input IDs.
+
+- [ ] **Step 3: Run focused and full regression checks**
+
+Run: `GRADLE_USER_HOME=/tmp/fitback-pr354-gradle ./gradlew test --tests '*ProductDetailServiceTest' --tests '*RecommendationQueryServiceTest' --tests '*ShopifyGlobalCatalogAdapterTest' --tests '*ShopifyGlobalCatalogHttpClientTest' --no-daemon --no-watch-fs`
+
+Run: `GRADLE_USER_HOME=/tmp/fitback-pr354-gradle ./gradlew clean build --no-daemon --no-watch-fs`
+
+Expected: batch contract tests and the full backend build pass. The actual browser E2E batch latency remains `NOT_VERIFIED`; do not label the pre-batch baseline as a batch improvement.
