@@ -69,6 +69,21 @@ class RecommendationPerformanceTraceTest {
     }
 
     @Test
+    void omitsUnknownHttpStatusForAnErrorTrace() {
+        try (RecommendationPerformanceTrace.Scope scope =
+                     RecommendationPerformanceTrace.beginIfRequested(
+                             RecommendationPerformanceTrace.REQUEST_VALUE
+                     )) {
+            scope.fail(null);
+
+            RecommendationPerformanceTrace.Snapshot snapshot = scope.snapshot();
+
+            assertThat(snapshot.outcome()).isEqualTo("ERROR");
+            assertThat(snapshot.httpStatus()).isNull();
+        }
+    }
+
+    @Test
     void recordsBatchLookupInputSizeWithoutChangingTheTraceSchema() throws Exception {
         try (RecommendationPerformanceTrace.Scope scope =
                      RecommendationPerformanceTrace.beginIfRequested(

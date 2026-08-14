@@ -39,7 +39,7 @@ public class RecommendationPerformanceTraceFilter extends OncePerRequestFilter {
                 filterChain.doFilter(request, response);
                 scope.complete(response.getStatus());
             } catch (IOException | ServletException | RuntimeException exception) {
-                scope.fail(response.getStatus());
+                scope.fail(response.isCommitted() ? response.getStatus() : null);
                 throw exception;
             }
         }

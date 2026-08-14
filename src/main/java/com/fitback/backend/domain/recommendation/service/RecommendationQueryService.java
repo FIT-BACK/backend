@@ -82,15 +82,17 @@ public class RecommendationQueryService implements RecommendationResultProvider 
         RecommendationStatus status = status(report);
         Set<Long> savedProductIds = findSavedProductIds(memberId, items);
         Set<String> warnings = new TreeSet<>();
+        List<RecommendedItem> responseOrderedItems = responseOrderItems(items);
         ProductDetailBatchResult batchResult = productDetailService.lookupIdentityOnlyDetails(
-                responseOrderProducts(items)
+                responseOrderedItems.stream()
+                        .map(RecommendedItem::getProduct)
+                        .toList()
         );
         List<RecommendationGroupResponse> groups = java.util.Arrays.stream(ProductCategory.values())
                 .map(category -> new RecommendationGroupResponse(
                         category,
-                        items.stream()
+                        responseOrderedItems.stream()
                                 .filter(item -> item.getCategory() == category)
-                                .sorted(Comparator.comparing(RecommendedItem::getRankNo))
                                 .map(item -> toResponse(
                                         item,
                                         savedProductIds.contains(item.getProduct().getId()),
@@ -168,12 +170,11 @@ public class RecommendationQueryService implements RecommendationResultProvider 
         );
     }
 
-    private static List<Product> responseOrderProducts(List<RecommendedItem> items) {
+    private static List<RecommendedItem> responseOrderItems(List<RecommendedItem> items) {
         return java.util.Arrays.stream(ProductCategory.values())
                 .flatMap(category -> items.stream()
                         .filter(item -> item.getCategory() == category)
                         .sorted(Comparator.comparing(RecommendedItem::getRankNo)))
-                .map(RecommendedItem::getProduct)
                 .toList();
     }
 

@@ -129,8 +129,8 @@ test('candidate fetch keeps the direct no-store request and records a successful
 
 test('candidate fetch aborts a never-resolving request at the explicit deadline', async () => {
   let abortObserved = false;
-  const started = performance.now();
-  const result = await fetchCandidateBlob({
+  let deadlineCallback;
+  const resultPromise = fetchCandidateBlob({
     url: 'https://cdn.example/never.jpg',
     originalIndex: 3,
     deadlineMs: 10,
@@ -139,13 +139,21 @@ test('candidate fetch aborts a never-resolving request at the explicit deadline'
         abortObserved = options.signal.aborted;
       }, { once: true });
     }),
+    setTimeoutImpl: (callback, deadlineMs) => {
+      assert.equal(deadlineMs, 10);
+      deadlineCallback = callback;
+      return 1;
+    },
+    clearTimeoutImpl: () => {},
   });
+  await Promise.resolve();
+  deadlineCallback();
+  const result = await resultPromise;
 
   assert.equal(result.terminationReason, 'timeout');
   assert.equal(result.fetchSucceeded, false);
   assert.equal(result.abortIssued, true);
   assert.equal(abortObserved, true);
-  assert.ok(performance.now() - started < 250);
 });
 
 test('candidate fetch also bounds a never-resolving image body transfer', async () => {
@@ -221,19 +229,28 @@ test('candidate decode error clears its blob and becomes a terminal decode_error
 
 test('mixed candidate fetches all settle within the slowest configured deadline', async () => {
   let timeoutAbortObserved = false;
-  const started = performance.now();
-  const results = await Promise.all([
+  const deadlineCallbacks = [];
+  const setTimeoutImpl = (callback, deadlineMs) => {
+    assert.equal(deadlineMs, 15);
+    deadlineCallbacks.push(callback);
+    return deadlineCallbacks.length;
+  };
+  const resultsPromise = Promise.all([
     fetchCandidateBlob({
       url: 'https://cdn.example/ok.jpg',
       originalIndex: 1,
       deadlineMs: 15,
       fetchImpl: async () => imageResponse(),
+      setTimeoutImpl,
+      clearTimeoutImpl: () => {},
     }),
     fetchCandidateBlob({
       url: 'https://cdn.example/http.jpg',
       originalIndex: 2,
       deadlineMs: 15,
       fetchImpl: async () => imageResponse({ ok: false, status: 404 }),
+      setTimeoutImpl,
+      clearTimeoutImpl: () => {},
     }),
     fetchCandidateBlob({
       url: 'https://cdn.example/never.jpg',
@@ -244,14 +261,21 @@ test('mixed candidate fetches all settle within the slowest configured deadline'
           timeoutAbortObserved = options.signal.aborted;
         }, { once: true });
       }),
+      setTimeoutImpl,
+      clearTimeoutImpl: () => {},
     }),
     fetchCandidateBlob({
       url: 'https://cdn.example/network.jpg',
       originalIndex: 4,
       deadlineMs: 15,
       fetchImpl: async () => { throw new Error('offline'); },
+      setTimeoutImpl,
+      clearTimeoutImpl: () => {},
     }),
   ]);
+  await Promise.resolve();
+  deadlineCallbacks[2]();
+  const results = await resultsPromise;
 
   assert.deepEqual(results.map((result) => result.terminationReason), [
     'success',
@@ -260,7 +284,6 @@ test('mixed candidate fetches all settle within the slowest configured deadline'
     'network_error',
   ]);
   assert.equal(timeoutAbortObserved, true);
-  assert.ok(performance.now() - started < 250);
 });
 
 test('uses a conservative explicit direct Shopify image deadline for the PoC', () => {

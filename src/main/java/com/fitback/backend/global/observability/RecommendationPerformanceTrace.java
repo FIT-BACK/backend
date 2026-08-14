@@ -150,7 +150,7 @@ public final class RecommendationPerformanceTrace {
             }
         }
 
-        public void fail(int httpStatus) {
+        public void fail(Integer httpStatus) {
             if (trace != null) {
                 trace.complete(httpStatus, "ERROR");
             }
@@ -301,7 +301,7 @@ public final class RecommendationPerformanceTrace {
             browserRerankingCandidateCount = Math.max(0, candidateCount);
         }
 
-        private void complete(int responseStatus, String completedOutcome) {
+        private void complete(Integer responseStatus, String completedOutcome) {
             httpStatus = responseStatus;
             outcome = completedOutcome;
         }
