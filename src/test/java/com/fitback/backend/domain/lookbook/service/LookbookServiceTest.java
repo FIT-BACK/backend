@@ -735,7 +735,10 @@ class LookbookServiceTest {
     void getLookbookDetailReturnsAuthorTagsLikedAndOwnerStatus() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 7, 16, 12, 0);
         Lookbook lookbook = createPersistedLookbook(createdAt);
-        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNullAndModerationStatus(
+                100L,
+                LookbookModerationStatus.VISIBLE
+        )).thenReturn(Optional.of(lookbook));
         when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
                 .thenReturn(List.of(
                         LookbookTag.create(lookbook, minimalTag),
@@ -776,7 +779,10 @@ class LookbookServiceTest {
     @Test
     void getLookbookDetailReturnsIsLikedFalseForAnonymousMember() {
         Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 16, 12, 0));
-        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNullAndModerationStatus(
+                100L,
+                LookbookModerationStatus.VISIBLE
+        )).thenReturn(Optional.of(lookbook));
         when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
                 .thenReturn(List.of());
 
@@ -800,7 +806,10 @@ class LookbookServiceTest {
                 LoginProvider.EMAIL
         );
         ReflectionTestUtils.setField(otherMember, "id", 2L);
-        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNullAndModerationStatus(
+                100L,
+                LookbookModerationStatus.VISIBLE
+        )).thenReturn(Optional.of(lookbook));
         when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
                 .thenReturn(List.of());
 
@@ -815,7 +824,10 @@ class LookbookServiceTest {
     @Test
     void getLookbookDetailReturnsNullSaveIdWhenNotSavedByMember() {
         Lookbook lookbook = createPersistedLookbook(LocalDateTime.of(2026, 7, 16, 12, 0));
-        when(lookbookRepository.findByIdAndDeletedAtIsNull(100L)).thenReturn(Optional.of(lookbook));
+        when(lookbookRepository.findByIdAndDeletedAtIsNullAndModerationStatus(
+                100L,
+                LookbookModerationStatus.VISIBLE
+        )).thenReturn(Optional.of(lookbook));
         when(lookbookTagRepository.findAllByLookbookIdOrderByIdAsc(100L))
                 .thenReturn(List.of());
         when(closetSaveRepository.findByMemberIdAndTargetTypeAndTargetId(
@@ -829,13 +841,33 @@ class LookbookServiceTest {
 
     @Test
     void getLookbookDetailFailsWhenLookbookDoesNotExist() {
-        when(lookbookRepository.findByIdAndDeletedAtIsNull(999L)).thenReturn(Optional.empty());
+        when(lookbookRepository.findByIdAndDeletedAtIsNullAndModerationStatus(
+                999L,
+                LookbookModerationStatus.VISIBLE
+        )).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> lookbookService.getLookbookDetail(999L, null))
                 .isInstanceOfSatisfying(BusinessException.class, exception -> {
                     assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND);
                     assertThat(exception.getMessage()).isEqualTo("룩북을 찾을 수 없습니다.");
                 });
+    }
+
+    @Test
+    void getLookbookDetailFailsWhenLookbookIsHidden() {
+        when(lookbookRepository.findByIdAndDeletedAtIsNullAndModerationStatus(
+                100L,
+                LookbookModerationStatus.VISIBLE
+        )).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> lookbookService.getLookbookDetail(100L, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND);
+                    assertThat(exception.getMessage()).isEqualTo("룩북을 찾을 수 없습니다.");
+                });
+
+        verify(lookbookTagRepository, never()).findAllByLookbookIdOrderByIdAsc(any());
+        verify(memberProfileImageService, never()).resolveProfileImageUrl(any());
     }
 
     @Test

@@ -55,7 +55,6 @@ class AiTagRequestFactoryTest {
                 ));
         Map<String, Object> suggestedTags = map(garmentProperties.get("suggestedTags"));
         Map<String, Object> suggestionName = itemProperty(suggestedTags, "name");
-        List<Map<String, Object>> requiredTagAlternatives = maps(topGarment.get("anyOf"));
         String normalizedPrompt = request.prompt().replaceAll("\\s+", " ");
 
         assertThat(request.jsonSchema().get("required")).isEqualTo(List.of("garments"));
@@ -67,6 +66,9 @@ class AiTagRequestFactoryTest {
         assertThat(topOptions).anySatisfy(option -> assertThat(option).containsEntry("type", "null"));
         assertThat(topGarment.get("required"))
                 .isEqualTo(List.of("canonicalTags", "suggestedTags"));
+        assertThat(canonicalTags)
+                .containsEntry("minItems", 1)
+                .containsEntry("maxItems", 8);
         assertThat(canonicalNamesByType)
                 .containsEntry("SILHOUETTE", List.of("와이드핏"))
                 .containsEntry("COLOR", List.of("베이지"))
@@ -78,20 +80,7 @@ class AiTagRequestFactoryTest {
         assertThat(suggestedTags)
                 .containsEntry("minItems", 0)
                 .containsEntry("maxItems", 8);
-        assertThat(requiredTagAlternatives)
-                .allSatisfy(alternative -> assertThat(alternative)
-                        .containsEntry("type", "object")
-                        .containsEntry("additionalProperties", false)
-                        .containsEntry(
-                                "required",
-                                List.of("canonicalTags", "suggestedTags")
-                        ));
-        assertThat(requiredTagAlternatives).anySatisfy(alternative -> assertThat(
-                map(map(alternative.get("properties")).get("canonicalTags"))
-        ).containsEntry("minItems", 1));
-        assertThat(requiredTagAlternatives).anySatisfy(alternative -> assertThat(
-                map(map(alternative.get("properties")).get("suggestedTags"))
-        ).containsEntry("minItems", 1));
+        assertThat(topGarment).doesNotContainKey("anyOf");
         assertThat(normalizedPrompt).contains(
                 "The input contains exactly one cropped garment",
                 "Classify it as exactly one of TOP, BOTTOM, DRESS, or OUTER",
@@ -101,7 +90,7 @@ class AiTagRequestFactoryTest {
                 "DETAIL, STYLE, and MATERIAL",
                 "Korean",
                 "Do not copy an exact canonical tag into suggestedTags",
-                "At least one of canonicalTags or suggestedTags must contain a tag",
+                "canonicalTags must contain at least one tag",
                 "visible evidence"
         ).doesNotContain("SHOES");
     }
@@ -154,9 +143,8 @@ class AiTagRequestFactoryTest {
                 "미니멀 can remain dominant",
                 "Use 캐주얼 only for visibly relaxed everyday construction",
                 "correct its orientation",
-                "use a precise, high-confidence suggested",
-                "tag with visible evidence instead of guessing a canonical tag",
-                "must still contain at least one canonical or suggested tag"
+                "Only add a precise, high-confidence suggested tag",
+                "after selecting at least one visibly supported canonical tag"
         ).doesNotContain(
                 "Return every canonical tag with its matching type",
                 "Mere visibility is insufficient",

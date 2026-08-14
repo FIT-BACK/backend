@@ -4,15 +4,15 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 기준일 | 2026-08-11 |
+| 기준일 | 2026-08-13 |
 | 적용 범위 | 회원·프로필 이미지, 이미지 생명주기, 분석·추천·상품·저장·룩북·트렌드, 알림 설정·이력·알림 목록 |
-| 기준 코드 | `develop` `4e32c6f`, JPA Entity, Flyway V1~V28 |
+| 기준 코드 | `develop` `6baa103`, JPA Entity, Flyway V1~V31 |
 | 연동 참고 | Recommendation은 기존 분석 입력을 읽거나 요청의 확정 태그·매칭값을 멱등 반영 |
 | 문서 성격 | 현재 애플리케이션·migration이 보장하는 계약과 의도적인 scalar 참조 경계를 기록 |
 
 이 문서는 기존 Recommendation/Product 설계에 현재 구현된 이미지, 회원 프로필,
 알림 설정·동의 이력·알림 테이블을 포함한다. 운영 DDL의 단일 출처는
-`src/main/resources/db/migration` 아래 V1~V28이며, 이 문서는 DDL을 대체하지 않는다.
+`src/main/resources/db/migration` 아래 V1~V31이며, 이 문서는 DDL을 대체하지 않는다.
 
 ---
 
@@ -429,8 +429,8 @@ CK_PRODUCT_PRICE_VALUE(
 | `input_revision` | `INT` | N | 생성에 사용한 분석 결과 version |
 | `rank_no` | `INT` | N | category 안의 1~10 순위 |
 | `category` | `VARCHAR(30)` | N | 생성 시점 내부 category |
-| `similarity_score` | `DECIMAL(5,2)` | N | 이미지 70%와 태그 30%를 합산한 0~100 점수 |
-| `final_score` | `DECIMAL(5,2)` | N | 이번 범위에서는 similarity와 동일 |
+| `similarity_score` | `DECIMAL(5,2)` | N | 서버 추천 이력용 임시·내부 0~100 점수. 고정 이미지 70%와 태그 30%를 합산 |
+| `final_score` | `DECIMAL(5,2)` | N | 서버 이력 계약에서는 similarity와 동일. 사용자 노출 browser score와 무관 |
 | `score_version` | `VARCHAR(30)` | N | 신규 `IMAGE_TAG_WEIGHTED_V1`/`IMAGE_TAG_WEIGHTED_THR_V1`, 레거시 `TAG_MATCH_RATIO_V1`/`TAG_MATCH_RATIO_THRESHOLD_V1`/`SIMILARITY_V1`/`SIMILARITY_THRESHOLD_V2` |
 | `reason_codes` | `VARCHAR(500)` | N | 정렬된 내부 code 목록. 신규 추천 항목은 최소 1개 필수 |
 | `created_at` | `DATETIME(6)` | N | 생성 시각 |
@@ -794,22 +794,51 @@ V30은 동시 회원가입 요청에서도 동일 이메일이 하나만 저장�
 UK_MEMBER_EMAIL(email)
 ```
 
+### 4.16 `member` Refresh Token 해시 저장
+
+V31은 DB 유출 시 Refresh Token 원문이 직접 사용되는 것을 방지하기 위해
+`refresh_token_hash CHAR(64)` 컬럼을 추가한다.
+
+기존에 저장된 Refresh Token은 해시로 변환하지 않고 모두 폐기하므로, 배포 시 로그인 중인
+사용자는 한 번 재로그인해야 한다. 이후 회원가입·로그인·토큰 교환·재발급에서는
+HMAC-SHA256 결과만 저장하며, 클라이언트에는 기존과 동일하게 원본 Refresh Token을 반환한다.
+재발급 성공 시 새 Refresh Token 해시로 회전하고, 로그아웃과 비밀번호 재설정 시 해시를
+`NULL`로 제거한다.
+
+기존 `refresh_token VARCHAR(512)` 컬럼은 schema 호환을 위해 `NULL` 상태로 유지한다. 이는
+pre-V31 애플리케이션으로 운영 롤백해도 된다는 의미가 아니다. Pre-V31 코드는 원문을 다시
+저장하므로 V31 적용 후 운영 rollback target으로 사용할 수 없다. 새 버전이 안정화된 후 별도
+마이그레이션에서 기존 컬럼을 제거한다.
+
+```text
+member.refresh_token VARCHAR(512) NULL        -- schema 호환용, pre-V31 운영 rollback 금지
+member.refresh_token_hash CHAR(64) NULL
+```
+
 ---
 
-## 5. 유사도 점수 영속 근거
+## 5. 서버 임시 유사도 점수 영속 근거
+
+이 절의 점수는 서버 호환성과 추천 이력 저장을 위한 임시·내부 계약이다. 실제 사용자에게
+노출하는 추천 순서는 추천 생성 응답의 `browserReranking.candidates`를 브라우저가
+Fashion-CLIP으로 재평가한 결과를 기준으로 한다. Browser score는 DB에 저장하거나 서버로
+제출하지 않는다.
 
 - 공급자 raw score는 추천 점수에 사용하지 않는다.
 - 분석 태그 fallback과 normalization은 쇼핑 API Adapter contract test로 고정한다.
-- `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 태그 일치 비율을 0~100의
-  `tagMatchScore`로 계산하며, 대상 태그가 없으면 100점으로 처리한다.
+- `SILHOUETTE`, `MATERIAL`, `DETAIL`, `COLOR` 태그 일치 결과를 0~100의
+  `tagMatchScore`로 계산한다. 백엔드 영속 점수는 `COLOR=6`, 나머지 속성은 각각 1의 가중치를
+  사용하며, 대상 태그가 없으면 100점으로 처리한다.
 - `similarity_score = temporaryImageSimilarityScore * 0.7 + tagMatchScore * 0.3`이다.
-- 실제 이미지 유사도 연동 전까지 `temporaryImageSimilarityScore`는 70점으로 고정하며,
-  이미지 유사도 계산 구현 후 실제 계산 결과로 교체한다.
+- 서버 영속 점수의 `temporaryImageSimilarityScore`는 70점으로 고정하며 실제 Fashion-CLIP
+  이미지 유사도로 해석하지 않는다.
 - `similarity_score`는 scale 2, `RoundingMode.HALF_UP`으로 저장한다.
 - `final_score = similarity_score`다.
 - 정렬은 `similarity_score DESC -> source_api ASC -> external_product_id ASC ->
   candidateFingerprint ASC -> product_id ASC`다.
 - 가격은 점수 또는 reason code 생성에 사용하지 않는다.
+- Browser `tagSimilarity`는 같은 eligible tag 집합의 단순 일치 개수/전체 개수인 비가중
+  `[0,1]` 비율이며, 백엔드 영속 점수의 `COLOR=6` 가중치를 사용하지 않는다.
 
 ---
 
@@ -837,7 +866,7 @@ JPA에는 대규모 `CascadeType.ALL`을 기본 적용하지 않는다. 특히 P
 
 ## 7. Entity·migration 상태
 
-현재 운영 migration 계약은 V1~V30이며, 프로덕션에서 Flyway 적용 후
+현재 운영 migration 계약은 V1~V31이며, 프로덕션에서 Flyway 적용 후
 Hibernate `ddl-auto=validate`로 Entity mapping을 검증한다.
 
 ### 7.1 `Product`

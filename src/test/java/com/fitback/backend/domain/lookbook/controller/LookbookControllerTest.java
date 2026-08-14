@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 
@@ -75,6 +76,11 @@ class LookbookControllerTest {
         assertThat(response.getBody().message()).isEqualTo("리소스가 생성되었습니다.");
         assertThat(response.getBody().data()).isEqualTo(serviceResponse);
         verify(lookbookService).createLookbook(member, request);
+    }
+
+    @Test
+    void declaresClassLevelValidatedAnnotation() {
+        assertThat(LookbookController.class).hasAnnotation(Validated.class);
     }
 
     @Test

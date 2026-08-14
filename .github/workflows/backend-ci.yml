@@ -162,6 +162,10 @@ jobs:
             abort 'Backend CD must deploy into an immutable release directory.'
           end
 
+          unless payload_script.include?('deploy/compatibility/v31-refresh-token-hash')
+            abort 'Backend CD must bundle the V31 rollback compatibility marker.'
+          end
+
           required_feature_payload = %w[
             APP_CORS_ALLOWED_ORIGINS
             FITBACK_AI_TAG_ANALYZER

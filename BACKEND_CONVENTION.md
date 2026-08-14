@@ -208,7 +208,7 @@ IDX_{TABLE_NAME}_{COLUMN1}_{COLUMN2}
 
 ### 5.4 마이그레이션
 
-운영 스키마는 Flyway로 관리하며 현재 `V1`~`V21` 마이그레이션을 적용한다.
+운영 스키마는 Flyway로 관리하며 현재 `V1`~`V31` 마이그레이션을 적용한다.
 운영 프로필은 `ddl-auto: validate`와 Flyway를 사용하고, 로컬·테스트 프로필은 Flyway를
 비활성화한다. 마이그레이션 파일은 다음 경로와 이름 규칙을 따른다.
 
@@ -408,7 +408,9 @@ throw new BusinessException(ErrorCode.NOT_FOUND);
 
 - Swagger/OpenAPI, Actuator health, 아래 공개 인증 경로를 인증 없이 허용한다.
 - 공개 조회 경로는 `GET` 요청만 인증 없이 허용한다.
-- 그 밖의 요청은 모두 인증이 필요하다.
+- 그 밖의 요청은 모두 인증과 `ROLE_USER` 또는 `ROLE_ADMIN` 권한이 필요하다.
+- 리포트·이미지·알림·저장 상품 등 회원 리소스는 서비스 계층에서 소유권을 추가로 검사한다.
+- 룩북 수정은 작성자만 가능하며, 삭제는 작성자 또는 `ADMIN`만 가능하다.
 - ERROR dispatcher는 에러 응답 렌더링을 위해 허용한다.
 - REST API 기준으로 CSRF, Form Login, HTTP Basic은 비활성화하고 세션은 `STATELESS`로 사용한다.
 - 허용된 Origin만 CORS 요청을 받을 수 있으며 credential cookie는 허용하지 않는다.
@@ -431,7 +433,7 @@ throw new BusinessException(ErrorCode.NOT_FOUND);
 - `GET /api/v1/content-search`
 - `GET /api/v1/lookbooks`, `GET /api/v1/lookbooks/{lookbookId}`
 
-인증 필요 API:
+인증·인가 필요 API:
 
 - `POST /api/v1/auth/logout`
 - `/api/v1/members/me/**`
@@ -439,6 +441,10 @@ throw new BusinessException(ErrorCode.NOT_FOUND);
 - `/api/v1/lookbooks/**` 중 작성, 삭제, 좋아요 등 사용자 상태 변경 API
 - `/api/v1/closet-saves/**`
 - 명시적으로 공개되지 않은 나머지 API
+
+비공개 API에서 인증 정보가 없거나 유효하지 않으면 `401 COMMON401_1`, 인증 정보는 있지만
+허용 역할이 없으면 `403 COMMON403_1`을 반환한다. 리소스 소유권 실패는 API의 존재 숨김
+계약에 따라 404를 반환할 수 있으며, 룩북 수정·삭제처럼 명시된 경우에는 403을 반환한다.
 
 공개 경로를 변경하면 `SecurityConfig`, 통합 테스트, `docs/API_SPEC.md`를 함께 갱신한다.
 
@@ -451,7 +457,12 @@ throw new BusinessException(ErrorCode.NOT_FOUND);
 - Refresh token은 `POST /api/v1/auth/token/refresh`의 JSON body로 전달하며 Bearer 인증에 사용하지 않는다.
 - `JwtAuthFilter`가 access token을 검증하고 `SecurityContext`에 회원 정보를 설정한다.
 - 토큰 만료·위변조·용도 오류는 공통 또는 인증 도메인 오류 응답으로 반환한다.
-- 로그아웃은 저장된 Refresh token을 무효화한다.
+- 서버는 Refresh token 원문을 저장하지 않고 `refresh-token:` 용도 문자열을 포함한
+  HMAC-SHA256 소문자 64자리 hex만 저장한다.
+- 재발급은 요청 Refresh token의 HMAC과 저장값을 `MessageDigest.isEqual`로 상수 시간 비교하고
+  access/refresh token을 함께 회전한다.
+- 로그아웃과 비밀번호 재설정은 저장된 Refresh token 해시를 제거한다.
+- V31은 기존 원문 Refresh token을 모두 폐기하므로 해당 배포 직후 기존 사용자는 재로그인해야 한다.
 
 ---
 
@@ -571,7 +582,7 @@ bash scripts/ci/test_mysql_migrations.sh
 ```
 
 Gradle 테스트는 H2 기반 `application-test.yml`을 사용한다. MySQL 검증은 service 선언 대신
-`test_mysql_migrations.sh`가 임시 MySQL 8.4 컨테이너를 실행하여 Flyway `V1`~`V21`과
+`test_mysql_migrations.sh`가 임시 MySQL 8.4 컨테이너를 실행하여 Flyway `V1`~`V31`과
 주요 제약조건 계약을 검사한다.
 
 GitHub Actions 외부 액션은 full commit SHA로 고정한다.

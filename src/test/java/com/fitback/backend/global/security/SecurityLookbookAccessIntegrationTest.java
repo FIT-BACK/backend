@@ -1,10 +1,16 @@
 package com.fitback.backend.global.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -12,6 +18,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fitback.backend.domain.lookbook.dto.LookbookResponse;
+import com.fitback.backend.domain.lookbook.dto.LookbookRequest;
 import com.fitback.backend.domain.lookbook.service.LookbookService;
 import com.fitback.backend.domain.member.entity.LoginProvider;
 import com.fitback.backend.domain.member.entity.Member;
@@ -132,6 +139,69 @@ class SecurityLookbookAccessIntegrationTest {
                 .andExpect(jsonPath("$.code").value("COMMON401_1"));
     }
 
+    // 인증 객체가 있어도 허용 역할이 없으면 비공개 API 접근 불가
+    @Test
+    void requiresKnownRoleForPrivateApi() throws Exception {
+        mockMvc.perform(post("/api/v1/lookbooks")
+                        .with(user("roleless@fitback.com").authorities()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON403_1"));
+    }
+
+    @Test
+    void rejectsInvalidAuthenticatedLookbookCreateBodyWithoutCallingService() throws Exception {
+        String email = "invalid-lookbook-create@fitback.com";
+        authenticate(email);
+
+        mockMvc.perform(post("/api/v1/lookbooks")
+                        .header("Authorization", bearer(accessToken(email)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "originalImageId": "",
+                                  "matchedImageId": "matched-image-id",
+                                  "tagIds": [1]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON400_2"))
+                .andExpect(jsonPath("$.data").value(nullValue()));
+
+        verify(lookbookService, never()).createLookbook(
+                any(Member.class),
+                any(LookbookRequest.LookbookCreate.class)
+        );
+    }
+
+    @Test
+    void rejectsInvalidAuthenticatedLookbookUpdateBodyWithoutCallingService() throws Exception {
+        String email = "invalid-lookbook-update@fitback.com";
+        authenticate(email);
+
+        mockMvc.perform(put("/api/v1/lookbooks/{lookbookId}", 1L)
+                        .header("Authorization", bearer(accessToken(email)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "originalImageId": "original-image-id",
+                                  "matchedImageId": "matched-image-id",
+                                  "tagIds": []
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON400_2"))
+                .andExpect(jsonPath("$.data").value(nullValue()));
+
+        verify(lookbookService, never()).updateLookbook(
+                any(Long.class),
+                any(Member.class),
+                any(LookbookRequest.LookbookUpdate.class)
+        );
+    }
+
     //비로그인 룩북 삭제 요청은 인증 필요
     @Test
     void requiresAuthenticationForLookbookDelete() throws Exception {
@@ -150,7 +220,7 @@ class SecurityLookbookAccessIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"0", "-1", "2147483647"})
+    @ValueSource(strings = {"0", "-1", "21", "2147483647"})
     void rejectsLookbookPageSizeOutsideAllowedRange(String pageSize) throws Exception {
         mockMvc.perform(get("/api/v1/lookbooks").param("pageSize", pageSize))
                 .andExpect(status().isBadRequest())
@@ -228,6 +298,12 @@ class SecurityLookbookAccessIntegrationTest {
     private String accessToken(String email) {
         Member member = Member.create(email, "jwt-member", "encoded-password", LoginProvider.EMAIL);
         return jwtUtil.createAccessToken(new AuthMember(member));
+    }
+
+    private void authenticate(String email) {
+        Member member = Member.create(email, "jwt-member", "encoded-password", LoginProvider.EMAIL);
+        when(customUserDetailsService.loadUserByUsername(email))
+                .thenReturn(new AuthMember(member));
     }
 
     private String bearer(String token) {

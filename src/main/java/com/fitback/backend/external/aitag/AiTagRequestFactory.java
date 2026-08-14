@@ -49,9 +49,11 @@ public final class AiTagRequestFactory {
                 - Return a sparse set of only high-confidence, visibly supported tags. Inspecting
                   all five dimensions does not require a tag from every type. When uncertain, omit
                   the tag instead of guessing.
-                - If no canonical tag is high-confidence, use a precise, high-confidence suggested
-                  tag with visible evidence instead of guessing a canonical tag. Every returned
-                  garment must still contain at least one canonical or suggested tag.
+                - Every returned garment must contain at least one high-confidence canonical tag.
+                  If uncertainty affects one dimension, omit that dimension, but never return a
+                  garment with canonicalTags empty. Only add a precise, high-confidence suggested
+                  tag with visible evidence after selecting at least one visibly supported
+                  canonical tag.
                 - Do not choose the closest canonical tag when the exact attribute is not visibly
                   supported. Do not return competing tags for the same attribute, such as two fits,
                   rises, or lengths.
@@ -91,7 +93,7 @@ public final class AiTagRequestFactory {
                   for visibly relaxed everyday construction, never as a fallback.
 
                 canonicalTags:
-                - Select 0 to %d tags only from the exact canonical catalog below.
+                - Select 1 to %d tags only from the exact canonical catalog below.
                 - Do not invent, translate, or normalize canonical tag names.
                 - Return each selected canonical tag with its matching type.
 
@@ -102,8 +104,7 @@ public final class AiTagRequestFactory {
                 - Do not copy an exact canonical tag into suggestedTags.
                 - Include confidence from 0 to 1 and brief visible evidence in Korean.
 
-                At least one of canonicalTags or suggestedTags must contain a tag for every
-                returned garment.
+                canonicalTags must contain at least one tag for every returned garment.
 
                 Never infer an invisible material. Prefer precision over recall and return no
                 suggestion when the image does not provide sufficient visible evidence.
@@ -148,14 +149,10 @@ public final class AiTagRequestFactory {
         garmentItem.put("type", "object");
         garmentItem.put("additionalProperties", false);
         Map<String, Object> garmentProperties = new LinkedHashMap<>();
-        garmentProperties.put("canonicalTags", tagArray(canonicalItem));
-        garmentProperties.put("suggestedTags", tagArray(suggestionItem));
+        garmentProperties.put("canonicalTags", tagArray(canonicalItem, 1));
+        garmentProperties.put("suggestedTags", tagArray(suggestionItem, 0));
         garmentItem.put("properties", garmentProperties);
         garmentItem.put("required", requiredGarmentFields());
-        garmentItem.put("anyOf", List.of(
-                garmentSchemaWithTagMinimum(garmentProperties, "canonicalTags"),
-                garmentSchemaWithTagMinimum(garmentProperties, "suggestedTags")
-        ));
 
         Map<String, Object> garmentsProperties = new LinkedHashMap<>();
         for (GarmentPiece piece : GarmentPiece.values()) {
@@ -187,28 +184,12 @@ public final class AiTagRequestFactory {
         return new AiTagModelRequest(prompt, schema);
     }
 
-    private static Map<String, Object> tagArray(Map<String, Object> item) {
+    private static Map<String, Object> tagArray(Map<String, Object> item, int minItems) {
         return Map.of(
                 "type", "array",
-                "minItems", 0,
+                "minItems", minItems,
                 "maxItems", MAX_TAGS_PER_GARMENT,
                 "items", item
-        );
-    }
-
-    private static Map<String, Object> garmentSchemaWithTagMinimum(
-            Map<String, Object> garmentProperties,
-            String tagProperty
-    ) {
-        Map<String, Object> properties = new LinkedHashMap<>(garmentProperties);
-        Map<String, Object> tags = new LinkedHashMap<>(asMap(properties.get(tagProperty)));
-        tags.put("minItems", 1);
-        properties.put(tagProperty, tags);
-        return Map.of(
-                "type", "object",
-                "additionalProperties", false,
-                "properties", properties,
-                "required", requiredGarmentFields()
         );
     }
 
@@ -229,11 +210,6 @@ public final class AiTagRequestFactory {
                 "properties", properties,
                 "required", garmentPieceNames()
         );
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> asMap(Object value) {
-        return (Map<String, Object>) value;
     }
 
     private static List<String> requiredGarmentFields() {

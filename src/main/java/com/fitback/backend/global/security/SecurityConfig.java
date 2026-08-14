@@ -95,7 +95,7 @@ public class SecurityConfig {
                         .requestMatchers(HEALTH_URLS).permitAll()
                         .requestMatchers(NO_AUTH_URLS).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_READ_URLS).permitAll()
-                        .anyRequest().authenticated())
+                        .anyRequest().hasAnyRole("USER", "ADMIN"))
                 .oauth2Login(oauth -> oauth
                         .authorizationEndpoint(auth -> auth.baseUri("/api/v1/auth/oauth2"))
                         .redirectionEndpoint(redirect -> redirect.baseUri("/api/v1/auth/callback/*"))

@@ -16,6 +16,7 @@ RELEASES_DIR="$DEPLOY_ROOT/releases"
 RELEASE_DIR="${RELEASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 CURRENT_LINK="$DEPLOY_ROOT/current"
 LOCK_FILE="$DEPLOY_ROOT/deploy.lock"
+V31_COMPATIBILITY_MARKER_RELATIVE_PATH="deploy/compatibility/v31-refresh-token-hash"
 HTTP_BIND_ADDRESS="${HTTP_BIND_ADDRESS:-0.0.0.0}"
 HTTP_PORT="${HTTP_PORT:-80}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-30}"
@@ -155,6 +156,11 @@ fi
 
 if [ ! -f "$RELEASE_DIR/deploy/nginx/default.conf" ]; then
   echo "Nginx configuration is missing: $RELEASE_DIR/deploy/nginx/default.conf" >&2
+  exit 1
+fi
+
+if [ ! -f "$RELEASE_DIR/$V31_COMPATIBILITY_MARKER_RELATIVE_PATH" ]; then
+  echo "V31 compatibility marker is missing: $RELEASE_DIR/$V31_COMPATIBILITY_MARKER_RELATIVE_PATH" >&2
   exit 1
 fi
 
@@ -329,6 +335,11 @@ rollback() {
 
   if [ -n "$previous_release" ]; then
     echo "Deployment failed; restoring release: $previous_release" >&2
+
+    if [ ! -f "$previous_release/$V31_COMPATIBILITY_MARKER_RELATIVE_PATH" ]; then
+      echo 'Rollback refused: the previous release is not compatible with the V31 Refresh Token hash-only schema.' >&2
+      return 1
+    fi
 
     if ! compose_in "$previous_release" pull backend; then
       echo 'Rollback failed while pulling the previous image.' >&2
