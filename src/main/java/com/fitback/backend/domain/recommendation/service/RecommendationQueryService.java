@@ -6,6 +6,7 @@ import com.fitback.backend.domain.analysis.service.RecommendationResultProvider;
 import com.fitback.backend.domain.product.dto.ProductDetailResponse;
 import com.fitback.backend.domain.product.entity.Product;
 import com.fitback.backend.domain.product.repository.SavedProductRepository;
+import com.fitback.backend.domain.product.service.ProductDetailBatchResult;
 import com.fitback.backend.domain.product.service.ProductDetailService;
 import com.fitback.backend.domain.product.service.ProductResponseMapper;
 import com.fitback.backend.domain.product.service.model.ProductAvailability;
@@ -81,16 +82,22 @@ public class RecommendationQueryService implements RecommendationResultProvider 
         RecommendationStatus status = status(report);
         Set<Long> savedProductIds = findSavedProductIds(memberId, items);
         Set<String> warnings = new TreeSet<>();
+        List<RecommendedItem> responseOrderedItems = responseOrderItems(items);
+        ProductDetailBatchResult batchResult = productDetailService.lookupIdentityOnlyDetails(
+                responseOrderedItems.stream()
+                        .map(RecommendedItem::getProduct)
+                        .toList()
+        );
         List<RecommendationGroupResponse> groups = java.util.Arrays.stream(ProductCategory.values())
                 .map(category -> new RecommendationGroupResponse(
                         category,
-                        items.stream()
+                        responseOrderedItems.stream()
                                 .filter(item -> item.getCategory() == category)
-                                .sorted(Comparator.comparing(RecommendedItem::getRankNo))
                                 .map(item -> toResponse(
                                         item,
                                         savedProductIds.contains(item.getProduct().getId()),
-                                        warnings
+                                        warnings,
+                                        batchResult
                                 ))
                                 .toList()
                 ))
@@ -124,42 +131,27 @@ public class RecommendationQueryService implements RecommendationResultProvider 
     private RecommendationItemResponse toResponse(
             RecommendedItem item,
             boolean saved,
-            Set<String> warnings
+            Set<String> warnings,
+            ProductDetailBatchResult batchResult
     ) {
         Product product = item.getProduct();
         if (product.getStorageMode() == ProductStorageMode.IDENTITY_ONLY) {
+            ProductDetailResponse batchDetail = batchResult.detailsByProductId()
+                    .get(product.getId());
+            if (batchDetail != null) {
+                return responseWithDetail(item, saved, batchDetail);
+            }
+            ErrorCode batchFailure = batchResult.failuresByProductId().get(product.getId());
+            if (batchFailure != null) {
+                warnings.add(batchFailure.getCode());
+                return unresolvedResponse(item, saved);
+            }
             try {
                 ProductDetailResponse detail = productDetailService.getDetail(product.getId());
-                return new RecommendationItemResponse(
-                        product.getId(),
-                        item.getRankNo(),
-                        detail.imageUrl(),
-                        detail.name(),
-                        detail.sellerName(),
-                        detail.price(),
-                        detail.purchaseUrl(),
-                        item.getSimilarityScore(),
-                        item.getFinalScore(),
-                        item.getReasonCodeList(),
-                        detail.availability(),
-                        saved
-                );
+                return responseWithDetail(item, saved, detail);
             } catch (BusinessException exception) {
                 warnings.add(exception.getErrorCode().getCode());
-                return new RecommendationItemResponse(
-                        product.getId(),
-                        item.getRankNo(),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        item.getSimilarityScore(),
-                        item.getFinalScore(),
-                        item.getReasonCodeList(),
-                        ProductAvailability.TEMPORARILY_UNRESOLVED,
-                        saved
-                );
+                return unresolvedResponse(item, saved);
             }
         }
         return new RecommendationItemResponse(
@@ -174,6 +166,57 @@ public class RecommendationQueryService implements RecommendationResultProvider 
                 item.getFinalScore(),
                 item.getReasonCodeList(),
                 product.getAvailability(),
+                saved
+        );
+    }
+
+    private static List<RecommendedItem> responseOrderItems(List<RecommendedItem> items) {
+        return java.util.Arrays.stream(ProductCategory.values())
+                .flatMap(category -> items.stream()
+                        .filter(item -> item.getCategory() == category)
+                        .sorted(Comparator.comparing(RecommendedItem::getRankNo)))
+                .toList();
+    }
+
+    private static RecommendationItemResponse responseWithDetail(
+            RecommendedItem item,
+            boolean saved,
+            ProductDetailResponse detail
+    ) {
+        Product product = item.getProduct();
+        return new RecommendationItemResponse(
+                product.getId(),
+                item.getRankNo(),
+                detail.imageUrl(),
+                detail.name(),
+                detail.sellerName(),
+                detail.price(),
+                detail.purchaseUrl(),
+                item.getSimilarityScore(),
+                item.getFinalScore(),
+                item.getReasonCodeList(),
+                detail.availability(),
+                saved
+        );
+    }
+
+    private static RecommendationItemResponse unresolvedResponse(
+            RecommendedItem item,
+            boolean saved
+    ) {
+        Product product = item.getProduct();
+        return new RecommendationItemResponse(
+                product.getId(),
+                item.getRankNo(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                item.getSimilarityScore(),
+                item.getFinalScore(),
+                item.getReasonCodeList(),
+                ProductAvailability.TEMPORARILY_UNRESOLVED,
                 saved
         );
     }

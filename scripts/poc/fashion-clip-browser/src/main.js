@@ -1,5 +1,11 @@
 import * as ort from 'onnxruntime-web/webgpu';
 import { extractBrowserReranking, fetchRecommendation } from './backend.js';
+import { buildBrowserPerformanceTrace, logBrowserPerformanceTrace } from './baseline-trace.js';
+import {
+  CANDIDATE_IMAGE_FETCH_DEADLINE_MS,
+  decodeCandidateBlob,
+  fetchCandidateBlob,
+} from './candidate-fetch.js';
 import {
   calculateFinalScore,
   compareRerankingResults,
@@ -37,6 +43,23 @@ function resolveModelConfig() {
 
 const MODEL_CONFIG = resolveModelConfig();
 const MODEL_URL = MODEL_CONFIG.url;
+const BENCHMARK_CUSTOM_TAG_PARAM = 'benchmarkCustomTag';
+
+function resolveBenchmarkRecommendationRequest() {
+  const customTagName = new URLSearchParams(window.location.search)
+    .get(BENCHMARK_CUSTOM_TAG_PARAM)
+    ?.trim();
+  if (!customTagName || customTagName.length > 50) {
+    return null;
+  }
+  return {
+    confirmedTagIds: [],
+    customTagNames: [customTagName],
+    matchPercentage: 50,
+  };
+}
+
+const BENCHMARK_RECOMMENDATION_REQUEST = resolveBenchmarkRecommendationRequest();
 const WASM_PATH = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/';
 const IMAGE_SIZE = 224;
 const BENCHMARK_SIZES = [1, 3, 5, 10];
@@ -114,7 +137,28 @@ async function loadSession() {
   return sessionPromise;
 }
 
+async function loadSessionWithReadiness() {
+  const cacheState = sessionPromise ? 'warm' : 'cold';
+  const started = performance.now();
+  const session = await loadSession();
+  return {
+    session,
+    modelReadiness: {
+      cacheState,
+      waitWallClockMs: performance.now() - started,
+      loadRun: cacheState === 'cold' ? modelLoadRuns.at(-1) : null,
+      requestedProviders: runtimeState === 'wasm' ? ['wasm'] : ['webgpu', 'wasm'],
+      providerResolution: runtimeState === 'wasm'
+        ? 'wasm'
+        : 'unexposed-by-onnxruntime-web',
+      fallbackUsed,
+    },
+  };
+}
+
 async function createSession() {
+  runtimeState = 'unknown';
+  fallbackUsed = false;
   const started = performance.now();
   const run = {
     run: modelLoadRuns.length + 1,
@@ -124,15 +168,21 @@ async function createSession() {
     downloadMs: 0,
     bytes: 0,
     contentLength: null,
+    contentType: null,
+    cacheControl: null,
     sessionCreationMs: 0,
     totalMs: 0,
     redirected: false,
+    requestedProviders: [],
+    providerResolution: 'unavailable',
+    fallbackUsed: false,
   };
   const urlStarted = performance.now();
   const resolvedModelUrl = new URL(MODEL_URL, document.baseURI).href;
   run.urlResolveMs = performance.now() - urlStarted;
   const canTryWebGpu = 'gpu' in navigator;
   const requestedProviders = canTryWebGpu ? ['webgpu', 'wasm'] : ['wasm'];
+  run.requestedProviders = requestedProviders;
   const webgpuInitStarted = performance.now();
   if (canTryWebGpu) {
     try {
@@ -158,6 +208,8 @@ async function createSession() {
   }
   run.redirected = response.redirected;
   run.contentLength = response.headers.get('content-length');
+  run.contentType = response.headers.get('content-type');
+  run.cacheControl = response.headers.get('cache-control');
   const bodyStarted = performance.now();
   const modelBytes = await response.arrayBuffer();
   run.downloadMs = performance.now() - bodyStarted;
@@ -170,9 +222,12 @@ async function createSession() {
       graphOptimizationLevel: 'all',
     });
     run.sessionCreationMs = performance.now() - sessionStarted;
-    runtimeState = canTryWebGpu ? 'webgpu' : 'wasm';
+    runtimeState = canTryWebGpu ? 'webgpu-or-wasm' : 'wasm';
+    run.providerResolution = canTryWebGpu
+      ? 'unexposed-by-onnxruntime-web'
+      : 'wasm';
     elements.runtime.textContent = canTryWebGpu
-      ? 'webgpu session; wasm fallback armed'
+      ? 'WebGPU/WASM session; selected provider unexposed'
       : 'wasm';
     elements.model.textContent = MODEL_ID;
     run.totalMs = performance.now() - started;
@@ -196,6 +251,8 @@ async function createSession() {
     }
     runtimeState = 'wasm';
     fallbackUsed = true;
+    run.providerResolution = 'wasm';
+    run.fallbackUsed = true;
     elements.runtime.textContent = 'wasm (WebGPU unavailable)';
     elements.model.textContent = MODEL_ID;
     run.totalMs = performance.now() - started;
@@ -237,8 +294,25 @@ function errorMessage(error) {
 }
 
 async function imageToTensorData(source, label = 'image') {
+  const prepared = await imageToTensorDataWithMetrics(source, label);
+  return prepared.tensorData;
+}
+
+async function imageToTensorDataWithMetrics(source, label = 'image') {
+  const decodeStarted = performance.now();
   const image = await createImage(source, label);
-  return imageToTensorDataFromImage(image);
+  const decodeWallClockMs = performance.now() - decodeStarted;
+  const preprocessStarted = performance.now();
+  const tensorData = imageToTensorDataFromImage(image);
+  const preprocessWallClockMs = performance.now() - preprocessStarted;
+  return {
+    tensorData,
+    metrics: {
+      decodeWallClockMs,
+      preprocessWallClockMs,
+      decodePreprocessWallClockMs: performance.now() - decodeStarted,
+    },
+  };
 }
 
 function imageToTensorDataFromImage(image) {
@@ -309,64 +383,42 @@ function urlHost(url) {
 }
 
 async function fetchUrlBlob(url, index) {
-  const result = {
+  const fetched = await fetchCandidateBlob({
+    url,
+    originalIndex: index + 1,
+    deadlineMs: CANDIDATE_IMAGE_FETCH_DEADLINE_MS,
+  });
+  return {
     index: index + 1,
     host: urlHost(url),
-    contentType: '-',
-    fetchLatencyMs: 0,
+    contentType: fetched.contentType,
+    fetchLatencyMs: fetched.fetchLatencyMs,
     decodeLatencyMs: 0,
     preprocessLatencyMs: 0,
-    status: 'blocked',
+    fetchSucceeded: fetched.fetchSucceeded,
+    decodeSucceeded: false,
+    preprocessSucceeded: false,
+    terminationReason: fetched.terminationReason,
+    abortIssued: fetched.abortIssued,
+    blob: fetched.blob,
+    fetchStartedAt: fetched.fetchStartedAt,
+    fetchCompletedAt: fetched.fetchCompletedAt,
+    status: fetchStatus(fetched),
   };
-  const fetchStarted = performance.now();
-  result.fetchStartedAt = fetchStarted;
-  let response;
-  try {
-    response = await fetch(url, {
-      mode: 'cors',
-      credentials: 'omit',
-      cache: 'no-store',
-    });
-  } catch (error) {
-    result.status = `CORS/network failure: ${errorMessage(error)}`;
-    return completeStage(result, 'fetch', fetchStarted);
-  }
-  result.contentType = response.headers.get('content-type')?.split(';', 1)[0] ?? '-';
-  if (!response.ok) {
-    result.status = `HTTP ${response.status}`;
-    return completeStage(result, 'fetch', fetchStarted);
-  }
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(result.contentType)) {
-    result.status = `unsupported content type: ${result.contentType}`;
-    return completeStage(result, 'fetch', fetchStarted);
-  }
-
-  try {
-    result.blob = await response.blob();
-  } catch (error) {
-    result.status = `body read failure: ${errorMessage(error)}`;
-    return completeStage(result, 'fetch', fetchStarted);
-  }
-  result.status = 'fetched';
-  return completeStage(result, 'fetch', fetchStarted);
 }
 
 async function decodeUrlImage(result) {
-  if (result.status !== 'fetched') {
+  if (!result.fetchSucceeded) {
     return result;
   }
 
-  const decodeStarted = performance.now();
-  result.decodeStartedAt = decodeStarted;
-  try {
-    result.image = await createImage(result.blob, `candidate ${result.index}`);
-  } catch (error) {
-    result.status = `decode failure: ${errorMessage(error)}`;
-    return completeStage(result, 'decode', decodeStarted);
-  }
-  result.blob = null;
-  result.status = 'decoded';
-  return completeStage(result, 'decode', decodeStarted);
+  const decoded = await decodeCandidateBlob(result, {
+    decodeImage: (blob) => createImage(blob, `candidate ${result.index}`),
+  });
+  return {
+    ...decoded,
+    status: decoded.decodeSucceeded ? 'decoded' : 'decode failure',
+  };
 }
 
 async function preprocessUrlImage(result) {
@@ -383,20 +435,55 @@ async function preprocessUrlImage(result) {
     return completeStage(result, 'preprocess', preprocessStarted);
   }
   result.status = 'ready';
+  result.preprocessSucceeded = true;
   return completeStage(result, 'preprocess', preprocessStarted);
 }
 
 async function fetchCandidateTensorData(candidates) {
-  const results = await Promise.all(candidates.map(async (candidate) => {
+  const acquisitionStarted = performance.now();
+  const settled = await Promise.allSettled(candidates.map(async (candidate) => {
     const fetched = await fetchUrlBlob(candidate.imageUrl, candidate.originalIndex - 1);
     const decoded = await decodeUrlImage(fetched);
     const ready = await preprocessUrlImage(decoded);
     return { ...ready, ...candidate };
   }));
+  const results = settled.map((result, index) => (
+    result.status === 'fulfilled'
+      ? result.value
+      : unexpectedCandidatePipelineFailure(candidates[index])
+  ));
+  const terminationCounts = countCandidateTerminationReasons(results);
 
   return {
     results,
     metrics: {
+      acquisitionWallClockMs: performance.now() - acquisitionStarted,
+      candidateFetchRequestCount: results.length,
+      candidateImageFetchSuccessCount: results.filter((result) => result.fetchSucceeded).length,
+      candidateImageFetchFailureCount: results.filter((result) => !result.fetchSucceeded).length,
+      candidateFetchDeadlineMs: CANDIDATE_IMAGE_FETCH_DEADLINE_MS,
+      candidateFetchMaxLatencyMs: maxMetric(results, 'fetchLatencyMs'),
+      candidateTerminationSuccessCount: terminationCounts.success,
+      candidateFetchHttpErrorCount: terminationCounts.http_error,
+      candidateFetchTimeoutCount: terminationCounts.timeout,
+      candidateFetchNetworkErrorCount: terminationCounts.network_error,
+      candidateFetchAbortedCount: terminationCounts.aborted,
+      candidateDecodeErrorCount: terminationCounts.decode_error,
+      candidateFetchTerminations: results.map((result) => ({
+        originalIndex: result.originalIndex,
+        reason: result.terminationReason,
+        fetchLatencyMs: result.fetchLatencyMs,
+      })),
+      candidateDecodeRequestCount: results.filter((result) => result.fetchSucceeded).length,
+      candidateDecodeSuccessCount: results.filter((result) => result.decodeSucceeded).length,
+      candidateDecodeFailureCount: results.filter(
+        (result) => result.fetchSucceeded && !result.decodeSucceeded,
+      ).length,
+      candidatePreprocessRequestCount: results.filter((result) => result.decodeSucceeded).length,
+      candidatePreprocessSuccessCount: results.filter((result) => result.preprocessSucceeded).length,
+      candidatePreprocessFailureCount: results.filter(
+        (result) => result.decodeSucceeded && !result.preprocessSucceeded,
+      ).length,
       fetchWallClockMs: stageWallClock(results, 'fetchStartedAt', 'fetchCompletedAt'),
       fetchCumulativeMs: sumMetric(results, 'fetchLatencyMs'),
       decodeWallClockMs: stageWallClock(results, 'decodeStartedAt', 'decodeCompletedAt'),
@@ -405,6 +492,68 @@ async function fetchCandidateTensorData(candidates) {
       preprocessCumulativeMs: sumMetric(results, 'preprocessLatencyMs'),
     },
   };
+}
+
+function fetchStatus(fetched) {
+  switch (fetched.terminationReason) {
+    case 'success':
+      return 'fetched';
+    case 'http_error':
+      return Number.isInteger(fetched.httpStatus) && (fetched.httpStatus < 200 || fetched.httpStatus >= 300)
+        ? `HTTP ${fetched.httpStatus}`
+        : 'unsupported content type';
+    case 'timeout':
+      return 'fetch timeout';
+    case 'aborted':
+      return 'fetch aborted';
+    default:
+      return 'CORS/network failure';
+  }
+}
+
+function unexpectedCandidatePipelineFailure(candidate) {
+  const completedAt = performance.now();
+  return {
+    index: candidate.originalIndex,
+    host: urlHost(candidate.imageUrl),
+    contentType: '-',
+    fetchLatencyMs: 0,
+    decodeLatencyMs: 0,
+    preprocessLatencyMs: 0,
+    fetchSucceeded: false,
+    decodeSucceeded: false,
+    preprocessSucceeded: false,
+    terminationReason: 'network_error',
+    abortIssued: false,
+    fetchStartedAt: completedAt,
+    fetchCompletedAt: completedAt,
+    status: 'CORS/network failure',
+    ...candidate,
+  };
+}
+
+function countCandidateTerminationReasons(results) {
+  const counts = {
+    success: 0,
+    http_error: 0,
+    timeout: 0,
+    network_error: 0,
+    aborted: 0,
+    decode_error: 0,
+  };
+  for (const result of results) {
+    if (result.terminationReason in counts) {
+      counts[result.terminationReason] += 1;
+    }
+  }
+  return counts;
+}
+
+function maxMetric(items, property) {
+  const values = items
+    .map((item) => item[property])
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  return values.length > 0 ? Math.max(...values) : 0;
 }
 
 function readEmbedding(output, index, batchSize) {
@@ -622,25 +771,30 @@ async function runHandoffRerankingPass(session, queryFile, handoff, candidateLim
   const selectedCandidates = [...handoff.candidates];
   const candidateSelectionWallClockMs = performance.now() - selectionStarted;
 
-  const queryPreprocessStarted = performance.now();
-  let queryPreprocessCompletedAt = queryPreprocessStarted;
+  const queryAcquisitionStarted = performance.now();
+  let queryMetrics = {
+    decodeWallClockMs: 0,
+    preprocessWallClockMs: 0,
+    decodePreprocessWallClockMs: 0,
+  };
   const queryDataPromise = (async () => {
-    try {
-      return await imageToTensorData(queryFile, queryFile.name);
-    } finally {
-      queryPreprocessCompletedAt = performance.now();
-    }
+    const prepared = await imageToTensorDataWithMetrics(queryFile, queryFile.name);
+    queryMetrics = prepared.metrics;
+    return prepared.tensorData;
   })();
   setStatus(`Fetching ${selectedCandidates.length}/${handoff.candidates.length} handoff image URL(s) directly in parallel…`);
   const acquisitionPromise = fetchCandidateTensorData(selectedCandidates);
   const [queryData, acquisition] = await Promise.all([queryDataPromise, acquisitionPromise]);
-  const queryPreprocessWallClockMs = queryPreprocessCompletedAt - queryPreprocessStarted;
+  const concurrentAcquisitionWallClockMs = performance.now() - queryAcquisitionStarted;
   const { results } = acquisition;
   const failed = results.filter((result) => result.status !== 'ready');
   const readyCount = results.length - failed.length;
   const baseMetrics = {
     candidateSelectionWallClockMs,
-    queryPreprocessWallClockMs,
+    queryDecodeWallClockMs: queryMetrics.decodeWallClockMs,
+    queryPreprocessWallClockMs: queryMetrics.preprocessWallClockMs,
+    queryAcquisitionWallClockMs: queryMetrics.decodePreprocessWallClockMs,
+    concurrentAcquisitionWallClockMs,
     ...acquisition.metrics,
     fetchSuccessCount: readyCount,
     fetchFailureCount: failed.length,
@@ -746,7 +900,7 @@ async function runHandoffRerankingPass(session, queryFile, handoff, candidateLim
 }
 
 async function runHandoffIntegration(queryFile, handoff, backendRequest) {
-  const session = await loadSession();
+  const { session, modelReadiness } = await loadSessionWithReadiness();
   try {
     const pass = await runHandoffRerankingPass(
       session,
@@ -755,10 +909,12 @@ async function runHandoffIntegration(queryFile, handoff, backendRequest) {
       DEFAULT_DEMO_CANDIDATE_LIMIT,
       { render: true },
     );
-    elements.handoffSummary.textContent = formatHandoffPassSummary(pass, handoff, backendRequest);
-    return pass;
+    const tracedPass = { ...pass, modelReadiness };
+    elements.handoffSummary.textContent = formatHandoffPassSummary(tracedPass, handoff, backendRequest);
+    return tracedPass;
   } catch (error) {
     if (error.reranking) {
+      error.reranking.modelReadiness = modelReadiness;
       elements.handoffSummary.textContent = formatHandoffFailureSummary(
         error.reranking,
         handoff,
@@ -1025,11 +1181,31 @@ function setIntegrationButtonsDisabled(disabled) {
   elements.backendBenchmarkRun.disabled = disabled;
 }
 
+function emitBrowserBaselineTrace({
+  outcome,
+  startedAt,
+  request,
+  reranking = null,
+  candidateCount = 0,
+}) {
+  return logBrowserPerformanceTrace(buildBrowserPerformanceTrace({
+    outcome,
+    browserE2EWallClockMs: performance.now() - startedAt,
+    backendRequest: request,
+    modelConfig: MODEL_CONFIG,
+    modelReadiness: reranking?.modelReadiness,
+    reranking: reranking ?? { candidateCount, metrics: {} },
+  }));
+}
+
 async function runBackendIntegration(queryFile) {
+  const browserE2EStarted = performance.now();
   const request = await fetchRecommendation({
     baseUrl: elements.backendUrl.value.trim(),
     reportId: elements.reportId.value.trim(),
     accessToken: elements.accessToken.value,
+    benchmarkTrace: true,
+    requestBody: BENCHMARK_RECOMMENDATION_REQUEST,
   });
   const extracted = extractBrowserReranking(request.payload);
   elements.backendSummary.textContent = [
@@ -1040,10 +1216,20 @@ async function runBackendIntegration(queryFile) {
 
   if (!request.ok) {
     showBrowserUnavailable(`backend HTTP ${request.status}`, extracted.backendData);
+    emitBrowserBaselineTrace({
+      outcome: 'BROWSER_RERANKING_FAILED',
+      startedAt: browserE2EStarted,
+      request,
+    });
     return;
   }
   if (extracted.kind !== 'ready') {
     showBrowserUnavailable(extracted.reason, extracted.backendData);
+    emitBrowserBaselineTrace({
+      outcome: 'BROWSER_RERANKING_FAILED',
+      startedAt: browserE2EStarted,
+      request,
+    });
     return;
   }
 
@@ -1052,13 +1238,31 @@ async function runBackendIntegration(queryFile) {
     handoff = validateBrowserRerankingHandoff(extracted.handoff);
   } catch (error) {
     showBrowserUnavailable(`invalid backend handoff: ${errorMessage(error)}`, extracted.backendData);
+    emitBrowserBaselineTrace({
+      outcome: 'BROWSER_RERANKING_FAILED',
+      startedAt: browserE2EStarted,
+      request,
+    });
     return;
   }
 
   try {
-    await runHandoffIntegration(queryFile, handoff, request);
+    const pass = await runHandoffIntegration(queryFile, handoff, request);
+    emitBrowserBaselineTrace({
+      outcome: 'SUCCESS',
+      startedAt: browserE2EStarted,
+      request,
+      reranking: pass,
+    });
     setStatus('Done. Recommendation response and browser reranking completed locally.');
   } catch (error) {
+    emitBrowserBaselineTrace({
+      outcome: 'BROWSER_RERANKING_FAILED',
+      startedAt: browserE2EStarted,
+      request,
+      reranking: error.reranking,
+      candidateCount: handoff.candidates.length,
+    });
     showBrowserUnavailable(errorMessage(error), extracted.backendData, Boolean(error.reranking));
   }
 }
@@ -1068,6 +1272,7 @@ async function runBackendBenchmarkIntegration(queryFile) {
     baseUrl: elements.backendUrl.value.trim(),
     reportId: elements.reportId.value.trim(),
     accessToken: elements.accessToken.value,
+    requestBody: BENCHMARK_RECOMMENDATION_REQUEST,
   });
   const extracted = extractBrowserReranking(request.payload);
   elements.backendSummary.textContent = [
@@ -1165,7 +1370,8 @@ function safeHandoffFailure(status) {
   if (status.startsWith('CORS/network')) return 'CORS/network failure';
   if (status.startsWith('HTTP ')) return status.split(':', 1)[0];
   if (status.startsWith('unsupported content type')) return 'unsupported content type';
-  if (status.startsWith('body read failure')) return 'body read failure';
+  if (status.startsWith('fetch timeout')) return 'fetch timeout';
+  if (status.startsWith('fetch aborted')) return 'fetch aborted';
   if (status.startsWith('decode failure')) return 'decode failure';
   if (status.startsWith('preprocess failure')) return 'preprocess failure';
   return 'candidate image failure';

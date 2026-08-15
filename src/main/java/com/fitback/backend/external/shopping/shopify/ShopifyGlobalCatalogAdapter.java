@@ -8,17 +8,21 @@ import com.fitback.backend.domain.product.service.model.ProductSearchQuery;
 import com.fitback.backend.domain.product.service.model.ProductSearchResult;
 import com.fitback.backend.domain.product.service.model.ProviderCapabilities;
 import com.fitback.backend.domain.product.service.model.ProviderProductRef;
+import com.fitback.backend.domain.product.service.port.BatchProductCatalogPort;
 import com.fitback.backend.domain.product.service.port.ProductCatalogPort;
 import com.fitback.backend.external.shopping.config.ShoppingProviderProperties;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-public final class ShopifyGlobalCatalogAdapter implements ProductCatalogPort {
+public final class ShopifyGlobalCatalogAdapter
+        implements ProductCatalogPort, BatchProductCatalogPort {
 
     public static final String PROVIDER = "shopify";
 
@@ -83,9 +87,7 @@ public final class ShopifyGlobalCatalogAdapter implements ProductCatalogPort {
     @Override
     public Optional<ExternalProductCandidate> lookup(ProviderProductRef providerRef) {
         Objects.requireNonNull(providerRef, "providerRef must not be null");
-        if (!PROVIDER.equals(providerRef.provider())
-                || !providerRef.stable()
-                || providerRef.externalProductId() == null) {
+        if (!supportsLookup(providerRef)) {
             return Optional.empty();
         }
 
@@ -99,6 +101,51 @@ public final class ShopifyGlobalCatalogAdapter implements ProductCatalogPort {
                         item,
                         item.categoryPath()
                 ));
+    }
+
+    @Override
+    public int maxLookupBatchSize() {
+        return ShopifyGlobalCatalogHttpClient.MAX_LOOKUP_BATCH_SIZE;
+    }
+
+    @Override
+    public Map<ProviderProductRef, ExternalProductCandidate> lookupBatch(
+            List<ProviderProductRef> providerRefs
+    ) {
+        Objects.requireNonNull(providerRefs, "providerRefs must not be null");
+        LinkedHashMap<ProviderProductRef, ShopifyCatalogLookup> lookupsByRef =
+                new LinkedHashMap<>();
+        for (ProviderProductRef providerRef : providerRefs) {
+            Objects.requireNonNull(providerRef, "providerRefs must not contain null");
+            if (supportsLookup(providerRef)) {
+                lookupsByRef.putIfAbsent(
+                        providerRef,
+                        new ShopifyCatalogLookup(
+                                providerRef.externalProductId(),
+                                providerRef.externalVariantId()
+                        )
+                );
+            }
+        }
+        if (lookupsByRef.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<ShopifyCatalogLookup, ShopifyCatalogItem> itemsByLookup = client.lookupBatch(
+                List.copyOf(lookupsByRef.values())
+        );
+        Map<ProviderProductRef, ExternalProductCandidate> candidates = new LinkedHashMap<>();
+        for (Map.Entry<ProviderProductRef, ShopifyCatalogLookup> entry
+                : lookupsByRef.entrySet()) {
+            ShopifyCatalogItem item = itemsByLookup.get(entry.getValue());
+            if (item != null && matches(entry.getKey(), item)) {
+                candidates.put(
+                        entry.getKey(),
+                        candidate(entry.getKey(), item, item.categoryPath())
+                );
+            }
+        }
+        return Map.copyOf(candidates);
     }
 
     private String catalogQuery(ProductSearchQuery query) {
@@ -153,6 +200,12 @@ public final class ShopifyGlobalCatalogAdapter implements ProductCatalogPort {
         }
         return expected.merchantId() == null
                 || expected.merchantId().equals(actual.merchantId());
+    }
+
+    private static boolean supportsLookup(ProviderProductRef providerRef) {
+        return PROVIDER.equals(providerRef.provider())
+                && providerRef.stable()
+                && providerRef.externalProductId() != null;
     }
 
     private static Money money(BigDecimal amount, String currency) {

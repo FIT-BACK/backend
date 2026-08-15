@@ -22,12 +22,17 @@ import com.fitback.backend.domain.recommendation.service.model.RecommendationSel
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
+import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
+import com.fitback.backend.global.util.HmacUtil;
 import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 
@@ -43,9 +48,11 @@ public class RecommendationService {
             new BigDecimal("70");
     private static final String PROVIDER_PARTIAL_FAILURE = "PROVIDER_PARTIAL_FAILURE";
     private static final String MATERIALIZATION_SKIPPED = "MATERIALIZATION_SKIPPED";
+    private static final String TRACE_QUERY_FINGERPRINT_CONTEXT = "recommendation-trace-query:";
 
     private final RecommendationInputReader inputReader;
     private final RecommendationInputCommandService inputCommandService;
+    private final HmacUtil hmacUtil;
     private final ProductCatalogPort productCatalogPort;
     private final ProductCandidateMapper candidateMapper;
     private final ProductMaterializationService materializationService;
@@ -58,6 +65,7 @@ public class RecommendationService {
     public RecommendationService(
             RecommendationInputReader inputReader,
             RecommendationInputCommandService inputCommandService,
+            HmacUtil hmacUtil,
             ProductCatalogPort productCatalogPort,
             ProductCandidateMapper candidateMapper,
             ProductMaterializationService materializationService,
@@ -69,6 +77,7 @@ public class RecommendationService {
     ) {
         this.inputReader = inputReader;
         this.inputCommandService = inputCommandService;
+        this.hmacUtil = hmacUtil;
         this.productCatalogPort = productCatalogPort;
         this.candidateMapper = candidateMapper;
         this.materializationService = materializationService;
@@ -103,15 +112,24 @@ public class RecommendationService {
                 input.tags(),
                 candidateCollection.candidates()
         );
-        Set<String> warnings = new TreeSet<>(candidateCollection.warnings());
-        List<ScoredCandidate> eligibleCandidates = scoreEligibleCandidates(
-                input,
-                candidateCollection.candidates(),
-                applyThreshold
+        RecommendationPerformanceTrace.recordBrowserRerankingCandidateCount(
+                browserReranking.candidates().size()
         );
-        List<MaterializedCandidate> materialized = materializeCandidates(
-                eligibleCandidates,
-                warnings
+        Set<String> warnings = new TreeSet<>(candidateCollection.warnings());
+        List<ScoredCandidate> eligibleCandidates = RecommendationPerformanceTrace.measureStage(
+                "scoring",
+                () -> scoreEligibleCandidates(
+                        input,
+                        candidateCollection.candidates(),
+                        applyThreshold
+                )
+        );
+        List<MaterializedCandidate> materialized = RecommendationPerformanceTrace.measureStage(
+                "materialization",
+                () -> materializeCandidates(
+                        eligibleCandidates,
+                        warnings
+                )
         );
         if (!eligibleCandidates.isEmpty() && materialized.isEmpty()) {
             throw new BusinessException(ErrorCode.PRODUCT_PROVIDER_PERSISTENCE_UNSUPPORTED);
@@ -119,8 +137,14 @@ public class RecommendationService {
 
         List<RecommendationSelection> selections = selectTopItemsPerCategory(materialized);
         String scoreVersion = applyThreshold ? THRESHOLD_SCORE_VERSION : SCORE_VERSION;
-        setWriter.replaceCurrentSet(input, scoreVersion, selections);
-        RecommendationResultResponse result = queryService.findByReportId(memberId, reportId);
+        RecommendationPerformanceTrace.measureStage(
+                "persistence",
+                () -> setWriter.replaceCurrentSet(input, scoreVersion, selections)
+        );
+        RecommendationResultResponse result = RecommendationPerformanceTrace.measureStage(
+                "responseHydrate",
+                () -> queryService.findByReportId(memberId, reportId)
+        );
         return new RecommendationCreateResponse(
                 reportId,
                 input.tagNames(),
@@ -146,24 +170,55 @@ public class RecommendationService {
                         .map(TagInput::name),
                 customTagNames.stream()
         ).toList();
+        List<String> searchTagKinds = Stream.concat(
+                tags.stream()
+                        .filter(tag -> tag.tagType() != TagType.STYLE)
+                        .map(tag -> tag.tagType().name()),
+                IntStream.range(0, customTagNames.size())
+                        .mapToObj(index -> "CUSTOM_" + (index + 1))
+        ).toList();
 
         // 일부 검색 실패 시 성공한 검색 결과로 추천을 계속하기 위한 배치·실패 분리 수집
         List<List<ExternalProductCandidate>> candidateBatches = new ArrayList<>();
         List<BusinessException> failures = new ArrayList<>();
         int successfulSearches = 0;
+        int searchedCandidateCount = 0;
+        int categoryFilteredCandidateCount = 0;
 
         // 태그 입력 순서를 이후 라운드 로빈의 검색 배치 순서로 유지
-        for (String tagName : searchTagNames) {
+        for (int index = 0; index < searchTagNames.size(); index++) {
+            String tagName = searchTagNames.get(index);
+            String tagKind = searchTagKinds.get(index);
             try {
-                ProductSearchResult searchResult = productCatalogPort.search(
-                        new ProductSearchQuery(tagName, category, null, SEARCH_PAGE_SIZE)
+                ProductSearchResult searchResult = RecommendationPerformanceTrace.measureSearchCatalog(
+                        new RecommendationPerformanceTrace.SearchCatalogCallInput(
+                                index + 1,
+                                traceQueryFingerprint(tagName),
+                                tagKind,
+                                category.name()
+                        ),
+                        () -> productCatalogPort.search(
+                                new ProductSearchQuery(tagName, category, null, SEARCH_PAGE_SIZE)
+                        ),
+                        result -> result.items().size()
                 );
                 successfulSearches++;
+                searchedCandidateCount += searchResult.items().size();
 
                 // 검색어 내부의 공급자 상품 순위 보존을 위한 결과 목록 단위 저장
-                candidateBatches.add(searchResult.items().stream()
-                        .filter(candidate -> candidateMapper.category(candidate) == category)
-                        .toList());
+                List<ExternalProductCandidate> categoryFiltered =
+                        RecommendationPerformanceTrace.measureStage(
+                                "categoryFiltering",
+                                () -> searchResult.items().stream()
+                                        .filter(candidate -> candidateMapper.category(candidate) == category)
+                                        .toList()
+                        );
+                RecommendationPerformanceTrace.recordCategoryFilteredResultCount(
+                        index + 1,
+                        categoryFiltered.size()
+                );
+                categoryFilteredCandidateCount += categoryFiltered.size();
+                candidateBatches.add(categoryFiltered);
             } catch (ProductProviderException exception) {
                 // 전체 실패와 부분 실패를 구분하기 위한 공급자 오류 누적
                 failures.add(ProductProviderErrorMapper.toBusinessException(exception));
@@ -177,7 +232,26 @@ public class RecommendationService {
 
         // 점수 계산과 이미지 비교 전에 처리 예산을 제한하기 위한 후보 선별
         ImageComparisonCandidateSelector.SelectionResult selection =
-                imageComparisonCandidateSelector.select(candidateBatches);
+                RecommendationPerformanceTrace.measureStage(
+                        "candidateMergeDedup",
+                        () -> imageComparisonCandidateSelector.select(candidateBatches)
+                );
+        RecommendationPerformanceTrace.recordCandidateCounts(
+                searchedCandidateCount,
+                categoryFilteredCandidateCount,
+                selection.candidates().size()
+        );
+        ImageComparisonCandidateSelector.SelectionMetrics selectionMetrics = selection.metrics();
+        RecommendationPerformanceTrace.recordSelectorCounts(
+                selectionMetrics.inputCandidateCount(),
+                selectionMetrics.orderedCandidateCount(),
+                selectionMetrics.outputCandidateCount(),
+                selectionMetrics.invalidProviderReferenceDropCount(),
+                selectionMetrics.missingImageUrlDropCount(),
+                selectionMetrics.duplicateDropCount(),
+                selectionMetrics.limitOverflowDropCount(),
+                selectionMetrics.otherDropCount()
+        );
         List<String> warnings = new ArrayList<>();
 
         // 일부 검색 실패를 정상 결과와 함께 전달하기 위한 부분 성공 경고
@@ -293,6 +367,19 @@ public class RecommendationService {
 
     private static String nullable(String value) {
         return value == null ? "" : value;
+    }
+
+    private String traceQueryFingerprint(String tagName) {
+        if (!RecommendationPerformanceTrace.active()) {
+            return null;
+        }
+        String normalized = Normalizer.normalize(
+                tagName.trim(),
+                Normalizer.Form.NFKC
+        ).toLowerCase(Locale.ROOT);
+        return "hmac-sha256:" + hmacUtil.hashHex(
+                TRACE_QUERY_FINGERPRINT_CONTEXT + normalized
+        );
     }
 
     private record CandidateCollection(

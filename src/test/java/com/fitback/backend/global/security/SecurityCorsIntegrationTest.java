@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
 import com.fitback.backend.domain.member.service.LoginAttemptService;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -57,7 +58,8 @@ class SecurityCorsIntegrationTest {
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
                         .header(
                                 HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,
-                                "authorization,content-type"
+                                "authorization,content-type,"
+                                        + RecommendationPerformanceTrace.REQUEST_HEADER
                         ))
                 .andExpect(status().isOk())
                 .andExpect(header().string(
@@ -75,6 +77,10 @@ class SecurityCorsIntegrationTest {
                 .andExpect(header().string(
                         HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
                         containsString("content-type")
+                ))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+                        containsString(RecommendationPerformanceTrace.REQUEST_HEADER)
                 ))
                 .andExpect(header().string(
                         HttpHeaders.ACCESS_CONTROL_MAX_AGE,

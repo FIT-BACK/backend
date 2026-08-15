@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -19,6 +20,7 @@ import com.fitback.backend.domain.tag.entity.Tag;
 import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.domain.tag.repository.TagRepository;
 import com.fitback.backend.external.aitag.GarmentPiece;
+import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -138,8 +140,13 @@ class RecommendationControllerIntegrationTest {
                                 "/api/v1/analyses/{reportId}/recommendations",
                                 report.getId()
                         )
-                        .header("Authorization", bearer(accessToken)))
+                        .header("Authorization", bearer(accessToken))
+                        .header(
+                                RecommendationPerformanceTrace.REQUEST_HEADER,
+                                RecommendationPerformanceTrace.REQUEST_VALUE
+                        ))
                 .andExpect(status().isOk())
+                .andExpect(header().exists(RecommendationPerformanceTrace.RESPONSE_HEADER))
                 .andExpect(jsonPath("$.data.recommendationStatus").value("CURRENT"));
 
         assertThat(productRepository.count()).isEqualTo(1);
