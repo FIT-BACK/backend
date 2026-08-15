@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.function.ToIntFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
@@ -41,6 +42,10 @@ public final class RecommendationPerformanceTrace {
         return new Scope(trace);
     }
 
+    public static boolean active() {
+        return ACTIVE.get() != null;
+    }
+
     public static <T> T measureStage(String stageName, Supplier<T> action) {
         Objects.requireNonNull(action, "action must not be null");
         ActiveTrace trace = ACTIVE.get();
@@ -66,6 +71,37 @@ public final class RecommendationPerformanceTrace {
         return measureCatalogCall(CatalogCallType.SEARCH, tagKind, 1, action);
     }
 
+    public static <T> T measureSearchCatalog(
+            SearchCatalogCallInput input,
+            Supplier<T> action,
+            ToIntFunction<T> rawResultCount
+    ) {
+        Objects.requireNonNull(input, "input must not be null");
+        Objects.requireNonNull(action, "action must not be null");
+        Objects.requireNonNull(rawResultCount, "rawResultCount must not be null");
+        ActiveTrace trace = ACTIVE.get();
+        if (trace == null) {
+            return action.get();
+        }
+        long startedAt = System.nanoTime();
+        boolean succeeded = false;
+        Integer rawCount = null;
+        try {
+            T result = action.get();
+            rawCount = Math.max(0, rawResultCount.applyAsInt(result));
+            succeeded = true;
+            return result;
+        } finally {
+            trace.recordSearchCatalogCall(
+                    input,
+                    rawCount,
+                    startedAt,
+                    System.nanoTime(),
+                    succeeded
+            );
+        }
+    }
+
     public static <T> T measureLookupCatalog(int inputSize, Supplier<T> action) {
         return measureCatalogCall(CatalogCallType.LOOKUP, null, inputSize, action);
     }
@@ -89,6 +125,41 @@ public final class RecommendationPerformanceTrace {
         ActiveTrace trace = ACTIVE.get();
         if (trace != null) {
             trace.recordBrowserRerankingCandidateCount(candidateCount);
+        }
+    }
+
+    public static void recordCategoryFilteredResultCount(
+            int queryIndex,
+            int categoryFilteredResultCount
+    ) {
+        ActiveTrace trace = ACTIVE.get();
+        if (trace != null) {
+            trace.recordCategoryFilteredResultCount(queryIndex, categoryFilteredResultCount);
+        }
+    }
+
+    public static void recordSelectorCounts(
+            int inputCandidateCount,
+            int orderedCandidateCount,
+            int outputCandidateCount,
+            int invalidProviderReferenceDropCount,
+            int missingImageUrlDropCount,
+            int duplicateDropCount,
+            int limitOverflowDropCount,
+            int otherDropCount
+    ) {
+        ActiveTrace trace = ACTIVE.get();
+        if (trace != null) {
+            trace.recordSelectorCounts(
+                    inputCandidateCount,
+                    orderedCandidateCount,
+                    outputCandidateCount,
+                    invalidProviderReferenceDropCount,
+                    missingImageUrlDropCount,
+                    duplicateDropCount,
+                    limitOverflowDropCount,
+                    otherDropCount
+            );
         }
     }
 
@@ -188,15 +259,29 @@ public final class RecommendationPerformanceTrace {
             Timing lookupCatalogTiming,
             Map<String, Timing> stages,
             CandidateCounts candidateCounts,
+            SelectorCounts selectorCounts,
             int browserRerankingCandidateCount
     ) {
     }
 
     public record CatalogCall(
+            Integer queryIndex,
+            String queryFingerprint,
+            String category,
             String tagKind,
             int inputSize,
+            Integer rawResultCount,
+            Integer categoryFilteredResultCount,
             long wallClockMs,
-            boolean succeeded
+            boolean providerSucceeded
+    ) {
+    }
+
+    public record SearchCatalogCallInput(
+            int queryIndex,
+            String queryFingerprint,
+            String tagKind,
+            String category
     ) {
     }
 
@@ -207,6 +292,18 @@ public final class RecommendationPerformanceTrace {
             int searchedCandidateCount,
             int categoryFilteredCandidateCount,
             int selectedCandidateCount
+    ) {
+    }
+
+    public record SelectorCounts(
+            int inputCandidateCount,
+            int orderedCandidateCount,
+            int outputCandidateCount,
+            int invalidProviderReferenceDropCount,
+            int missingImageUrlDropCount,
+            int duplicateDropCount,
+            int limitOverflowDropCount,
+            int otherDropCount
     ) {
     }
 
@@ -228,6 +325,7 @@ public final class RecommendationPerformanceTrace {
             CatalogLog lookupCatalog,
             Map<String, Timing> stages,
             CandidateCounts candidateCounts,
+            SelectorCounts selectorCounts,
             int browserRerankingCandidateCount
     ) {
     }
@@ -247,6 +345,7 @@ public final class RecommendationPerformanceTrace {
         private final TimingAccumulator lookupCatalogTiming = new TimingAccumulator();
         private final Map<String, TimingAccumulator> stages = new LinkedHashMap<>();
         private CandidateCounts candidateCounts;
+        private SelectorCounts selectorCounts;
         private int browserRerankingCandidateCount = -1;
         private String outcome = "IN_PROGRESS";
         private Integer httpStatus;
@@ -271,8 +370,13 @@ public final class RecommendationPerformanceTrace {
         ) {
             long wallClockMs = elapsedMilliseconds(startedAt, completedAt);
             CatalogCall call = new CatalogCall(
+                    null,
+                    null,
+                    null,
                     callType == CatalogCallType.SEARCH ? safeIdentifier(tagKind) : null,
                     Math.max(0, inputSize),
+                    null,
+                    null,
                     wallClockMs,
                     succeeded
             );
@@ -283,6 +387,51 @@ public final class RecommendationPerformanceTrace {
             }
             lookupCatalogCalls.add(call);
             lookupCatalogTiming.add(startedAt, completedAt);
+        }
+
+        private void recordSearchCatalogCall(
+                SearchCatalogCallInput input,
+                Integer rawResultCount,
+                long startedAt,
+                long completedAt,
+                boolean succeeded
+        ) {
+            searchCatalogCalls.add(new CatalogCall(
+                    Math.max(1, input.queryIndex()),
+                    safeFingerprint(input.queryFingerprint()),
+                    safeIdentifier(input.category()),
+                    safeIdentifier(input.tagKind()),
+                    1,
+                    rawResultCount,
+                    null,
+                    elapsedMilliseconds(startedAt, completedAt),
+                    succeeded
+            ));
+            searchCatalogTiming.add(startedAt, completedAt);
+        }
+
+        private void recordCategoryFilteredResultCount(
+                int queryIndex,
+                int categoryFilteredResultCount
+        ) {
+            for (int index = searchCatalogCalls.size() - 1; index >= 0; index--) {
+                CatalogCall call = searchCatalogCalls.get(index);
+                if (call.queryIndex() == null || call.queryIndex() != queryIndex) {
+                    continue;
+                }
+                searchCatalogCalls.set(index, new CatalogCall(
+                        call.queryIndex(),
+                        call.queryFingerprint(),
+                        call.category(),
+                        call.tagKind(),
+                        call.inputSize(),
+                        call.rawResultCount(),
+                        Math.max(0, categoryFilteredResultCount),
+                        call.wallClockMs(),
+                        call.providerSucceeded()
+                ));
+                return;
+            }
         }
 
         private void recordCandidateCounts(
@@ -299,6 +448,28 @@ public final class RecommendationPerformanceTrace {
 
         private void recordBrowserRerankingCandidateCount(int candidateCount) {
             browserRerankingCandidateCount = Math.max(0, candidateCount);
+        }
+
+        private void recordSelectorCounts(
+                int inputCandidateCount,
+                int orderedCandidateCount,
+                int outputCandidateCount,
+                int invalidProviderReferenceDropCount,
+                int missingImageUrlDropCount,
+                int duplicateDropCount,
+                int limitOverflowDropCount,
+                int otherDropCount
+        ) {
+            selectorCounts = new SelectorCounts(
+                    Math.max(0, inputCandidateCount),
+                    Math.max(0, orderedCandidateCount),
+                    Math.max(0, outputCandidateCount),
+                    Math.max(0, invalidProviderReferenceDropCount),
+                    Math.max(0, missingImageUrlDropCount),
+                    Math.max(0, duplicateDropCount),
+                    Math.max(0, limitOverflowDropCount),
+                    Math.max(0, otherDropCount)
+            );
         }
 
         private void complete(Integer responseStatus, String completedOutcome) {
@@ -320,6 +491,7 @@ public final class RecommendationPerformanceTrace {
                     lookupCatalogTiming.snapshot(),
                     Collections.unmodifiableMap(stageSnapshot),
                     candidateCounts,
+                    selectorCounts,
                     browserRerankingCandidateCount
             );
         }
@@ -329,7 +501,7 @@ public final class RecommendationPerformanceTrace {
             try {
                 return OBJECT_MAPPER.writeValueAsString(new LogPayload(
                         "recommendation_performance_trace",
-                        "baseline-v1",
+                        "candidate-zero-v1",
                         snapshot.traceId(),
                         snapshot.outcome(),
                         snapshot.httpStatus(),
@@ -346,11 +518,12 @@ public final class RecommendationPerformanceTrace {
                         ),
                         snapshot.stages(),
                         snapshot.candidateCounts(),
+                        snapshot.selectorCounts(),
                         snapshot.browserRerankingCandidateCount()
                 ));
             } catch (RuntimeException exception) {
                 return "{\"event\":\"recommendation_performance_trace\","
-                        + "\"schemaVersion\":\"baseline-v1\","
+                        + "\"schemaVersion\":\"candidate-zero-v1\","
                         + "\"outcome\":\"SERIALIZATION_ERROR\"}";
             }
         }
@@ -403,6 +576,10 @@ public final class RecommendationPerformanceTrace {
             return "UNSPECIFIED";
         }
         return value.replaceAll("[^A-Za-z0-9_]", "_");
+    }
+
+    private static String safeFingerprint(String value) {
+        return value == null || value.isBlank() ? "UNSPECIFIED" : value;
     }
 
     private static long elapsedMilliseconds(long startedAt, long completedAt) {

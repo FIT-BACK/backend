@@ -23,10 +23,13 @@ import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
+import com.fitback.backend.global.util.HmacUtil;
 import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.IntStream;
@@ -45,9 +48,11 @@ public class RecommendationService {
             new BigDecimal("70");
     private static final String PROVIDER_PARTIAL_FAILURE = "PROVIDER_PARTIAL_FAILURE";
     private static final String MATERIALIZATION_SKIPPED = "MATERIALIZATION_SKIPPED";
+    private static final String TRACE_QUERY_FINGERPRINT_CONTEXT = "recommendation-trace-query:";
 
     private final RecommendationInputReader inputReader;
     private final RecommendationInputCommandService inputCommandService;
+    private final HmacUtil hmacUtil;
     private final ProductCatalogPort productCatalogPort;
     private final ProductCandidateMapper candidateMapper;
     private final ProductMaterializationService materializationService;
@@ -60,6 +65,7 @@ public class RecommendationService {
     public RecommendationService(
             RecommendationInputReader inputReader,
             RecommendationInputCommandService inputCommandService,
+            HmacUtil hmacUtil,
             ProductCatalogPort productCatalogPort,
             ProductCandidateMapper candidateMapper,
             ProductMaterializationService materializationService,
@@ -71,6 +77,7 @@ public class RecommendationService {
     ) {
         this.inputReader = inputReader;
         this.inputCommandService = inputCommandService;
+        this.hmacUtil = hmacUtil;
         this.productCatalogPort = productCatalogPort;
         this.candidateMapper = candidateMapper;
         this.materializationService = materializationService;
@@ -184,10 +191,16 @@ public class RecommendationService {
             String tagKind = searchTagKinds.get(index);
             try {
                 ProductSearchResult searchResult = RecommendationPerformanceTrace.measureSearchCatalog(
-                        tagKind,
+                        new RecommendationPerformanceTrace.SearchCatalogCallInput(
+                                index + 1,
+                                traceQueryFingerprint(tagName),
+                                tagKind,
+                                category.name()
+                        ),
                         () -> productCatalogPort.search(
                                 new ProductSearchQuery(tagName, category, null, SEARCH_PAGE_SIZE)
-                        )
+                        ),
+                        result -> result.items().size()
                 );
                 successfulSearches++;
                 searchedCandidateCount += searchResult.items().size();
@@ -200,6 +213,10 @@ public class RecommendationService {
                                         .filter(candidate -> candidateMapper.category(candidate) == category)
                                         .toList()
                         );
+                RecommendationPerformanceTrace.recordCategoryFilteredResultCount(
+                        index + 1,
+                        categoryFiltered.size()
+                );
                 categoryFilteredCandidateCount += categoryFiltered.size();
                 candidateBatches.add(categoryFiltered);
             } catch (ProductProviderException exception) {
@@ -223,6 +240,17 @@ public class RecommendationService {
                 searchedCandidateCount,
                 categoryFilteredCandidateCount,
                 selection.candidates().size()
+        );
+        ImageComparisonCandidateSelector.SelectionMetrics selectionMetrics = selection.metrics();
+        RecommendationPerformanceTrace.recordSelectorCounts(
+                selectionMetrics.inputCandidateCount(),
+                selectionMetrics.orderedCandidateCount(),
+                selectionMetrics.outputCandidateCount(),
+                selectionMetrics.invalidProviderReferenceDropCount(),
+                selectionMetrics.missingImageUrlDropCount(),
+                selectionMetrics.duplicateDropCount(),
+                selectionMetrics.limitOverflowDropCount(),
+                selectionMetrics.otherDropCount()
         );
         List<String> warnings = new ArrayList<>();
 
@@ -339,6 +367,19 @@ public class RecommendationService {
 
     private static String nullable(String value) {
         return value == null ? "" : value;
+    }
+
+    private String traceQueryFingerprint(String tagName) {
+        if (!RecommendationPerformanceTrace.active()) {
+            return null;
+        }
+        String normalized = Normalizer.normalize(
+                tagName.trim(),
+                Normalizer.Form.NFKC
+        ).toLowerCase(Locale.ROOT);
+        return "hmac-sha256:" + hmacUtil.hashHex(
+                TRACE_QUERY_FINGERPRINT_CONTEXT + normalized
+        );
     }
 
     private record CandidateCollection(

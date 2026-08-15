@@ -35,6 +35,9 @@ class ImageComparisonCandidateSelectorTest {
         assertThat(result.candidates())
                 .extracting(candidate -> candidate.providerRef().externalProductId())
                 .containsExactly("1", "2", "3");
+        assertThat(result.metrics()).isEqualTo(
+                new ImageComparisonCandidateSelector.SelectionMetrics(6, 6, 3, 0, 1, 1, 1, 0)
+        );
     }
 
     @Test
@@ -48,6 +51,8 @@ class ImageComparisonCandidateSelectorTest {
 
         assertThat(result.candidates()).containsExactly(candidate(1));
         assertThat(result.unsupportedReferenceSkipped()).isTrue();
+        assertThat(result.metrics().invalidProviderReferenceDropCount()).isEqualTo(1);
+        assertThat(result.metrics().missingImageUrlDropCount()).isZero();
     }
 
     @Test
@@ -63,6 +68,9 @@ class ImageComparisonCandidateSelectorTest {
         assertThat(first).isEqualTo(second);
         assertThat(first.candidates())
                 .containsExactly(candidate(1), candidate(3), candidate(2));
+        assertThat(first.metrics()).isEqualTo(
+                new ImageComparisonCandidateSelector.SelectionMetrics(3, 3, 3, 0, 0, 0, 0, 0)
+        );
         assertThatThrownBy(() -> first.candidates().add(candidate(4)))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
@@ -88,6 +96,29 @@ class ImageComparisonCandidateSelectorTest {
         selector.select(List.of(List.of(candidate(1))));
 
         assertThat(receivedCandidateLimit).hasValue(30);
+    }
+
+    @Test
+    void recordsMissingImageDropSeparately() {
+        ImageComparisonCandidateSelector.SelectionResult result = selector(2).select(
+                List.of(List.of(candidate(1, false)))
+        );
+
+        assertThat(result.metrics()).isEqualTo(
+                new ImageComparisonCandidateSelector.SelectionMetrics(1, 1, 0, 0, 1, 0, 0, 0)
+        );
+    }
+
+    @Test
+    void recordsDuplicateDropSeparately() {
+        ExternalProductCandidate first = candidate(1);
+        ImageComparisonCandidateSelector.SelectionResult result = selector(2).select(
+                List.of(List.of(first, candidate(1)))
+        );
+
+        assertThat(result.metrics()).isEqualTo(
+                new ImageComparisonCandidateSelector.SelectionMetrics(2, 2, 1, 0, 0, 1, 0, 0)
+        );
     }
 
     private static ImageComparisonCandidateSelector selector(int candidateLimit) {
