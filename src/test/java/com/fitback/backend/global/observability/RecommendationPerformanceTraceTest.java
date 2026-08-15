@@ -18,7 +18,7 @@ class RecommendationPerformanceTraceTest {
             RecommendationPerformanceTrace.measureSearchCatalog(
                     new RecommendationPerformanceTrace.SearchCatalogCallInput(
                             1,
-                            "네이비",
+                            "hmac-sha256:" + "b".repeat(64),
                             "COLOR",
                             "DRESS"
                     ),
@@ -41,7 +41,9 @@ class RecommendationPerformanceTraceTest {
                     .singleElement()
                     .satisfies(call -> {
                         assertThat(call.queryIndex()).isEqualTo(1);
-                        assertThat(call.queryFingerprint()).startsWith("sha256:");
+                        assertThat(call.queryFingerprint()).isEqualTo(
+                                "hmac-sha256:" + "b".repeat(64)
+                        );
                         assertThat(call.category()).isEqualTo("DRESS");
                         assertThat(call.tagKind()).isEqualTo("COLOR");
                         assertThat(call.inputSize()).isEqualTo(1);
@@ -95,7 +97,7 @@ class RecommendationPerformanceTraceTest {
             SearchCounts result = RecommendationPerformanceTrace.measureSearchCatalog(
                     new RecommendationPerformanceTrace.SearchCatalogCallInput(
                             1,
-                            "ignored",
+                            "hmac-sha256:" + "c".repeat(64),
                             "COLOR",
                             "TOP"
                     ),
@@ -138,7 +140,7 @@ class RecommendationPerformanceTraceTest {
             assertThatThrownBy(() -> RecommendationPerformanceTrace.measureSearchCatalog(
                     new RecommendationPerformanceTrace.SearchCatalogCallInput(
                             2,
-                            "민감한 내부 검색어",
+                            "hmac-sha256:" + "d".repeat(64),
                             "DETAIL",
                             "DRESS"
                     ),

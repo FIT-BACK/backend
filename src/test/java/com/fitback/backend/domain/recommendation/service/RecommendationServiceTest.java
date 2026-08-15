@@ -31,6 +31,7 @@ import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
+import com.fitback.backend.global.util.HmacUtil;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
@@ -57,6 +58,9 @@ class RecommendationServiceTest {
     private RecommendationInputCommandService inputCommandService;
 
     @Mock
+    private HmacUtil hmacUtil;
+
+    @Mock
     private ProductCatalogPort productCatalogPort;
 
     @Mock
@@ -81,6 +85,7 @@ class RecommendationServiceTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(hmacUtil.hashHex(any())).thenReturn("a".repeat(64));
         lenient().when(candidateMapper.category(any())).thenReturn(ProductCategory.TOP);
         lenient().when(browserRerankingHandoffService.create(
                 org.mockito.ArgumentMatchers.anyLong(),
@@ -98,6 +103,7 @@ class RecommendationServiceTest {
         return new RecommendationService(
                 inputReader,
                 inputCommandService,
+                hmacUtil,
                 productCatalogPort,
                 candidateMapper,
                 materializationService,
@@ -226,6 +232,7 @@ class RecommendationServiceTest {
                     assertThat(call.rawResultCount()).isEqualTo(35);
                     assertThat(call.categoryFilteredResultCount()).isEqualTo(35);
                     assertThat(call.providerSucceeded()).isTrue();
+                    assertThat(call.queryFingerprint()).isEqualTo("hmac-sha256:" + "a".repeat(64));
                 });
         assertThat(trace.selectorCounts()).isEqualTo(
                 new RecommendationPerformanceTrace.SelectorCounts(35, 35, 30, 0, 0, 0, 5, 0)
@@ -389,6 +396,7 @@ class RecommendationServiceTest {
 
         verify(setWriter).replaceCurrentSet(input, "IMAGE_TAG_WEIGHTED_V1", List.of());
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
+        verify(hmacUtil, never()).hashHex(any());
     }
 
     @Test

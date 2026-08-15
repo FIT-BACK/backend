@@ -3,14 +3,8 @@ package com.fitback.backend.global.observability;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.text.Normalizer;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -46,6 +40,10 @@ public final class RecommendationPerformanceTrace {
         ActiveTrace trace = new ActiveTrace(UUID.randomUUID().toString(), System.nanoTime());
         ACTIVE.set(trace);
         return new Scope(trace);
+    }
+
+    public static boolean active() {
+        return ACTIVE.get() != null;
     }
 
     public static <T> T measureStage(String stageName, Supplier<T> action) {
@@ -281,7 +279,7 @@ public final class RecommendationPerformanceTrace {
 
     public record SearchCatalogCallInput(
             int queryIndex,
-            String internalTagName,
+            String queryFingerprint,
             String tagKind,
             String category
     ) {
@@ -400,7 +398,7 @@ public final class RecommendationPerformanceTrace {
         ) {
             searchCatalogCalls.add(new CatalogCall(
                     Math.max(1, input.queryIndex()),
-                    fingerprint(input.internalTagName()),
+                    safeFingerprint(input.queryFingerprint()),
                     safeIdentifier(input.category()),
                     safeIdentifier(input.tagKind()),
                     1,
@@ -580,18 +578,8 @@ public final class RecommendationPerformanceTrace {
         return value.replaceAll("[^A-Za-z0-9_]", "_");
     }
 
-    private static String fingerprint(String internalTagName) {
-        String normalized = Normalizer.normalize(
-                Objects.requireNonNullElse(internalTagName, "").trim(),
-                Normalizer.Form.NFKC
-        ).toLowerCase(Locale.ROOT);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(normalized.getBytes(StandardCharsets.UTF_8));
-            return "sha256:" + HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 must be available", exception);
-        }
+    private static String safeFingerprint(String value) {
+        return value == null || value.isBlank() ? "UNSPECIFIED" : value;
     }
 
     private static long elapsedMilliseconds(long startedAt, long completedAt) {

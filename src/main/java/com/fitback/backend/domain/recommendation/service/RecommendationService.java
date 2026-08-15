@@ -23,10 +23,13 @@ import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
+import com.fitback.backend.global.util.HmacUtil;
 import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.IntStream;
@@ -45,9 +48,11 @@ public class RecommendationService {
             new BigDecimal("70");
     private static final String PROVIDER_PARTIAL_FAILURE = "PROVIDER_PARTIAL_FAILURE";
     private static final String MATERIALIZATION_SKIPPED = "MATERIALIZATION_SKIPPED";
+    private static final String TRACE_QUERY_FINGERPRINT_CONTEXT = "recommendation-trace-query:";
 
     private final RecommendationInputReader inputReader;
     private final RecommendationInputCommandService inputCommandService;
+    private final HmacUtil hmacUtil;
     private final ProductCatalogPort productCatalogPort;
     private final ProductCandidateMapper candidateMapper;
     private final ProductMaterializationService materializationService;
@@ -60,6 +65,7 @@ public class RecommendationService {
     public RecommendationService(
             RecommendationInputReader inputReader,
             RecommendationInputCommandService inputCommandService,
+            HmacUtil hmacUtil,
             ProductCatalogPort productCatalogPort,
             ProductCandidateMapper candidateMapper,
             ProductMaterializationService materializationService,
@@ -71,6 +77,7 @@ public class RecommendationService {
     ) {
         this.inputReader = inputReader;
         this.inputCommandService = inputCommandService;
+        this.hmacUtil = hmacUtil;
         this.productCatalogPort = productCatalogPort;
         this.candidateMapper = candidateMapper;
         this.materializationService = materializationService;
@@ -186,7 +193,7 @@ public class RecommendationService {
                 ProductSearchResult searchResult = RecommendationPerformanceTrace.measureSearchCatalog(
                         new RecommendationPerformanceTrace.SearchCatalogCallInput(
                                 index + 1,
-                                tagName,
+                                traceQueryFingerprint(tagName),
                                 tagKind,
                                 category.name()
                         ),
@@ -360,6 +367,19 @@ public class RecommendationService {
 
     private static String nullable(String value) {
         return value == null ? "" : value;
+    }
+
+    private String traceQueryFingerprint(String tagName) {
+        if (!RecommendationPerformanceTrace.active()) {
+            return null;
+        }
+        String normalized = Normalizer.normalize(
+                tagName.trim(),
+                Normalizer.Form.NFKC
+        ).toLowerCase(Locale.ROOT);
+        return "hmac-sha256:" + hmacUtil.hashHex(
+                TRACE_QUERY_FINGERPRINT_CONTEXT + normalized
+        );
     }
 
     private record CandidateCollection(
