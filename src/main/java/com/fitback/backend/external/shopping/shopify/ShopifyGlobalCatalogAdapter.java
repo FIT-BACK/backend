@@ -153,6 +153,9 @@ public final class ShopifyGlobalCatalogAdapter
             return query.keyword();
         }
         String categoryTerm = categoryMapper.searchTerm(query.category());
+        if (query.keyword().isBlank()) {
+            return categoryTerm;
+        }
         return categoryTerm.isBlank()
                 ? query.keyword()
                 : query.keyword() + " " + categoryTerm;

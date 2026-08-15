@@ -112,6 +112,9 @@ public class ProductSearchService {
             int pageSize
     ) {
         try {
+            if (keyword == null || keyword.isBlank()) {
+                throw new IllegalArgumentException("keyword must not be blank");
+            }
             ProductCategory category = categoryValue == null
                     ? null
                     : ProductCategory.valueOf(categoryValue.trim().toUpperCase(Locale.ROOT));

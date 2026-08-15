@@ -105,6 +105,7 @@ class RecommendationServiceTest {
                 inputCommandService,
                 hmacUtil,
                 productCatalogPort,
+                new RecommendationRetrievalQueryPlanner(),
                 candidateMapper,
                 materializationService,
                 new ImageComparisonCandidateSelector(
@@ -278,7 +279,14 @@ class RecommendationServiceTest {
                 });
         when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
 
-        recommendationService.generate(1L, 501L);
+        RecommendationPerformanceTrace.Snapshot trace;
+        try (RecommendationPerformanceTrace.Scope scope =
+                     RecommendationPerformanceTrace.beginIfRequested(
+                             RecommendationPerformanceTrace.REQUEST_VALUE
+                     )) {
+            recommendationService.generate(1L, 501L);
+            trace = scope.snapshot();
+        }
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<RecommendationSelection>> selectionsCaptor =
@@ -461,7 +469,7 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void usesCustomTagForCandidateSearchAndScoring() {
+    void omitsCustomTagFromRetrievalAndUsesCategoryFallback() {
         RecommendationInputSnapshot input = new RecommendationInputSnapshot(
                 501L,
                 1L,
@@ -474,7 +482,7 @@ class RecommendationServiceTest {
         ExternalProductCandidate candidate = candidate(1, null, true);
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(new ProductSearchQuery(
-                "Fixture",
+                "",
                 ProductCategory.TOP,
                 null,
                 20
@@ -485,6 +493,13 @@ class RecommendationServiceTest {
         when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
 
         recommendationService.generate(1L, 501L);
+
+        verify(productCatalogPort, never()).search(new ProductSearchQuery(
+                "Fixture",
+                ProductCategory.TOP,
+                null,
+                20
+        ));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<RecommendationSelection>> selectionsCaptor =
@@ -519,7 +534,7 @@ class RecommendationServiceTest {
         ExternalProductCandidate candidate = candidate(1, null, true);
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(new ProductSearchQuery(
-                "unmatched",
+                "",
                 ProductCategory.TOP,
                 null,
                 20
@@ -533,6 +548,12 @@ class RecommendationServiceTest {
 
         verify(productCatalogPort, never()).search(new ProductSearchQuery(
                 "Fixture",
+                ProductCategory.TOP,
+                null,
+                20
+        ));
+        verify(productCatalogPort, never()).search(new ProductSearchQuery(
+                "unmatched",
                 ProductCategory.TOP,
                 null,
                 20
@@ -553,7 +574,7 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void searchesNonStyleAndCustomTagsInInputOrder() {
+    void searchesPlannedEnglishQueriesInDeterministicOrder() {
         RecommendationInputSnapshot input = new RecommendationInputSnapshot(
                 501L,
                 1L,
@@ -561,11 +582,11 @@ class RecommendationServiceTest {
                 70,
                 ProductCategory.TOP,
                 List.of(
-                        new TagInput(10L, "실루엣", TagType.SILHOUETTE),
-                        new TagInput(20L, "색상", TagType.COLOR),
-                        new TagInput(30L, "스타일", TagType.STYLE),
-                        new TagInput(40L, "디테일", TagType.DETAIL),
-                        new TagInput(50L, "소재", TagType.MATERIAL)
+                        new TagInput(10L, "A라인", TagType.SILHOUETTE),
+                        new TagInput(20L, "네이비", TagType.COLOR),
+                        new TagInput(30L, "미니멀", TagType.STYLE),
+                        new TagInput(40L, "브이넥", TagType.DETAIL),
+                        new TagInput(50L, "코튼", TagType.MATERIAL)
                 ),
                 List.of("사용자 태그")
         );
@@ -574,17 +595,43 @@ class RecommendationServiceTest {
                 .thenReturn(new ProductSearchResult(List.of(), null));
         when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
 
-        recommendationService.generate(1L, 501L);
+        RecommendationPerformanceTrace.Snapshot trace;
+        try (RecommendationPerformanceTrace.Scope scope =
+                     RecommendationPerformanceTrace.beginIfRequested(
+                             RecommendationPerformanceTrace.REQUEST_VALUE
+                     )) {
+            recommendationService.generate(1L, 501L);
+            trace = scope.snapshot();
+        }
 
         ArgumentCaptor<ProductSearchQuery> queryCaptor =
                 ArgumentCaptor.forClass(ProductSearchQuery.class);
         verify(productCatalogPort, org.mockito.Mockito.times(5)).search(queryCaptor.capture());
         assertThat(queryCaptor.getAllValues())
                 .extracting(ProductSearchQuery::keyword)
-                .containsExactly("실루엣", "색상", "디테일", "소재", "사용자 태그");
+                .containsExactly("a-line", "a-line navy", "v-neck", "v-neck navy", "");
         assertThat(queryCaptor.getAllValues())
                 .extracting(ProductSearchQuery::category)
                 .containsOnly(ProductCategory.TOP);
+        assertThat(queryCaptor.getAllValues())
+                .extracting(ProductSearchQuery::pageSize)
+                .containsOnly(20);
+        assertThat(trace.searchCatalogCalls())
+                .extracting(RecommendationPerformanceTrace.CatalogCall::tagKind)
+                .containsExactly(
+                        "SILHOUETTE",
+                        "SILHOUETTE_COLOR",
+                        "DETAIL",
+                        "DETAIL_COLOR",
+                        "CATEGORY"
+                );
+        assertThat(trace.searchCatalogCalls())
+                .allSatisfy(call -> {
+                    assertThat(call.queryFingerprint())
+                            .isEqualTo("hmac-sha256:" + "a".repeat(64));
+                    assertThat(call.rawResultCount()).isZero();
+                    assertThat(call.categoryFilteredResultCount()).isZero();
+                });
     }
 
     @Test
@@ -594,7 +641,7 @@ class RecommendationServiceTest {
         ExternalProductCandidate outer = candidate(2, null, true);
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(new ProductSearchQuery(
-                "Fixture",
+                "",
                 ProductCategory.TOP,
                 null,
                 20
@@ -622,8 +669,8 @@ class RecommendationServiceTest {
                 70,
                 ProductCategory.TOP,
                 List.of(
-                        new TagInput(10L, "first", TagType.DETAIL),
-                        new TagInput(20L, "second", TagType.COLOR)
+                        new TagInput(10L, "A라인", TagType.SILHOUETTE),
+                        new TagInput(20L, "브이넥", TagType.DETAIL)
                 ),
                 List.of()
         );
@@ -633,7 +680,7 @@ class RecommendationServiceTest {
         ExternalProductCandidate secondRankFromSecondSearch = candidate(4, null, true);
         when(inputReader.read(1L, 501L)).thenReturn(input);
         when(productCatalogPort.search(new ProductSearchQuery(
-                "first",
+                "a-line",
                 ProductCategory.TOP,
                 null,
                 20
@@ -642,7 +689,7 @@ class RecommendationServiceTest {
                 null
         ));
         when(productCatalogPort.search(new ProductSearchQuery(
-                "second",
+                "v-neck",
                 ProductCategory.TOP,
                 null,
                 20
@@ -650,6 +697,12 @@ class RecommendationServiceTest {
                 List.of(firstRankFromSecondSearch, secondRankFromSecondSearch),
                 null
         ));
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(), null));
         when(candidateMapper.category(any())).thenReturn(ProductCategory.TOP);
         when(materializationService.materializeForRecommendation(any()))
                 .thenAnswer(invocation -> {
@@ -678,7 +731,7 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void recordsEmptySetWithoutProviderCallWhenOnlyStyleTagsExist() {
+    void usesCategoryFallbackWhenOnlyStyleTagsExist() {
         RecommendationInputSnapshot input = new RecommendationInputSnapshot(
                 501L,
                 1L,
@@ -689,11 +742,22 @@ class RecommendationServiceTest {
                 List.of()
         );
         when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(), null));
         when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
 
         RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
 
-        verify(productCatalogPort, never()).search(any(ProductSearchQuery.class));
+        verify(productCatalogPort).search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                null,
+                20
+        ));
         verify(setWriter).replaceCurrentSet(input, "IMAGE_TAG_WEIGHTED_V1", List.of());
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.CURRENT);
     }
