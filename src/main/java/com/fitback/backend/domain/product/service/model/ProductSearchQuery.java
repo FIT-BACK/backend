@@ -8,7 +8,15 @@ public record ProductSearchQuery(
 ) {
 
     public ProductSearchQuery {
-        keyword = ModelValidation.requireNonBlank(keyword, "keyword").trim();
+        if (keyword == null) {
+            throw new IllegalArgumentException("keyword must not be null");
+        }
+        keyword = keyword.trim();
+        if (keyword.isBlank() && category == null) {
+            throw new IllegalArgumentException(
+                    "keyword must not be blank when category is null"
+            );
+        }
         if (keyword.length() > 100) {
             throw new IllegalArgumentException("keyword must not exceed 100 characters");
         }
