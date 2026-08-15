@@ -74,6 +74,27 @@ class ShopifyGlobalCatalogAdapterTest {
         });
     }
 
+    @Test
+    void usesOnlyCategoryAnchorForCategoryOnlySearch() {
+        AtomicReference<String> catalogQuery = new AtomicReference<>();
+        ShopifyGlobalCatalogAdapter adapter = adapter(new StubClient() {
+            @Override
+            public ShopifyCatalogPage search(String query, String cursor, int limit) {
+                catalogQuery.set(query);
+                return new ShopifyCatalogPage(List.of(), null);
+            }
+        });
+
+        adapter.search(new ProductSearchQuery(
+                "",
+                ProductCategory.DRESS,
+                null,
+                20
+        ));
+
+        assertThat(catalogQuery.get()).isEqualTo("dress");
+    }
+
     @ParameterizedTest
     @CsvSource(
             value = {

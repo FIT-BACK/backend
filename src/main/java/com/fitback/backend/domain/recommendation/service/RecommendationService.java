@@ -15,11 +15,11 @@ import com.fitback.backend.domain.recommendation.dto.BrowserRerankingHandoff;
 import com.fitback.backend.domain.recommendation.dto.RecommendationCreateResponse;
 import com.fitback.backend.domain.recommendation.dto.RecommendationGenerateRequest;
 import com.fitback.backend.domain.recommendation.dto.RecommendationResultResponse;
+import com.fitback.backend.domain.recommendation.service.RecommendationRetrievalQueryPlanner.PlannedQuery;
 import com.fitback.backend.domain.recommendation.service.RecommendationScorer.Score;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationInputSnapshot.TagInput;
 import com.fitback.backend.domain.recommendation.service.model.RecommendationSelection;
-import com.fitback.backend.domain.tag.entity.TagType;
 import com.fitback.backend.global.exception.BusinessException;
 import com.fitback.backend.global.exception.ErrorCode;
 import com.fitback.backend.global.observability.RecommendationPerformanceTrace;
@@ -32,8 +32,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -54,6 +52,7 @@ public class RecommendationService {
     private final RecommendationInputCommandService inputCommandService;
     private final HmacUtil hmacUtil;
     private final ProductCatalogPort productCatalogPort;
+    private final RecommendationRetrievalQueryPlanner retrievalQueryPlanner;
     private final ProductCandidateMapper candidateMapper;
     private final ProductMaterializationService materializationService;
     private final ImageComparisonCandidateSelector imageComparisonCandidateSelector;
@@ -67,6 +66,7 @@ public class RecommendationService {
             RecommendationInputCommandService inputCommandService,
             HmacUtil hmacUtil,
             ProductCatalogPort productCatalogPort,
+            RecommendationRetrievalQueryPlanner retrievalQueryPlanner,
             ProductCandidateMapper candidateMapper,
             ProductMaterializationService materializationService,
             ImageComparisonCandidateSelector imageComparisonCandidateSelector,
@@ -79,6 +79,7 @@ public class RecommendationService {
         this.inputCommandService = inputCommandService;
         this.hmacUtil = hmacUtil;
         this.productCatalogPort = productCatalogPort;
+        this.retrievalQueryPlanner = retrievalQueryPlanner;
         this.candidateMapper = candidateMapper;
         this.materializationService = materializationService;
         this.imageComparisonCandidateSelector = imageComparisonCandidateSelector;
@@ -103,8 +104,7 @@ public class RecommendationService {
                 : inputReader.read(memberId, reportId);
         CandidateCollection candidateCollection = collectCandidates(
                 input.category(),
-                input.tags(),
-                input.customTagNames()
+                input.tags()
         );
         BrowserRerankingHandoff browserReranking = browserRerankingHandoffService.create(
                 memberId,
@@ -160,23 +160,9 @@ public class RecommendationService {
 
     private CandidateCollection collectCandidates(
             ProductCategory category,
-            List<TagInput> tags,
-            List<String> customTagNames
+            List<TagInput> tags
     ) {
-        // STYLE 태그를 상품 검색과 점수 계산 대상에서 제외하는 기존 추천 정책
-        List<String> searchTagNames = Stream.concat(
-                tags.stream()
-                        .filter(tag -> tag.tagType() != TagType.STYLE)
-                        .map(TagInput::name),
-                customTagNames.stream()
-        ).toList();
-        List<String> searchTagKinds = Stream.concat(
-                tags.stream()
-                        .filter(tag -> tag.tagType() != TagType.STYLE)
-                        .map(tag -> tag.tagType().name()),
-                IntStream.range(0, customTagNames.size())
-                        .mapToObj(index -> "CUSTOM_" + (index + 1))
-        ).toList();
+        List<PlannedQuery> queryPlan = retrievalQueryPlanner.plan(category, tags);
 
         // 일부 검색 실패 시 성공한 검색 결과로 추천을 계속하기 위한 배치·실패 분리 수집
         List<List<ExternalProductCandidate>> candidateBatches = new ArrayList<>();
@@ -185,20 +171,24 @@ public class RecommendationService {
         int searchedCandidateCount = 0;
         int categoryFilteredCandidateCount = 0;
 
-        // 태그 입력 순서를 이후 라운드 로빈의 검색 배치 순서로 유지
-        for (int index = 0; index < searchTagNames.size(); index++) {
-            String tagName = searchTagNames.get(index);
-            String tagKind = searchTagKinds.get(index);
+        // query family 순서를 이후 라운드 로빈의 검색 배치 순서로 유지
+        for (int index = 0; index < queryPlan.size(); index++) {
+            PlannedQuery plannedQuery = queryPlan.get(index);
             try {
                 ProductSearchResult searchResult = RecommendationPerformanceTrace.measureSearchCatalog(
                         new RecommendationPerformanceTrace.SearchCatalogCallInput(
                                 index + 1,
-                                traceQueryFingerprint(tagName),
-                                tagKind,
+                                traceQueryFingerprint(category, plannedQuery.keyword()),
+                                plannedQuery.tagTypeComposition(),
                                 category.name()
                         ),
                         () -> productCatalogPort.search(
-                                new ProductSearchQuery(tagName, category, null, SEARCH_PAGE_SIZE)
+                                new ProductSearchQuery(
+                                        plannedQuery.keyword(),
+                                        category,
+                                        null,
+                                        SEARCH_PAGE_SIZE
+                                )
                         ),
                         result -> result.items().size()
                 );
@@ -369,12 +359,12 @@ public class RecommendationService {
         return value == null ? "" : value;
     }
 
-    private String traceQueryFingerprint(String tagName) {
+    private String traceQueryFingerprint(ProductCategory category, String keyword) {
         if (!RecommendationPerformanceTrace.active()) {
             return null;
         }
         String normalized = Normalizer.normalize(
-                tagName.trim(),
+                category.name() + "\u0000" + keyword.trim(),
                 Normalizer.Form.NFKC
         ).toLowerCase(Locale.ROOT);
         return "hmac-sha256:" + hmacUtil.hashHex(
