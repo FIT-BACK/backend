@@ -43,6 +43,12 @@ public class RecommendationScorer {
             TagType.DETAIL, 1
     ));
 
+    private final RecommendationRetrievalQueryPlanner queryPlanner;
+
+    public RecommendationScorer(RecommendationRetrievalQueryPlanner queryPlanner) {
+        this.queryPlanner = queryPlanner;
+    }
+
     public Score score(
             List<TagInput> tags,
             BigDecimal temporaryImageSimilarityScore,
@@ -53,8 +59,13 @@ public class RecommendationScorer {
         List<TagInput> attributeTags = tags.stream()
                 .filter(tag -> ATTRIBUTE_TAG_TYPES.contains(tag.tagType()))
                 .toList();
+        // 검색 쪽(RecommendationRetrievalQueryPlanner)이 한국어 태그를 영어 별칭으로
+        // 바꿔서 상품을 찾아오는 것과 달리, 여기는 원래 한국어 태그명을 영어 상품
+        // 텍스트(searchableText)에 그대로 substring 매칭해서 항상 거의 매칭 실패
+        // 했었다 — 검색 쪽과 동일한 별칭 테이블을 재사용해 같은 기준으로 비교한다.
+        // 큐레이션된 별칭이 없는 태그(예: STYLE)는 검증 불가로 보고 매칭에서 제외한다.
         List<TagInput> matchedAttributeTags = attributeTags.stream()
-                .filter(tag -> searchableText.contains(tag.name().toLowerCase(Locale.ROOT)))
+                .filter(tag -> isMatched(tag, searchableText))
                 .toList();
         long matchedTagCount = matchedAttributeTags.size();
         BigDecimal tagMatchScore = calculateWeightedTagMatchScore(
@@ -103,6 +114,14 @@ public class RecommendationScorer {
 
     private static int weightOf(TagType tagType) {
         return ATTRIBUTE_TAG_WEIGHTS.getOrDefault(tagType, 1);
+    }
+
+    private boolean isMatched(TagInput tag, String searchableText) {
+        String alias = queryPlanner.aliasFor(tag);
+        if (alias != null) {
+            return searchableText.contains(alias.toLowerCase(Locale.ROOT));
+        }
+        return searchableText.contains(tag.name().toLowerCase(Locale.ROOT));
     }
 
     private static BigDecimal calculateWeightedSimilarityScore(

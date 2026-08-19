@@ -14,19 +14,23 @@ import org.junit.jupiter.api.Test;
 
 class RecommendationScorerTest {
 
-    private final RecommendationScorer scorer = new RecommendationScorer();
+    // RecommendationRetrievalQueryPlanner의 큐레이션된 한국어→영어 별칭 테이블을
+    // 그대로 재사용하므로, 픽스처는 실제 DB 시드(V25__seed_tag_master_taxonomy.sql)의
+    // 한국어 태그명을 써야 aliasFor()가 실제로 별칭을 찾아 영어 상품 텍스트와 비교한다.
+    private final RecommendationScorer scorer =
+            new RecommendationScorer(new RecommendationRetrievalQueryPlanner());
 
     @Test
     void returnsOneHundredWhenAllAttributeTagsMatch() {
         RecommendationScorer.Score score = scorer.score(
                 List.of(
-                        tag(10L, "minimal", TagType.SILHOUETTE),
-                        tag(20L, "linen", TagType.MATERIAL),
-                        tag(30L, "button", TagType.DETAIL),
-                        tag(40L, "navy", TagType.COLOR)
+                        tag(10L, "오버사이즈", TagType.SILHOUETTE),
+                        tag(20L, "린넨", TagType.MATERIAL),
+                        tag(30L, "단추", TagType.DETAIL),
+                        tag(40L, "네이비", TagType.COLOR)
                 ),
                 new BigDecimal("70"),
-                candidate("Minimal Shirt", "Navy Brand", "linen/button", null)
+                candidate("Oversized Shirt", "Navy Brand", "linen/button", null)
         );
 
         assertThat(score.similarityScore()).isEqualByComparingTo("79.00");
@@ -38,26 +42,26 @@ class RecommendationScorerTest {
     void calculatesPartialMatchRatioAndRoundsHalfUp() {
         RecommendationScorer.Score halfMatched = scorer.score(
                 List.of(
-                        tag(10L, "minimal", TagType.SILHOUETTE),
-                        tag(20L, "linen", TagType.MATERIAL),
-                        tag(30L, "button", TagType.DETAIL),
-                        tag(40L, "navy", TagType.COLOR)
+                        tag(10L, "오버사이즈", TagType.SILHOUETTE),
+                        tag(20L, "린넨", TagType.MATERIAL),
+                        tag(30L, "단추", TagType.DETAIL),
+                        tag(40L, "네이비", TagType.COLOR)
                 ),
                 new BigDecimal("70"),
-                candidate("Minimal Shirt", null, "linen", null)
+                candidate("Oversized Shirt", null, "linen", null)
         );
         RecommendationScorer.Score twoOfThreeMatched = scorer.score(
                 List.of(
-                        tag(10L, "minimal", TagType.SILHOUETTE),
-                        tag(20L, "linen", TagType.MATERIAL),
-                        tag(30L, "button", TagType.DETAIL)
+                        tag(10L, "오버사이즈", TagType.SILHOUETTE),
+                        tag(20L, "린넨", TagType.MATERIAL),
+                        tag(30L, "단추", TagType.DETAIL)
                 ),
                 new BigDecimal("70"),
-                candidate("Minimal Shirt", null, "linen", null)
+                candidate("Oversized Shirt", null, "linen", null)
         );
 
-        // 후보 텍스트("Minimal Shirt"+"linen")에 SILHOUETTE("minimal")와
-        // MATERIAL("linen")이 매칭되고 COLOR는 안 맞음 — 매칭된 두 개 모두 가중치 1이라
+        // 후보 텍스트("Oversized Shirt"+"linen")에 SILHOUETTE(오버사이즈→oversized)와
+        // MATERIAL(린넨→linen)이 매칭되고 COLOR는 안 맞음 — 매칭된 두 개 모두 가중치 1이라
         // 2/9 비율이 적용돼(COLOR 가중치 도입 전 2/4=50%였던 것과 달리) 64.00이 아닌
         // 55.67이 되는 게 올바른 값이다.
         assertThat(halfMatched.similarityScore()).isEqualByComparingTo("55.67");
@@ -71,17 +75,17 @@ class RecommendationScorerTest {
     void addsHighSimilarityToPartialMatchAtEightyPercent() {
         RecommendationScorer.Score score = scorer.score(
                 List.of(
-                        tag(10L, "minimal", TagType.SILHOUETTE),
-                        tag(20L, "linen", TagType.MATERIAL),
-                        tag(30L, "button", TagType.DETAIL),
-                        tag(40L, "navy", TagType.COLOR),
-                        tag(50L, "unmatched", TagType.DETAIL)
+                        tag(10L, "오버사이즈", TagType.SILHOUETTE),
+                        tag(20L, "린넨", TagType.MATERIAL),
+                        tag(30L, "단추", TagType.DETAIL),
+                        tag(40L, "네이비", TagType.COLOR),
+                        tag(50L, "지퍼", TagType.DETAIL)
                 ),
                 new BigDecimal("70"),
-                candidate("Minimal Shirt", "Navy Brand", "linen/button", null)
+                candidate("Oversized Shirt", "Navy Brand", "linen/button", null)
         );
 
-        // COLOR(navy)까지 매칭돼서 가중 합(9/10)이 예전 단순 개수 비율(4/5=80%)보다 더
+        // COLOR(네이비→navy)까지 매칭돼서 가중 합(9/10)이 예전 단순 개수 비율(4/5=80%)보다 더
         // 높게 나옴 — 76.00이 COLOR 가중치 도입 이후의 올바른 값이다.
         assertThat(score.similarityScore()).isEqualByComparingTo("76.00");
         assertThat(score.reasonCodes())
@@ -96,21 +100,21 @@ class RecommendationScorerTest {
         // 사실상 유일한 순위 결정 요인이므로, 이 성질이 곧 "색상 맞는 게 먼저 나온다"는
         // 뜻이 된다).
         List<TagInput> tags = List.of(
-                tag(10L, "minimal", TagType.SILHOUETTE),
-                tag(20L, "linen", TagType.MATERIAL),
-                tag(30L, "button", TagType.DETAIL),
-                tag(40L, "navy", TagType.COLOR)
+                tag(10L, "오버사이즈", TagType.SILHOUETTE),
+                tag(20L, "린넨", TagType.MATERIAL),
+                tag(30L, "단추", TagType.DETAIL),
+                tag(40L, "네이비", TagType.COLOR)
         );
 
         RecommendationScorer.Score colorOnlyMatch = scorer.score(
                 tags,
                 new BigDecimal("70"),
-                candidate("Oversized Coat", "Other Brand", "outer/coat navy", null)
+                candidate("Wide Coat", "Other Brand", "outer/coat navy", null)
         );
         RecommendationScorer.Score everythingButColorMatch = scorer.score(
                 tags,
                 new BigDecimal("70"),
-                candidate("Minimal Shirt", "Other Brand", "linen/button", null)
+                candidate("Oversized Shirt", "Other Brand", "linen/button", null)
         );
 
         assertThat(colorOnlyMatch.similarityScore())
@@ -121,10 +125,10 @@ class RecommendationScorerTest {
     void returnsNoAttributeMatchWhenNoAttributeTagsMatch() {
         RecommendationScorer.Score score = scorer.score(
                 List.of(
-                        tag(10L, "wide", TagType.SILHOUETTE),
-                        tag(20L, "wool", TagType.MATERIAL),
-                        tag(30L, "zipper", TagType.DETAIL),
-                        tag(40L, "red", TagType.COLOR)
+                        tag(10L, "슬림핏", TagType.SILHOUETTE),
+                        tag(20L, "가죽", TagType.MATERIAL),
+                        tag(30L, "지퍼", TagType.DETAIL),
+                        tag(40L, "브라운", TagType.COLOR)
                 ),
                 new BigDecimal("70"),
                 candidate("Minimal Shirt", "Fixture", "tops/shirts", null)
@@ -137,7 +141,7 @@ class RecommendationScorerTest {
     @Test
     void returnsOneHundredWhenThereAreNoAttributeTags() {
         RecommendationScorer.Score score = scorer.score(
-                List.of(tag(10L, "minimal", TagType.STYLE)),
+                List.of(tag(10L, "미니멀", TagType.STYLE)),
                 new BigDecimal("70"),
                 candidate("Unrelated Product", null, null, null)
         );
@@ -150,9 +154,9 @@ class RecommendationScorerTest {
     void excludesStyleAndIgnoresProviderScore() {
         RecommendationScorer.Score score = scorer.score(
                 List.of(
-                        tag(10L, "minimal", TagType.STYLE),
-                        tag(20L, "linen", TagType.MATERIAL),
-                        tag(30L, "button", TagType.DETAIL)
+                        tag(10L, "미니멀", TagType.STYLE),
+                        tag(20L, "린넨", TagType.MATERIAL),
+                        tag(30L, "단추", TagType.DETAIL)
                 ),
                 new BigDecimal("70"),
                 candidate(
@@ -171,12 +175,12 @@ class RecommendationScorerTest {
     void combinesImageAndTagScoresAndRoundsHalfUp() {
         RecommendationScorer.Score score = scorer.score(
                 List.of(
-                        tag(10L, "minimal", TagType.SILHOUETTE),
-                        tag(20L, "linen", TagType.MATERIAL),
-                        tag(30L, "button", TagType.DETAIL)
+                        tag(10L, "오버사이즈", TagType.SILHOUETTE),
+                        tag(20L, "린넨", TagType.MATERIAL),
+                        tag(30L, "단추", TagType.DETAIL)
                 ),
                 new BigDecimal("71.11"),
-                candidate("Minimal Shirt", null, "linen", null)
+                candidate("Oversized Shirt", null, "linen", null)
         );
 
         assertThat(score.similarityScore()).isEqualByComparingTo("69.78");
@@ -184,9 +188,9 @@ class RecommendationScorerTest {
 
     @Test
     void validatesTemporaryImageSimilarityScoreRange() {
-        List<TagInput> tags = List.of(tag(10L, "minimal", TagType.SILHOUETTE));
+        List<TagInput> tags = List.of(tag(10L, "오버사이즈", TagType.SILHOUETTE));
         ExternalProductCandidate candidate = candidate(
-                "Minimal Shirt",
+                "Oversized Shirt",
                 null,
                 null,
                 null

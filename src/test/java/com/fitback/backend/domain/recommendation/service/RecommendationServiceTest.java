@@ -79,7 +79,8 @@ class RecommendationServiceTest {
     private BrowserRerankingHandoffService browserRerankingHandoffService;
 
     @Spy
-    private RecommendationScorer scorer = new RecommendationScorer();
+    private RecommendationScorer scorer =
+            new RecommendationScorer(new RecommendationRetrievalQueryPlanner());
 
     private RecommendationService recommendationService;
 
@@ -609,7 +610,7 @@ class RecommendationServiceTest {
         verify(productCatalogPort, org.mockito.Mockito.times(5)).search(queryCaptor.capture());
         assertThat(queryCaptor.getAllValues())
                 .extracting(ProductSearchQuery::keyword)
-                .containsExactly("a-line", "a-line navy", "v-neck", "v-neck navy", "");
+                .containsExactly("a-line", "v-neck", "cotton", "a-line navy", "");
         assertThat(queryCaptor.getAllValues())
                 .extracting(ProductSearchQuery::category)
                 .containsOnly(ProductCategory.TOP);
@@ -620,9 +621,9 @@ class RecommendationServiceTest {
                 .extracting(RecommendationPerformanceTrace.CatalogCall::tagKind)
                 .containsExactly(
                         "SILHOUETTE",
-                        "SILHOUETTE_COLOR",
                         "DETAIL",
-                        "DETAIL_COLOR",
+                        "MATERIAL",
+                        "SILHOUETTE_COLOR",
                         "CATEGORY"
                 );
         assertThat(trace.searchCatalogCalls())
