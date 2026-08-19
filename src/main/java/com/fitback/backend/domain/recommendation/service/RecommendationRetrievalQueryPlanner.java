@@ -58,6 +58,27 @@ public class RecommendationRetrievalQueryPlanner {
             Map.entry("카키", "khaki")
     );
 
+    /**
+     * 태그 일치도 채점(RecommendationScorer)이 검색어 구성과 동일한 영어 별칭
+     * 기준으로 비교하도록 공개하는 단일 태그 조회용 메서드. 큐레이션된 별칭이
+     * 없는 태그(STYLE, 또는 별칭 표에 없는 태그)는 검색에서도 원문 그대로
+     * 쓰지 않는 것과 동일하게 null을 반환한다 — 호출부가 "검증 불가"로 다룬다.
+     */
+    public String aliasFor(TagInput tag) {
+        Map<String, String> aliases = aliasesFor(tag.tagType());
+        return aliases == null ? null : aliases.get(tag.name());
+    }
+
+    private static Map<String, String> aliasesFor(TagType type) {
+        return switch (type) {
+            case SILHOUETTE -> SILHOUETTE_ALIASES;
+            case DETAIL -> DETAIL_ALIASES;
+            case MATERIAL -> MATERIAL_ALIASES;
+            case COLOR -> COLOR_ALIASES;
+            default -> null;
+        };
+    }
+
     public List<PlannedQuery> plan(ProductCategory category, List<TagInput> tags) {
         Objects.requireNonNull(category, "category must not be null");
         Objects.requireNonNull(tags, "tags must not be null");

@@ -79,7 +79,8 @@ class RecommendationServiceTest {
     private BrowserRerankingHandoffService browserRerankingHandoffService;
 
     @Spy
-    private RecommendationScorer scorer = new RecommendationScorer();
+    private RecommendationScorer scorer =
+            new RecommendationScorer(new RecommendationRetrievalQueryPlanner());
 
     private RecommendationService recommendationService;
 
