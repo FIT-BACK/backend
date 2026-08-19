@@ -88,10 +88,45 @@ public class RecommendationRetrievalQueryPlanner {
         String material = firstAlias(tags, TagType.MATERIAL, MATERIAL_ALIASES);
         String color = firstAlias(tags, TagType.COLOR, COLOR_ALIASES);
 
+        List<Signal> signals = new ArrayList<>(3);
+        if (silhouette != null) {
+            signals.add(new Signal(silhouette, "SILHOUETTE"));
+        }
+        if (detail != null) {
+            signals.add(new Signal(detail, "DETAIL"));
+        }
+        if (material != null) {
+            signals.add(new Signal(material, "MATERIAL"));
+        }
+
         LinkedHashMap<String, PlannedQuery> semanticQueries = new LinkedHashMap<>();
-        addSignalQueries(semanticQueries, silhouette, "SILHOUETTE", color);
-        addSignalQueries(semanticQueries, detail, "DETAIL", color);
-        addSignalQueries(semanticQueries, material, "MATERIAL", color);
+        if (signals.isEmpty()) {
+            // 실루엣/디테일/소재가 하나도 없으면(색상만 태그된 경우) 색상이라도
+            // 단독 검색어로 살린다 — 이전에는 색상이 항상 다른 속성의 보정용으로만
+            // 쓰여서, 색상만 태그했을 땐 검색어가 하나도 안 만들어졌었다.
+            if (color != null) {
+                semanticQueries.put(color, new PlannedQuery(color, "COLOR"));
+            }
+        } else {
+            // 태그된 속성 타입마다 단독 검색어를 먼저 예산에 확정한다 — "+색상" 조합을
+            // 앞 타입부터 채우다 예산(MAX_SEMANTIC_QUERY_COUNT)이 차서 뒤 타입(예: 소재)의
+            // 검색어 자체가 통째로 밀려나던 문제를 막기 위함. 조합은 남는 예산에만 채운다.
+            for (Signal signal : signals) {
+                semanticQueries.putIfAbsent(
+                        signal.keyword(),
+                        new PlannedQuery(signal.keyword(), signal.composition())
+                );
+            }
+            if (color != null) {
+                for (Signal signal : signals) {
+                    String refined = signal.keyword() + " " + color;
+                    semanticQueries.putIfAbsent(
+                            refined,
+                            new PlannedQuery(refined, signal.composition() + "+COLOR")
+                    );
+                }
+            }
+        }
 
         List<PlannedQuery> plan = new ArrayList<>(MAX_QUERY_COUNT);
         semanticQueries.values().stream()
@@ -117,23 +152,7 @@ public class RecommendationRetrievalQueryPlanner {
                 .orElse(null);
     }
 
-    private static void addSignalQueries(
-            Map<String, PlannedQuery> queries,
-            String signal,
-            String composition,
-            String color
-    ) {
-        if (signal == null) {
-            return;
-        }
-        queries.putIfAbsent(signal, new PlannedQuery(signal, composition));
-        if (color != null) {
-            String refined = signal + " " + color;
-            queries.putIfAbsent(
-                    refined,
-                    new PlannedQuery(refined, composition + "+COLOR")
-            );
-        }
+    private record Signal(String keyword, String composition) {
     }
 
     public record PlannedQuery(String keyword, String tagTypeComposition) {
