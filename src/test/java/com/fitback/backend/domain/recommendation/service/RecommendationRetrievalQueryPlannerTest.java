@@ -17,7 +17,10 @@ class RecommendationRetrievalQueryPlannerTest {
             new RecommendationRetrievalQueryPlanner();
 
     @Test
-    void plansPrimarySilhouetteAndDetailWithColorRefinementsBeforeFallback() {
+    void plansOneQueryPerAttributeTypeBeforeAddingColorRefinements() {
+        // 실루엣/디테일/소재가 모두 태그된 경우, "속성+색상" 조합을 앞 타입부터
+        // 채우다 예산이 차서 뒤 타입(소재)의 검색어 자체가 통째로 밀려나면 안 된다 —
+        // 세 속성 모두 단독 검색어를 먼저 확보하고, 남는 예산에만 색상 조합을 채운다.
         List<PlannedQuery> queries = planner.plan(
                 ProductCategory.DRESS,
                 List.of(
@@ -32,16 +35,52 @@ class RecommendationRetrievalQueryPlannerTest {
                 .extracting(PlannedQuery::keyword, PlannedQuery::tagTypeComposition)
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple("a-line", "SILHOUETTE"),
+                        org.assertj.core.groups.Tuple.tuple("v-neck", "DETAIL"),
+                        org.assertj.core.groups.Tuple.tuple("cotton", "MATERIAL"),
                         org.assertj.core.groups.Tuple.tuple(
                                 "a-line navy",
                                 "SILHOUETTE+COLOR"
                         ),
-                        org.assertj.core.groups.Tuple.tuple("v-neck", "DETAIL"),
-                        org.assertj.core.groups.Tuple.tuple(
-                                "v-neck navy",
-                                "DETAIL+COLOR"
-                        ),
                         org.assertj.core.groups.Tuple.tuple("", "CATEGORY")
+                );
+    }
+
+    @Test
+    void neverDropsAnAttributeTypeWhenAllThreeAndColorArePresent() {
+        // 팀원이 보고한 실제 재현 케이스: 오버사이즈+그레이+라운드넥+니트에서
+        // 니트(소재)가 검색에서 통째로 빠지던 문제. 세 속성 타입 모두 최소 한 개의
+        // 검색어를 반드시 갖는지 확인한다.
+        List<PlannedQuery> queries = planner.plan(
+                ProductCategory.TOP,
+                List.of(
+                        tag(1, "오버사이즈", TagType.SILHOUETTE),
+                        tag(2, "그레이", TagType.COLOR),
+                        tag(3, "라운드넥", TagType.DETAIL),
+                        tag(4, "니트", TagType.MATERIAL)
+                )
+        );
+
+        assertThat(queries)
+                .extracting(PlannedQuery::tagTypeComposition)
+                .contains("SILHOUETTE", "DETAIL", "MATERIAL");
+        assertThat(queries)
+                .extracting(PlannedQuery::keyword)
+                .contains("oversized", "crewneck", "knit");
+    }
+
+    @Test
+    void usesColorAsStandaloneQueryWhenNoOtherAttributeTagIsPresent() {
+        // 색상만 태그되고 실루엣/디테일/소재가 하나도 없으면, 색상이 다른 속성의
+        // 보정용으로만 쓰이던 이전 동작 때문에 검색어가 전혀 안 만들어졌었다.
+        List<PlannedQuery> queries = planner.plan(
+                ProductCategory.TOP,
+                List.of(tag(1, "네이비", TagType.COLOR))
+        );
+
+        assertThat(queries)
+                .containsExactly(
+                        new PlannedQuery("navy", "COLOR"),
+                        new PlannedQuery("", "CATEGORY")
                 );
     }
 
