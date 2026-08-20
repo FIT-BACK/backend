@@ -192,6 +192,32 @@ public class LookbookController {
     }
 
     @Operation(
+            summary = "내가 올린 룩북 목록 조회",
+            description = "로그인한 회원이 직접 올린 룩북을 최신순으로 요청한 pageSize만큼 커서 기반 조회. "
+                    + "pageSize 기본값은 20. 신고로 숨김 처리된 룩북도 본인 목록에서는 제외하지 않음."
+    )
+    @GetMapping("/mine")
+    public ApiResponse<LookbookResponse.LookbookList> getMyLookbooks(
+            @Positive
+            @RequestParam(name = "cursor", required = false) Long cursor,
+            @Min(1)
+            @Max(20)
+            @RequestParam(name = "pageSize", required = false, defaultValue = "20")
+            Integer pageSize,
+            @AuthenticationPrincipal AuthMember authMember
+    ) {
+        if (authMember == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        LookbookResponse.LookbookList response = lookbookService.getMyLookbooks(
+                cursor,
+                pageSize,
+                authMember.getMember()
+        );
+        return ApiResponse.onSuccess(response);
+    }
+
+    @Operation(
             summary = "룩북 상세 조회",
             description = "룩북의 원본 이미지, 매칭 이미지, 작성자 정보, 작성 시각, 태그, 구매 링크와 좋아요 정보를 조회. "
                     + "비로그인 조회를 허용하며 로그인한 경우 isLiked와 isOwner를 함께 계산."
