@@ -668,6 +668,22 @@ public class LookbookService {
         return lookbookLikeRepository.findLikedLookbookIds(member.getId(), lookbookIds);
     }
 
+    // 목록에서 상세로 안 들어가고도 저장/저장취소할 수 있게, 룩북별 closet-save id를 조회
+    // (없으면 저장 안 한 상태 — 맵에 없는 키로 취급)
+    private Map<Long, Long> findSaveIdsByLookbookId(List<Long> lookbookIds, Member member) {
+        if (member == null || lookbookIds.isEmpty()) {
+            return Map.of();
+        }
+        return closetSaveRepository
+                .findAllByMemberIdAndTargetTypeAndTargetIdIn(
+                        member.getId(),
+                        ClosetTargetType.LOOKBOOK,
+                        lookbookIds
+                )
+                .stream()
+                .collect(Collectors.toMap(ClosetSave::getTargetId, ClosetSave::getId));
+    }
+
     private List<LookbookResponse.LookbookItem> toLookbookItems(
             List<Lookbook> lookbooks,
             Member member
@@ -679,6 +695,7 @@ public class LookbookService {
                 lookbookIds
         );
         Set<Long> likedLookbookIds = findLikedLookbookIds(lookbookIds, member);
+        Map<Long, Long> saveIdsByLookbookId = findSaveIdsByLookbookId(lookbookIds, member);
         Map<Long, String> profileImageUrls =
                 memberProfileImageService.resolveProfileImageUrls(
                         lookbooks.stream()
@@ -692,7 +709,8 @@ public class LookbookService {
                         resolveMatchedImageUrl(lookbook),
                         profileImageUrls.get(lookbook.getMember().getId()),
                         tagNamesByLookbookId.getOrDefault(lookbook.getId(), List.of()),
-                        likedLookbookIds.contains(lookbook.getId())
+                        likedLookbookIds.contains(lookbook.getId()),
+                        saveIdsByLookbookId.get(lookbook.getId())
                 ))
                 .toList();
     }

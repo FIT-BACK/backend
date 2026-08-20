@@ -132,4 +132,11 @@ public interface ClosetSaveRepository extends JpaRepository<ClosetSave, Long> {
             @Param("targetType") ClosetTargetType targetType,
             @Param("targetIds") List<Long> targetIds
     );
+
+    // 목록 화면(피드 등)에서 항목마다 저장 취소용 saveId를 같이 내려주기 위한 배치 조회
+    List<ClosetSave> findAllByMemberIdAndTargetTypeAndTargetIdIn(
+            Long memberId,
+            ClosetTargetType targetType,
+            List<Long> targetIds
+    );
 }
