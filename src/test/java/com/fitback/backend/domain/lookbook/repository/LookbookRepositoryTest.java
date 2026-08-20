@@ -461,4 +461,82 @@ class LookbookRepositoryTest {
                 .setParameter("lookbookId", lookbook.getId())
                 .executeUpdate();
     }
+
+    // 마이클로젯 "내가 올린 룩북" — 다른 회원 것/삭제된 것은 제외하고 최신순
+    @Test
+    void findAllByMemberIdReturnsOnlyOwnActiveLookbooksNewestFirst() {
+        Member owner = Member.create(
+                "my-lookbooks-owner@fitback.com",
+                "my-lookbooks-owner",
+                "password",
+                LoginProvider.EMAIL
+        );
+        Member other = Member.create(
+                "my-lookbooks-other@fitback.com",
+                "my-lookbooks-other",
+                "password",
+                LoginProvider.EMAIL
+        );
+        entityManager.persist(owner);
+        entityManager.persist(other);
+
+        Lookbook older = persistLookbook(owner, "mine-older");
+        Lookbook newer = persistLookbook(owner, "mine-newer");
+        Lookbook deleted = persistLookbook(owner, "mine-deleted");
+        deleted.softDelete();
+        Lookbook othersLookbook = persistLookbook(other, "not-mine");
+        entityManager.flush();
+        updateCreatedAt(older, LocalDateTime.of(2026, 7, 1, 0, 0));
+        updateCreatedAt(newer, LocalDateTime.of(2026, 7, 2, 0, 0));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Lookbook> result = lookbookRepository
+                .findAllByMemberIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+                        owner.getId(),
+                        PageRequest.of(0, 10)
+                );
+
+        assertThat(result)
+                .extracting(Lookbook::getId)
+                .containsExactly(newer.getId(), older.getId());
+        assertThat(result).noneMatch(lookbook -> lookbook.getId().equals(deleted.getId())
+                || lookbook.getId().equals(othersLookbook.getId()));
+    }
+
+    // 마이클로젯 "내가 올린 룩북" 다음 페이지 — 커서 이전 것만, 신고 숨김이어도 본인 것은 포함
+    @Test
+    void findNextPageByMemberIdReturnsOlderOwnLookbooksIncludingHidden() {
+        Member owner = Member.create(
+                "my-lookbooks-cursor@fitback.com",
+                "my-lookbooks-cursor",
+                "password",
+                LoginProvider.EMAIL
+        );
+        entityManager.persist(owner);
+
+        Lookbook cursorLookbook = persistLookbook(owner, "cursor");
+        Lookbook hiddenButOwned = persistLookbook(owner, "hidden-owned");
+        ReflectionTestUtils.setField(
+                hiddenButOwned,
+                "moderationStatus",
+                LookbookModerationStatus.AUTO_HIDDEN
+        );
+        entityManager.flush();
+        updateCreatedAt(cursorLookbook, LocalDateTime.of(2026, 7, 2, 0, 0));
+        updateCreatedAt(hiddenButOwned, LocalDateTime.of(2026, 7, 1, 0, 0));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Lookbook> result = lookbookRepository.findNextPageByMemberId(
+                owner.getId(),
+                LocalDateTime.of(2026, 7, 2, 0, 0),
+                cursorLookbook.getId(),
+                PageRequest.of(0, 10)
+        );
+
+        assertThat(result)
+                .extracting(Lookbook::getId)
+                .containsExactly(hiddenButOwned.getId());
+    }
 }

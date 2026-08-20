@@ -269,6 +269,40 @@ public interface LookbookRepository extends JpaRepository<Lookbook, Long> {
             Pageable pageable
     );
 
+    // 마이클로젯 "내가 올린 룩북" 첫 페이지 — 신고 숨김 상태와 무관하게 본인 목록엔 노출
+    // (findAllByIdInAndDeletedAtIsNull의 "본인 것은 제외하지 않는다" 원칙과 동일)
+    @EntityGraph(
+            attributePaths = {
+                "member", "matchedProduct", "matchedImage", "originalImage"
+            }
+    )
+    List<Lookbook> findAllByMemberIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+            Long memberId,
+            Pageable pageable
+    );
+
+    // 마이클로젯 "내가 올린 룩북" 다음 페이지
+    @EntityGraph(
+            attributePaths = {
+                "member", "matchedProduct", "matchedImage", "originalImage"
+            }
+    )
+    @Query("""
+            SELECT lookbook
+            FROM Lookbook lookbook
+            WHERE lookbook.member.id = :memberId
+              AND lookbook.deletedAt IS NULL
+              AND (lookbook.createdAt < :cursorCreatedAt
+               OR (lookbook.createdAt = :cursorCreatedAt AND lookbook.id < :cursorId))
+            ORDER BY lookbook.createdAt DESC, lookbook.id DESC
+            """)
+    List<Lookbook> findNextPageByMemberId(
+            @Param("memberId") Long memberId,
+            @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable
+    );
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Lookbook lookbook

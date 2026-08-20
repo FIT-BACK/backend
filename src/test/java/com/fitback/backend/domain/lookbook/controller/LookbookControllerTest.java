@@ -215,6 +215,44 @@ class LookbookControllerTest {
     }
 
     @Test
+    void getMyLookbooksReturnsSuccessResponse() {
+        LookbookResponse.LookbookItem item = LookbookResponse.LookbookItem.builder()
+                .lookbookId(100L)
+                .originalImageUrl("https://s3.example.com/original.jpg")
+                .matchedImageUrl("https://s3.example.com/matched.jpg")
+                .authorNickname("fitback")
+                .authorProfileImageUrl("https://s3.example.com/profile.jpg")
+                .tags(List.of("미니멀"))
+                .likeCount(5)
+                .isLiked(false)
+                .build();
+        LookbookResponse.LookbookList serviceResponse = LookbookResponse.LookbookList.builder()
+                .items(List.of(item))
+                .nextCursor(null)
+                .hasNext(false)
+                .pageSize(20)
+                .build();
+        when(lookbookService.getMyLookbooks(null, 20, member))
+                .thenReturn(serviceResponse);
+
+        ApiResponse<LookbookResponse.LookbookList> response =
+                lookbookController.getMyLookbooks(null, 20, authMember);
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.code()).isEqualTo("COMMON200_1");
+        assertThat(response.data()).isEqualTo(serviceResponse);
+        verify(lookbookService).getMyLookbooks(null, 20, member);
+    }
+
+    @Test
+    void getMyLookbooksFailsWithoutAuthenticationPrincipal() {
+        assertThatThrownBy(() -> lookbookController.getMyLookbooks(null, 20, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED)
+                );
+    }
+
+    @Test
     void deleteLookbookReturnsSuccessResponse() {
         ApiResponse<Void> response = lookbookController.deleteLookbook(100L, authMember);
 
