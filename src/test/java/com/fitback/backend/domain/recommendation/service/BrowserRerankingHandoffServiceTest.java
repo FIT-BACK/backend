@@ -22,6 +22,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -40,7 +42,11 @@ class BrowserRerankingHandoffServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new BrowserRerankingHandoffService(candidateTokenService, candidateMapper);
+        service = new BrowserRerankingHandoffService(
+                candidateTokenService,
+                candidateMapper,
+                new RecommendationRetrievalQueryPlanner()
+        );
     }
 
     @Test
@@ -52,18 +58,55 @@ class BrowserRerankingHandoffServiceTest {
                 new TagInput(4L, "A-line", TagType.SILHOUETTE)
         );
 
-        assertThat(BrowserRerankingHandoffService.tagSimilarity(
+        assertThat(service.tagSimilarity(
                 tags,
                 candidate("black nylon shirt", null)
         )).isEqualByComparingTo("0.00");
-        assertThat(BrowserRerankingHandoffService.tagSimilarity(
+        assertThat(service.tagSimilarity(
                 tags,
                 candidate("blue cotton shirt", null)
         )).isEqualByComparingTo("0.50");
-        assertThat(BrowserRerankingHandoffService.tagSimilarity(
+        assertThat(service.tagSimilarity(
                 tags,
                 candidate("blue cotton pleat a-line dress", null)
         )).isEqualByComparingTo("1.00");
+    }
+
+    @Test
+    void matchesKoreanCanonicalTagsWithRetrievalAliases() {
+        List<TagInput> tags = List.of(
+                new TagInput(1L, "레귤러핏", TagType.SILHOUETTE),
+                new TagInput(2L, "베이지", TagType.COLOR),
+                new TagInput(3L, "라운드넥", TagType.DETAIL),
+                new TagInput(4L, "니트", TagType.MATERIAL),
+                new TagInput(5L, "캐주얼", TagType.STYLE)
+        );
+
+        assertThat(service.tagSimilarity(
+                tags,
+                candidate("regular-fit beige crewneck knit shirt", null)
+        )).isEqualByComparingTo("1.00");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "regular-fit beige crewneck knit shirt, 1.00",
+            "regular-fit beige crewneck shirt, 0.75",
+            "regular-fit beige shirt, 0.50",
+            "regular-fit shirt, 0.25",
+            "plain shirt, 0.00"
+    })
+    void keepsUnweightedPartialMatchRatio(String productName, String expectedSimilarity) {
+        List<TagInput> tags = List.of(
+                new TagInput(1L, "레귤러핏", TagType.SILHOUETTE),
+                new TagInput(2L, "베이지", TagType.COLOR),
+                new TagInput(3L, "라운드넥", TagType.DETAIL),
+                new TagInput(4L, "니트", TagType.MATERIAL),
+                new TagInput(5L, "캐주얼", TagType.STYLE)
+        );
+
+        assertThat(service.tagSimilarity(tags, candidate(productName, null)))
+                .isEqualByComparingTo(expectedSimilarity);
     }
 
     @Test
@@ -73,9 +116,17 @@ class BrowserRerankingHandoffServiceTest {
                 new TagInput(2L, "Cotton", TagType.MATERIAL)
         );
 
-        assertThat(BrowserRerankingHandoffService.tagSimilarity(
+        assertThat(service.tagSimilarity(
                 tags,
                 candidate("minimal cotton shirt", null)
+        )).isEqualByComparingTo("1.00");
+    }
+
+    @Test
+    void preservesOneForZeroEligibleTags() {
+        assertThat(service.tagSimilarity(
+                List.of(new TagInput(1L, "캐주얼", TagType.STYLE)),
+                candidate("unrelated shirt", null)
         )).isEqualByComparingTo("1.00");
     }
 
