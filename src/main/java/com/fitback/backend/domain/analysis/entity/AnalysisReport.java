@@ -220,12 +220,13 @@ public class AnalysisReport extends BaseTimeEntity {
                 .filter(ReportTag::isConfirmed)
                 .map(reportTag -> reportTag.getTag().getId())
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        Set<String> currentCustomTagNames = customTags.stream()
-                .map(ReportCustomTag::getNormalizedName)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Map<String, ReportCustomTag> currentCustomTagsByName = customTags.stream()
+                .collect(LinkedHashMap::new,
+                        (tags, customTag) -> tags.put(customTag.getNormalizedName(), customTag),
+                        LinkedHashMap::putAll);
         boolean sameKnownTags = reportTags.size() == confirmedTagIds.size()
                 && currentConfirmedTagIds.equals(confirmedTagIds);
-        boolean sameCustomTags = currentCustomTagNames.equals(
+        boolean sameCustomTags = currentCustomTagsByName.keySet().equals(
                 new LinkedHashSet<>(uniqueCustomTags.keySet())
         );
         if (sameKnownTags
@@ -243,8 +244,19 @@ public class AnalysisReport extends BaseTimeEntity {
                 reportTag.confirm();
             }
         }
-        customTags.clear();
-        customTags.addAll(uniqueCustomTags.values());
+        // 이름이 그대로인 커스텀 태그는 기존 엔티티를 유지한다 — clear()+addAll()로
+        // 전부 갈아끼우면, 이름이 안 바뀐 태그까지 같은 flush 안에서 delete 후 insert가
+        // 일어나는데 그 순서가 보장되지 않아 (report_id, normalized_name) 유니크
+        // 제약을 일시적으로 위반할 수 있었다 — 실사용 재현: 매치율만 바꿔 재확인하면
+        // 500(서버 내부 오류)이 났음.
+        customTags.removeIf(
+                customTag -> !uniqueCustomTags.containsKey(customTag.getNormalizedName())
+        );
+        for (Map.Entry<String, ReportCustomTag> entry : uniqueCustomTags.entrySet()) {
+            if (!currentCustomTagsByName.containsKey(entry.getKey())) {
+                customTags.add(entry.getValue());
+            }
+        }
         this.matchPercentage = matchPercentage;
         this.recommendationInputRevision++;
     }
