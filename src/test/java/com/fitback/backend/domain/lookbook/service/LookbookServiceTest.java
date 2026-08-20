@@ -1026,6 +1026,95 @@ class LookbookServiceTest {
     }
 
     @Test
+    void getMyLookbooksUsesRequestedPageSizeAndReturnsNextCursor() {
+        LocalDateTime latestCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        List<Lookbook> lookbookPage = IntStream.range(0, 6)
+                .mapToObj(index -> createListLookbook(
+                        100L - index,
+                        latestCreatedAt.minusMinutes(index)
+                ))
+                .toList();
+        List<Long> returnedLookbookIds = lookbookPage.subList(0, 5)
+                .stream()
+                .map(Lookbook::getId)
+                .toList();
+        when(lookbookRepository.findAllByMemberIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+                eq(1L),
+                any(Pageable.class)
+        ))
+                .thenReturn(lookbookPage);
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(returnedLookbookIds))
+                .thenReturn(List.of(LookbookTag.create(lookbookPage.get(0), minimalTag)));
+        when(lookbookLikeRepository.findLikedLookbookIds(1L, returnedLookbookIds))
+                .thenReturn(Set.of(100L));
+        when(memberProfileImageService.resolveProfileImageUrls(anyList()))
+                .thenReturn(Map.of(1L, "https://s3.example.com/profile.jpg"));
+
+        LookbookResponse.LookbookList response = lookbookService.getMyLookbooks(
+                null,
+                5,
+                member
+        );
+
+        assertThat(response.items()).hasSize(5);
+        assertThat(response.items().get(0).lookbookId()).isEqualTo(100L);
+        assertThat(response.items().get(0).tags()).containsExactly("미니멀");
+        assertThat(response.nextCursor()).isEqualTo(96L);
+        assertThat(response.hasNext()).isTrue();
+        assertThat(response.pageSize()).isEqualTo(5);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(lookbookRepository).findAllByMemberIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+                eq(1L),
+                pageableCaptor.capture()
+        );
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(6);
+    }
+
+    @Test
+    void getMyLookbooksUsesCursorForNextPage() {
+        LocalDateTime cursorCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        Lookbook cursorLookbook = createListLookbook(100L, cursorCreatedAt);
+        Lookbook nextLookbook = createListLookbook(99L, cursorCreatedAt.minusMinutes(1));
+        when(lookbookRepository.findById(100L)).thenReturn(Optional.of(cursorLookbook));
+        when(lookbookRepository.findNextPageByMemberId(
+                eq(1L),
+                eq(cursorCreatedAt),
+                eq(100L),
+                any(Pageable.class)
+        )).thenReturn(List.of(nextLookbook));
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(List.of(99L)))
+                .thenReturn(List.of());
+
+        LookbookResponse.LookbookList response = lookbookService.getMyLookbooks(
+                100L,
+                5,
+                member
+        );
+
+        assertThat(response.items())
+                .extracting(LookbookResponse.LookbookItem::lookbookId)
+                .containsExactly(99L);
+    }
+
+    @Test
+    void getMyLookbooksRejectsNonPositiveCursor() {
+        assertThatThrownBy(() -> lookbookService.getMyLookbooks(0L, 20, member))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR)
+                );
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, Integer.MAX_VALUE})
+    void getMyLookbooksRejectsPageSizeOutsideAllowedRange(int pageSize) {
+        assertThatThrownBy(() -> lookbookService.getMyLookbooks(null, pageSize, member))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR)
+                );
+    }
+
+    @Test
     void getLookbooksRejectsNonPositiveCursor() {
         assertThatThrownBy(() -> lookbookService.getLookbooks(0L, 20, null, null))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->

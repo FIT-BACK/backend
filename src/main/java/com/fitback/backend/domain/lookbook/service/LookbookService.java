@@ -268,6 +268,39 @@ public class LookbookService {
         );
     }
 
+    // 마이클로젯 "내가 올린 룩북" 목록 조회 — 신고 숨김 상태와 무관하게 본인 목록엔 노출
+    @Transactional(readOnly = true)
+    public LookbookResponse.LookbookList getMyLookbooks(
+            Long cursor,
+            Integer pageSize,
+            Member member
+    ) {
+        int resolvedPageSize = pageSize == null ? DEFAULT_LOOKBOOK_PAGE_SIZE : pageSize;
+        validateLookbookPageRequest(cursor, resolvedPageSize);
+
+        Pageable pageRequest = PageRequest.of(0, resolvedPageSize + 1);
+        List<Lookbook> lookbookPage = findMyLookbookPage(cursor, member.getId(), pageRequest);
+
+        boolean hasNext = lookbookPage.size() > resolvedPageSize;
+        List<Lookbook> lookbooks = lookbookPage.subList(
+                0,
+                Math.min(lookbookPage.size(), resolvedPageSize)
+        );
+
+        List<LookbookResponse.LookbookItem> items = toLookbookItems(lookbooks, member);
+
+        Long nextCursor = hasNext && !lookbooks.isEmpty()
+                ? lookbooks.get(lookbooks.size() - 1).getId()
+                : null;
+
+        return LookbookResponse.LookbookList.toLookbookList(
+                items,
+                nextCursor,
+                hasNext,
+                resolvedPageSize
+        );
+    }
+
     // 트렌드 태그 관련도 기준 룩북 목록 조회
     @Transactional(readOnly = true)
     public LookbookResponse.LookbookList getRelatedLookbooks(
@@ -481,6 +514,35 @@ public class LookbookService {
                                 tagNamesByLookbookId.getOrDefault(lookbook.getId(), List.of())
                         )
                 ));
+    }
+
+    // cursor 기준 "내가 올린 룩북" 조회
+    private List<Lookbook> findMyLookbookPage(
+            Long cursor,
+            Long memberId,
+            Pageable pageRequest
+    ) {
+        if (cursor == null) {
+            return lookbookRepository.findAllByMemberIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+                    memberId,
+                    pageRequest
+            );
+        }
+
+        // cursor 유효성 확인 후 cursor 에 해당하는 룩북 조회 (신고 숨김 여부와 무관하게
+        // 본인 것이므로 findById로 충분 — findCursorLookbook과 달리 태그/노출상태 제약 없음)
+        Lookbook cursorLookbook = lookbookRepository.findById(cursor)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.NOT_FOUND,
+                        "커서에 해당하는 룩북을 찾을 수 없습니다."
+                ));
+
+        return lookbookRepository.findNextPageByMemberId(
+                memberId,
+                cursorLookbook.getCreatedAt(),
+                cursorLookbook.getId(),
+                pageRequest
+        );
     }
 
     // cursor 기준 룩북 조회
