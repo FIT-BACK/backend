@@ -21,13 +21,16 @@ public class BrowserRerankingHandoffService {
 
     private final CandidateTokenService candidateTokenService;
     private final ProductCandidateMapper candidateMapper;
+    private final RecommendationRetrievalQueryPlanner queryPlanner;
 
     public BrowserRerankingHandoffService(
             CandidateTokenService candidateTokenService,
-            ProductCandidateMapper candidateMapper
+            ProductCandidateMapper candidateMapper,
+            RecommendationRetrievalQueryPlanner queryPlanner
     ) {
         this.candidateTokenService = candidateTokenService;
         this.candidateMapper = candidateMapper;
+        this.queryPlanner = queryPlanner;
     }
 
     public BrowserRerankingHandoff create(
@@ -60,11 +63,15 @@ public class BrowserRerankingHandoffService {
         );
     }
 
-    static BigDecimal tagSimilarity(
+    BigDecimal tagSimilarity(
             List<TagInput> tags,
             ExternalProductCandidate candidate
     ) {
-        RecommendationTagMatcher.Match match = RecommendationTagMatcher.match(tags, candidate);
+        RecommendationTagMatcher.Match match = RecommendationTagMatcher.match(
+                tags,
+                candidate,
+                queryPlanner
+        );
         if (match.eligibleTagCount() == 0) {
             return ONE;
         }
