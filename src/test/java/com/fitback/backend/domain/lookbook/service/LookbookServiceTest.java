@@ -1025,6 +1025,52 @@ class LookbookServiceTest {
         verify(memberProfileImageService).resolveProfileImageUrls(anyList());
     }
 
+    // 상세로 안 들어가고 목록에서 바로 저장/저장취소할 수 있도록 각 항목에 saveId를 채워주는지 확인
+    @Test
+    void getLookbooksIncludesSaveIdOnlyForSavedLookbooks() {
+        LocalDateTime latestCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);
+        List<Lookbook> lookbookPage = List.of(
+                createListLookbook(100L, latestCreatedAt),
+                createListLookbook(99L, latestCreatedAt.minusMinutes(1))
+        );
+        List<Long> returnedLookbookIds = List.of(100L, 99L);
+        when(lookbookRepository
+                .findAllByDeletedAtIsNullAndModerationStatusOrderByCreatedAtDescIdDesc(
+                eq(LookbookModerationStatus.VISIBLE),
+                any(Pageable.class)
+        ))
+                .thenReturn(lookbookPage);
+        when(lookbookTagRepository.findAllByLookbookIdInOrderByIdAsc(returnedLookbookIds))
+                .thenReturn(List.of());
+        when(memberProfileImageService.resolveProfileImageUrls(anyList()))
+                .thenReturn(Map.of());
+
+        ClosetSave savedEntry = ClosetSave.create(member, ClosetTargetType.LOOKBOOK, 100L);
+        ReflectionTestUtils.setField(savedEntry, "id", 555L);
+        when(closetSaveRepository.findAllByMemberIdAndTargetTypeAndTargetIdIn(
+                eq(1L),
+                eq(ClosetTargetType.LOOKBOOK),
+                eq(returnedLookbookIds)
+        )).thenReturn(List.of(savedEntry));
+
+        LookbookResponse.LookbookList response = lookbookService.getLookbooks(
+                null,
+                20,
+                null,
+                member
+        );
+
+        assertThat(response.items())
+                .extracting(
+                        LookbookResponse.LookbookItem::lookbookId,
+                        LookbookResponse.LookbookItem::saveId
+                )
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(100L, 555L),
+                        org.assertj.core.groups.Tuple.tuple(99L, null)
+                );
+    }
+
     @Test
     void getMyLookbooksUsesRequestedPageSizeAndReturnsNextCursor() {
         LocalDateTime latestCreatedAt = LocalDateTime.of(2026, 7, 16, 12, 0);

@@ -92,7 +92,11 @@ public final class LookbookResponse {
             String authorProfileImageUrl,
             List<String> tags,
             Integer likeCount,
-            boolean isLiked
+            boolean isLiked,
+            // 상세로 안 들어가고 목록(썸네일)에서 바로 저장/저장취소할 수 있도록 —
+            // null이면 저장 안 한 상태, 값이 있으면 그 값이 저장취소(DELETE) 호출에
+            // 쓰는 closet-save id (상세 조회의 saveId와 동일한 규칙)
+            Long saveId
     ) {
 
         public static LookbookItem toLookbookItem(
@@ -101,7 +105,8 @@ public final class LookbookResponse {
                 String matchedImageUrl,
                 String authorProfileImageUrl,
                 List<String> tags,
-                boolean isLiked
+                boolean isLiked,
+                Long saveId
         ) {
             return LookbookItem.builder()
                     .lookbookId(lookbook.getId())
@@ -115,6 +120,7 @@ public final class LookbookResponse {
                     .tags(List.copyOf(tags))
                     .likeCount(lookbook.getLikeCount())
                     .isLiked(isLiked)
+                    .saveId(saveId)
                     .build();
         }
     }
