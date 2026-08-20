@@ -177,6 +177,69 @@ class RecommendationApiFlowIntegrationTest {
         }
     }
 
+    // 프론트 "직접 태그 입력"이 글자 수 제한 없이 그대로 보낼 수 있어서 재현한 케이스 —
+    // 50자를 넘는 커스텀 태그명이 500(서버 내부 오류)이 아니라 400으로 깔끔하게 막히는지 확인
+    @Test
+    void rejectsCustomTagNameOverFiftyCharsWithValidationErrorNotServerError() throws Exception {
+        String email = "recommendation-api-long-tag@fitback.com";
+        String accessToken = signUpAndGetAccessToken(email);
+        AnalysisReport report = createReport(email, "Fixture");
+        Long tagId = report.getDisplayTags().getFirst().getId();
+        String tooLongTagName = "가".repeat(51);
+
+        mockMvc.perform(post(
+                        "/api/v1/analyses/{reportId}/recommendations",
+                        report.getId()
+                )
+                        .header("Authorization", bearer(accessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(recommendationRequestWithCustomTag(
+                                List.of(tagId),
+                                70,
+                                tooLongTagName
+                        )))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON400_2"));
+    }
+
+    // 커스텀 태그는 그대로 두고 매치율만 바꿔 다시 확인하면 confirmRecommendationInput이
+    // customTags.clear()+addAll()로 갈아끼우는데, 이때 안 바뀐 커스텀 태그까지 같이
+    // 지웠다 새로 넣다가 (report_id, normalized_name) 유니크 제약을 스쳐서 위반하지
+    // 않는지 확인 — 재현되면 500(서버 내부 오류)으로 나타난다는 사용자 리포트가 있었음
+    @Test
+    void resubmittingSameCustomTagWithDifferentMatchPercentageSucceeds() throws Exception {
+        String email = "recommendation-api-resubmit@fitback.com";
+        String accessToken = signUpAndGetAccessToken(email);
+        AnalysisReport report = createReport(email, "Fixture");
+        Long tagId = report.getDisplayTags().getFirst().getId();
+
+        mockMvc.perform(post(
+                        "/api/v1/analyses/{reportId}/recommendations",
+                        report.getId()
+                )
+                        .header("Authorization", bearer(accessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(recommendationRequestWithCustomTag(
+                                List.of(tagId),
+                                70,
+                                "고프코어"
+                        )))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(
+                        "/api/v1/analyses/{reportId}/recommendations",
+                        report.getId()
+                )
+                        .header("Authorization", bearer(accessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(recommendationRequestWithCustomTag(
+                                List.of(tagId),
+                                80,
+                                "고프코어"
+                        )))
+                .andExpect(status().isOk());
+    }
+
     @Test
     void enforcesAuthenticationAndReportOwnershipAcrossTheFlow() throws Exception {
         String ownerEmail = "recommendation-api-owner@fitback.com";
@@ -277,6 +340,18 @@ class RecommendationApiFlowIntegrationTest {
         return objectMapper.writeValueAsString(Map.of(
                 "confirmedTagIds", tagIds,
                 "customTagNames", List.of("고프코어"),
+                "matchPercentage", matchPercentage
+        ));
+    }
+
+    private String recommendationRequestWithCustomTag(
+            List<Long> tagIds,
+            int matchPercentage,
+            String customTagName
+    ) {
+        return objectMapper.writeValueAsString(Map.of(
+                "confirmedTagIds", tagIds,
+                "customTagNames", List.of(customTagName),
                 "matchPercentage", matchPercentage
         ));
     }
