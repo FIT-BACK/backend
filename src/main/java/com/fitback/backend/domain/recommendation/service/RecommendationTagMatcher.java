@@ -6,6 +6,7 @@ import com.fitback.backend.domain.tag.entity.TagType;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 final class RecommendationTagMatcher {
@@ -20,17 +21,30 @@ final class RecommendationTagMatcher {
     private RecommendationTagMatcher() {
     }
 
-    static Match match(List<TagInput> tags, ExternalProductCandidate candidate) {
+    static Match match(
+            List<TagInput> tags,
+            ExternalProductCandidate candidate,
+            RecommendationRetrievalQueryPlanner queryPlanner
+    ) {
+        Objects.requireNonNull(queryPlanner, "queryPlanner must not be null");
         String searchableText = searchableText(candidate);
         List<TagInput> eligibleTags = tags.stream()
                 .filter(tag -> ELIGIBLE_TAG_TYPES.contains(tag.tagType()))
                 .toList();
         long matchedTagCount = eligibleTags.stream()
-                .map(TagInput::name)
-                .map(name -> name.toLowerCase(Locale.ROOT))
+                .map(tag -> matchingText(tag, queryPlanner))
+                .map(text -> text.toLowerCase(Locale.ROOT))
                 .filter(searchableText::contains)
                 .count();
         return new Match(matchedTagCount, eligibleTags.size());
+    }
+
+    private static String matchingText(
+            TagInput tag,
+            RecommendationRetrievalQueryPlanner queryPlanner
+    ) {
+        String alias = queryPlanner.aliasFor(tag);
+        return alias == null ? tag.name() : alias;
     }
 
     private static String searchableText(ExternalProductCandidate candidate) {
