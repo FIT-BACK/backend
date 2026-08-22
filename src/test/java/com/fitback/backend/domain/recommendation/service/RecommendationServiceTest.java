@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -118,6 +119,40 @@ class RecommendationServiceTest {
                 setWriter,
                 queryService
         );
+    }
+
+    private RecommendationService recommendationService(
+            int candidateLimit,
+            int maxPagesPerQuery
+    ) {
+        return new RecommendationService(
+                inputReader,
+                inputCommandService,
+                hmacUtil,
+                productCatalogPort,
+                new RecommendationRetrievalQueryPlanner(),
+                candidateMapper,
+                materializationService,
+                new ImageComparisonCandidateSelector(
+                        new MultiTagPriorityImageComparisonCandidateOrderingPolicy(),
+                        candidateLimit
+                ),
+                browserRerankingHandoffService,
+                scorer,
+                setWriter,
+                queryService,
+                maxPagesPerQuery
+        );
+    }
+
+    @Test
+    void boundedRetrievalRejectsPageLimitsOutsideOneOrTwo() {
+        assertThatThrownBy(() -> recommendationService(TEST_CANDIDATE_LIMIT, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("maxPagesPerQuery must be 1 or 2");
+        assertThatThrownBy(() -> recommendationService(TEST_CANDIDATE_LIMIT, 3))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("maxPagesPerQuery must be 1 or 2");
     }
 
     @Test
@@ -240,6 +275,201 @@ class RecommendationServiceTest {
                 new RecommendationPerformanceTrace.SelectorCounts(35, 35, 30, 0, 0, 0, 5, 0)
         );
         assertThat(trace.browserRerankingCandidateCount()).isZero();
+    }
+
+    @Test
+    void boundedRetrievalAppendsSecondPageWithoutChangingSourceLocalOrder() {
+        recommendationService = recommendationService(TEST_CANDIDATE_LIMIT, 2);
+        RecommendationInputSnapshot input = styleOnlyInput();
+        ExternalProductCandidate page1Last = candidate(1, null, true);
+        ExternalProductCandidate page2First = candidate(2, null, true);
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(page1Last), "page-2"));
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                "page-2",
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(page2First), null));
+        stubSuccessfulGeneration();
+
+        recommendationService.generate(1L, 501L);
+
+        ArgumentCaptor<ProductSearchQuery> queryCaptor =
+                ArgumentCaptor.forClass(ProductSearchQuery.class);
+        verify(productCatalogPort, times(2)).search(queryCaptor.capture());
+        assertThat(queryCaptor.getAllValues())
+                .extracting(ProductSearchQuery::cursor)
+                .containsExactly(null, "page-2");
+        assertThat(candidateIds(handedOffCandidates()))
+                .containsSubsequence(1, 2);
+    }
+
+    @Test
+    void pageOneFailureContinuesWithTheNextQueryFamily() {
+        recommendationService = recommendationService(TEST_CANDIDATE_LIMIT, 2);
+        RecommendationInputSnapshot input = multiFamilyInput();
+        ExternalProductCandidate recovered = candidate(2, null, true);
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "a-line",
+                ProductCategory.TOP,
+                null,
+                20
+        ))).thenThrow(providerTimeout());
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "v-neck",
+                ProductCategory.TOP,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(recovered), null));
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(), null));
+        stubSuccessfulGeneration();
+
+        RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
+
+        verify(productCatalogPort, times(3)).search(any(ProductSearchQuery.class));
+        assertThat(candidateIds(handedOffCandidates())).containsExactly(2);
+        assertThat(response.partial()).isTrue();
+        assertThat(response.warnings()).containsExactly("PROVIDER_PARTIAL_FAILURE");
+    }
+
+    @Test
+    void pageTwoFailurePreservesTheSuccessfulFirstPage() {
+        recommendationService = recommendationService(TEST_CANDIDATE_LIMIT, 2);
+        RecommendationInputSnapshot input = styleOnlyInput();
+        ExternalProductCandidate firstPageCandidate = candidate(1, null, true);
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(firstPageCandidate), "page-2"));
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                "page-2",
+                20
+        ))).thenThrow(providerTimeout());
+        stubSuccessfulGeneration();
+
+        RecommendationCreateResponse response = recommendationService.generate(1L, 501L);
+
+        verify(productCatalogPort, times(2)).search(any(ProductSearchQuery.class));
+        assertThat(candidateIds(handedOffCandidates())).containsExactly(1);
+        assertThat(response.partial()).isTrue();
+        assertThat(response.warnings()).containsExactly("PROVIDER_PARTIAL_FAILURE");
+    }
+
+    @Test
+    void boundedRetrievalNeverRequestsAPageThree() {
+        recommendationService = recommendationService(TEST_CANDIDATE_LIMIT, 2);
+        RecommendationInputSnapshot input = styleOnlyInput();
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(), "page-2"));
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                "page-2",
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(), "page-3"));
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L);
+
+        verify(productCatalogPort, times(2)).search(any(ProductSearchQuery.class));
+        verify(productCatalogPort, never()).search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                "page-3",
+                20
+        ));
+    }
+
+    @Test
+    void publicConstructorRemainsPageOneOnlyWhenACursorExists() {
+        RecommendationInputSnapshot input = styleOnlyInput();
+        ExternalProductCandidate firstPageCandidate = candidate(1, null, true);
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                null,
+                20
+        ))).thenReturn(new ProductSearchResult(List.of(firstPageCandidate), "page-2"));
+        stubSuccessfulGeneration();
+
+        recommendationService.generate(1L, 501L);
+
+        verify(productCatalogPort, times(1)).search(any(ProductSearchQuery.class));
+        verify(productCatalogPort, never()).search(new ProductSearchQuery(
+                "",
+                ProductCategory.TOP,
+                "page-2",
+                20
+        ));
+        assertThat(candidateIds(handedOffCandidates())).containsExactly(1);
+    }
+
+    @Test
+    void boundedRetrievalUsesAtMostTwoCallsPerQueryFamilyWithoutRetry() {
+        recommendationService = recommendationService(TEST_CANDIDATE_LIMIT, 2);
+        RecommendationInputSnapshot input = multiFamilyInput();
+        when(inputReader.read(1L, 501L)).thenReturn(input);
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenAnswer(invocation -> {
+                    ProductSearchQuery query = invocation.getArgument(0);
+                    return new ProductSearchResult(
+                            List.of(),
+                            query.cursor() == null ? "page-2" : "page-3"
+                    );
+                });
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+
+        recommendationService.generate(1L, 501L);
+
+        ArgumentCaptor<ProductSearchQuery> queryCaptor =
+                ArgumentCaptor.forClass(ProductSearchQuery.class);
+        verify(productCatalogPort, times(6)).search(queryCaptor.capture());
+        assertThat(queryCaptor.getAllValues())
+                .extracting(ProductSearchQuery::cursor)
+                .containsExactly(null, "page-2", null, "page-2", null, "page-2");
+    }
+
+    @Test
+    void allPageOneFailuresAttemptEveryFamilyOnceBeforeTerminalError() {
+        recommendationService = recommendationService(TEST_CANDIDATE_LIMIT, 2);
+        when(inputReader.read(1L, 501L)).thenReturn(multiFamilyInput());
+        when(productCatalogPort.search(any(ProductSearchQuery.class)))
+                .thenThrow(providerTimeout());
+
+        assertThatThrownBy(() -> recommendationService.generate(1L, 501L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.PRODUCT_PROVIDER_UNAVAILABLE);
+        ArgumentCaptor<ProductSearchQuery> queryCaptor =
+                ArgumentCaptor.forClass(ProductSearchQuery.class);
+        verify(productCatalogPort, times(3)).search(queryCaptor.capture());
+        assertThat(queryCaptor.getAllValues())
+                .extracting(ProductSearchQuery::cursor)
+                .containsOnlyNulls();
+        verify(setWriter, never()).replaceCurrentSet(any(), any(), any());
     }
 
     @Test
@@ -856,6 +1086,72 @@ class RecommendationServiceTest {
                 1,
                 ProductCategory.TOP,
                 List.of(new TagInput(10L, "Fixture", TagType.DETAIL))
+        );
+    }
+
+    private static RecommendationInputSnapshot styleOnlyInput() {
+        return new RecommendationInputSnapshot(
+                501L,
+                1L,
+                1,
+                ProductCategory.TOP,
+                List.of(new TagInput(10L, "스타일", TagType.STYLE))
+        );
+    }
+
+    private static RecommendationInputSnapshot multiFamilyInput() {
+        return new RecommendationInputSnapshot(
+                501L,
+                1L,
+                1,
+                ProductCategory.TOP,
+                List.of(
+                        new TagInput(10L, "A라인", TagType.SILHOUETTE),
+                        new TagInput(20L, "브이넥", TagType.DETAIL)
+                )
+        );
+    }
+
+    private void stubSuccessfulGeneration() {
+        when(candidateMapper.category(any())).thenReturn(ProductCategory.TOP);
+        when(materializationService.materializeForRecommendation(any()))
+                .thenAnswer(invocation -> {
+                    ExternalProductCandidate candidate = invocation.getArgument(0);
+                    return new RecommendationMaterializationResult(
+                            Long.parseLong(candidate.providerRef().externalProductId()),
+                            true
+                    );
+                });
+        when(queryService.findByReportId(1L, 501L)).thenReturn(currentResult());
+    }
+
+    private List<ExternalProductCandidate> handedOffCandidates() {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ExternalProductCandidate>> candidatesCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(browserRerankingHandoffService).create(
+                org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(ProductCategory.TOP),
+                any(),
+                candidatesCaptor.capture()
+        );
+        return candidatesCaptor.getValue();
+    }
+
+    private static List<Integer> candidateIds(
+            List<ExternalProductCandidate> candidates
+    ) {
+        return candidates.stream()
+                .map(candidate -> Integer.parseInt(
+                        candidate.providerRef().externalProductId()
+                ))
+                .toList();
+    }
+
+    private static ProductProviderException providerTimeout() {
+        return new ProductProviderException(
+                "fixture",
+                ProductProviderFailure.TIMEOUT
         );
     }
 
