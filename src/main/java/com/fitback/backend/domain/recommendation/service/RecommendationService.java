@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -41,6 +42,8 @@ public class RecommendationService {
     static final String THRESHOLD_SCORE_VERSION = "IMAGE_TAG_WEIGHTED_THR_V1";
 
     private static final int SEARCH_PAGE_SIZE = 20;
+    private static final int CURRENT_MAX_PAGES_PER_QUERY = 1;
+    private static final int EXPERIMENT_MAX_PAGES_PER_QUERY = 2;
     private static final int MAX_ITEMS_PER_CATEGORY = 10;
     private static final BigDecimal TEMPORARY_IMAGE_SIMILARITY_SCORE =
             new BigDecimal("70");
@@ -60,7 +63,9 @@ public class RecommendationService {
     private final RecommendationScorer scorer;
     private final RecommendationSetWriter setWriter;
     private final RecommendationQueryService queryService;
+    private final int maxPagesPerQuery;
 
+    @Autowired
     public RecommendationService(
             RecommendationInputReader inputReader,
             RecommendationInputCommandService inputCommandService,
@@ -75,6 +80,42 @@ public class RecommendationService {
             RecommendationSetWriter setWriter,
             RecommendationQueryService queryService
     ) {
+        this(
+                inputReader,
+                inputCommandService,
+                hmacUtil,
+                productCatalogPort,
+                retrievalQueryPlanner,
+                candidateMapper,
+                materializationService,
+                imageComparisonCandidateSelector,
+                browserRerankingHandoffService,
+                scorer,
+                setWriter,
+                queryService,
+                CURRENT_MAX_PAGES_PER_QUERY
+        );
+    }
+
+    RecommendationService(
+            RecommendationInputReader inputReader,
+            RecommendationInputCommandService inputCommandService,
+            HmacUtil hmacUtil,
+            ProductCatalogPort productCatalogPort,
+            RecommendationRetrievalQueryPlanner retrievalQueryPlanner,
+            ProductCandidateMapper candidateMapper,
+            ProductMaterializationService materializationService,
+            ImageComparisonCandidateSelector imageComparisonCandidateSelector,
+            BrowserRerankingHandoffService browserRerankingHandoffService,
+            RecommendationScorer scorer,
+            RecommendationSetWriter setWriter,
+            RecommendationQueryService queryService,
+            int maxPagesPerQuery
+    ) {
+        if (maxPagesPerQuery < CURRENT_MAX_PAGES_PER_QUERY
+                || maxPagesPerQuery > EXPERIMENT_MAX_PAGES_PER_QUERY) {
+            throw new IllegalArgumentException("maxPagesPerQuery must be 1 or 2");
+        }
         this.inputReader = inputReader;
         this.inputCommandService = inputCommandService;
         this.hmacUtil = hmacUtil;
@@ -87,6 +128,7 @@ public class RecommendationService {
         this.scorer = scorer;
         this.setWriter = setWriter;
         this.queryService = queryService;
+        this.maxPagesPerQuery = maxPagesPerQuery;
     }
 
     public RecommendationCreateResponse generate(Long memberId, Long reportId) {
@@ -174,44 +216,65 @@ public class RecommendationService {
         // query family 순서를 이후 라운드 로빈의 검색 배치 순서로 유지
         for (int index = 0; index < queryPlan.size(); index++) {
             PlannedQuery plannedQuery = queryPlan.get(index);
+            List<ExternalProductCandidate> categoryFilteredBatch = new ArrayList<>();
+            boolean familySearchSucceeded = false;
+            String cursor = null;
             try {
-                ProductSearchResult searchResult = RecommendationPerformanceTrace.measureSearchCatalog(
-                        new RecommendationPerformanceTrace.SearchCatalogCallInput(
-                                index + 1,
-                                traceQueryFingerprint(category, plannedQuery.keyword()),
-                                plannedQuery.tagTypeComposition(),
-                                category.name()
-                        ),
-                        () -> productCatalogPort.search(
-                                new ProductSearchQuery(
-                                        plannedQuery.keyword(),
-                                        category,
-                                        null,
-                                        SEARCH_PAGE_SIZE
-                                )
-                        ),
-                        result -> result.items().size()
-                );
-                successfulSearches++;
-                searchedCandidateCount += searchResult.items().size();
+                for (int page = 1; page <= maxPagesPerQuery; page++) {
+                    String pageCursor = cursor;
+                    ProductSearchResult searchResult =
+                            RecommendationPerformanceTrace.measureSearchCatalog(
+                                    new RecommendationPerformanceTrace.SearchCatalogCallInput(
+                                            index + 1,
+                                            traceQueryFingerprint(
+                                                    category,
+                                                    plannedQuery.keyword()
+                                            ),
+                                            plannedQuery.tagTypeComposition(),
+                                            category.name()
+                                    ),
+                                    () -> productCatalogPort.search(
+                                            new ProductSearchQuery(
+                                                    plannedQuery.keyword(),
+                                                    category,
+                                                    pageCursor,
+                                                    SEARCH_PAGE_SIZE
+                                            )
+                                    ),
+                                    result -> result.items().size()
+                            );
+                    successfulSearches++;
+                    familySearchSucceeded = true;
+                    searchedCandidateCount += searchResult.items().size();
 
-                // 검색어 내부의 공급자 상품 순위 보존을 위한 결과 목록 단위 저장
-                List<ExternalProductCandidate> categoryFiltered =
-                        RecommendationPerformanceTrace.measureStage(
-                                "categoryFiltering",
-                                () -> searchResult.items().stream()
-                                        .filter(candidate -> candidateMapper.category(candidate) == category)
-                                        .toList()
-                        );
-                RecommendationPerformanceTrace.recordCategoryFilteredResultCount(
-                        index + 1,
-                        categoryFiltered.size()
-                );
-                categoryFilteredCandidateCount += categoryFiltered.size();
-                candidateBatches.add(categoryFiltered);
+                    // page 1 뒤에 page 2를 이어붙여 검색어 내부의 공급자 순위 보존
+                    List<ExternalProductCandidate> categoryFiltered =
+                            RecommendationPerformanceTrace.measureStage(
+                                    "categoryFiltering",
+                                    () -> searchResult.items().stream()
+                                            .filter(candidate ->
+                                                    candidateMapper.category(candidate) == category
+                                            )
+                                            .toList()
+                            );
+                    RecommendationPerformanceTrace.recordCategoryFilteredResultCount(
+                            index + 1,
+                            categoryFiltered.size()
+                    );
+                    categoryFilteredCandidateCount += categoryFiltered.size();
+                    categoryFilteredBatch.addAll(categoryFiltered);
+
+                    if (!searchResult.hasNext()) {
+                        break;
+                    }
+                    cursor = searchResult.nextCursor();
+                }
             } catch (ProductProviderException exception) {
                 // 전체 실패와 부분 실패를 구분하기 위한 공급자 오류 누적
                 failures.add(ProductProviderErrorMapper.toBusinessException(exception));
+            }
+            if (familySearchSucceeded) {
+                candidateBatches.add(List.copyOf(categoryFilteredBatch));
             }
         }
 
